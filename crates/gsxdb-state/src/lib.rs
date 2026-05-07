@@ -11,8 +11,10 @@
 #![deny(missing_docs)]
 
 pub mod balance_slot;
+pub mod store;
 
 pub use balance_slot::{BalanceSlot, EvmBalance, MoveCoinValue, SlotError};
+pub use store::{BalanceStore, InMemoryBalanceStore};
 
 use std::collections::HashMap;
 
