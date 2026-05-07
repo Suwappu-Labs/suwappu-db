@@ -1,0 +1,29 @@
+# Active Claude Code config — populated by claude-code/install.sh from templates
+.claude/
+
+# Per-machine local settings overrides
+.claude/settings.local.json
+
+# Sprint state (committed only on active sprint branches, not main)
+# .sprint-state.md  # uncomment if you decide it shouldn't track on any branch
+
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+.env.local
+*.pem
+*.key
