@@ -14,3 +14,4 @@ workspace = true
 gsxdb-state = { path = "../gsxdb-state" }
 
 [dev-dependencies]
+tempfile = "3"
