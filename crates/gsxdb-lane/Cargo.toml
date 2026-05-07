@@ -1,0 +1,18 @@
+[package]
+name = "gsxdb-lane"
+description = "Data lane — mempool, intent queue, untrusted ingest. Reaches state ONLY through gsxdb-bridge. Must NOT depend on gsxdb-state."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+# INVARIANT: gsxdb-lane MUST NOT list gsxdb-state in [dependencies] or
+# [dev-dependencies]. The lane-separation script enforces this at build time.
+[dependencies]
+gsxdb-bridge = { path = "../gsxdb-bridge" }
+
+[dev-dependencies]
