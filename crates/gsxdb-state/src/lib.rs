@@ -10,6 +10,10 @@
 
 #![deny(missing_docs)]
 
+pub mod balance_slot;
+
+pub use balance_slot::{BalanceSlot, EvmBalance, MoveCoinValue, SlotError};
+
 use std::collections::HashMap;
 
 /// 20-byte EVM-shaped address. Move addresses are projected onto this layout.
