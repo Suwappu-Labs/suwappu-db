@@ -45,7 +45,7 @@ Between sessions, you resume via:
 
 | Sprint | Weeks  | Status      | Exit gate                                                           |
 |--------|--------|-------------|---------------------------------------------------------------------|
-| S1     | 1–2    | ✅ Closed    | Workspace skeleton, CI green, lane-separation script enforces       |
+| S1     | 1–2    | ✅ Closed    | Workspace + lane-separation script enforces (CI deferred)           |
 | S2     | 3–4    | 🟡 Active    | PBM RocksDB CFs + dual-projection invariant property test           |
 | S3     | 5–6    | ⏳ Queued    | EVM + Move projector wiring; 10k-iter `EVM == Move` property test   |
 | S4     | 7–8    | ⏳ Queued    | CE-MVCC + OCC; 100k-iter serializability property test              |

@@ -11,5 +11,10 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
+# Storage backend: redb (pure-Rust) for dev/CI per IQ-1.
+# Production switches to RocksDB in S8 behind the `production-storage` feature.
+redb = "2"
 
 [dev-dependencies]
+proptest = "1"
+tempfile = "3"
