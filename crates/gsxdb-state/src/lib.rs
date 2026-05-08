@@ -13,10 +13,12 @@
 pub mod balance_slot;
 pub mod redb_store;
 pub mod store;
+pub mod vm;
 
 pub use balance_slot::{BalanceSlot, EvmBalance, MoveCoinValue, SlotError};
 pub use redb_store::RedbBalanceStore;
 pub use store::{BalanceStore, InMemoryBalanceStore};
+pub use vm::{CanonicalTransfer, EvmProjector, EvmTx, EvmView, MoveProjector, MoveTx, MoveView};
 
 /// 20-byte EVM-shaped address. Move addresses are projected onto this layout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

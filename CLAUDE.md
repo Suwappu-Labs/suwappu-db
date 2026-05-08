@@ -46,8 +46,8 @@ Between sessions, you resume via:
 | Sprint | Weeks  | Status      | Exit gate                                                           |
 |--------|--------|-------------|---------------------------------------------------------------------|
 | S1     | 1–2    | ✅ Closed    | Workspace + lane-separation script enforces (CI deferred)           |
-| S2     | 3–4    | 🟡 Active    | PBM RocksDB CFs + dual-projection invariant property test           |
-| S3     | 5–6    | ⏳ Queued    | EVM + Move projector wiring; 10k-iter `EVM == Move` property test   |
+| S2     | 3–4    | ✅ Closed    | PBM redb-backed BalanceStore + dual-projection invariant (3 layers) |
+| S3     | 5–6    | 🟡 Active    | EVM + Move projector wiring; 10k-iter `EVM == Move` property test   |
 | S4     | 7–8    | ⏳ Queued    | CE-MVCC + OCC; 100k-iter serializability property test              |
 | S5     | 9–10   | ⏳ Queued    | Cross-VM intent queue Q close; 10k-iter crash-recovery test         |
 | S6     | 11–14  | ⏳ Queued    | Own-tree Verkle; N=10⁶ inclusion proof + go-ipa differential parity |
