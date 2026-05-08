@@ -9,8 +9,10 @@
 //! Default: 256 cases, runs in seconds.
 //!
 //! Exit-gate run (release):
+//! ```text
 //!   PROPTEST_CASES=10000 cargo test --release --test cross_vm_parity \
 //!       interleaved_evm_move_preserves_invariant
+//! ```
 //!
 //! All sub-properties below assert the invariant. They differ only in
 //! the workload distribution, to make sure no single transaction
@@ -18,7 +20,7 @@
 //!
 //! Real revm / Move-VM integration is deferred per IQ-2; this test runs
 //! against the mock executors. The encoding paths and projection paths
-//! are real and end-to-end through the BridgeToken capability gate.
+//! are real and end-to-end through the `BridgeToken` capability gate.
 
 use gsxdb_bridge::{MockEvm, MockMove};
 use gsxdb_state::{

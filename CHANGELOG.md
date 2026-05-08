@@ -10,6 +10,28 @@ once the project is tagged. Pre-tag, every change lands under `[Unreleased]`.
 
 ### Added
 
+- **S3 — EVM + Move projector wiring.**
+  - `gsxdb-state::vm` module: `EvmTx` / `MoveTx` typed transaction
+    shapes both reducing to `CanonicalTransfer` via `to_canonical()`.
+  - `EvmProjector` / `MoveProjector` traits + `EvmView` / `MoveView`
+    default impls that read via `State::slot_of` and project the
+    canonical `BalanceSlot`.
+  - `gsxdb-bridge::vm::executor`: `MockEvm` / `MockMove` faithful Rust
+    mock executors, both routing through `Bridge::submit`. EVM revert
+    / Move abort error semantics modelled.
+  - **Exit-gate test:** `cross_vm_parity::interleaved_evm_move_preserves_invariant`
+    — 10,000 cases in release pass in 0.17s. The dual-projection
+    invariant holds under arbitrary mixed-VM transaction sequences.
+  - Three sub-properties: EVM-only, Move-only, and encoding-symmetry on
+    independent states.
+- **IQ-2.** S3 ships with mock executors; real revm + Move VM
+  integration deferred to S3.5 because no clean standalone Move VM
+  crate exists today (Aptos's pulls the framework, Sui's is forked
+  into Sui).
+- **`docs/spec/dual-vm-projectors.md`** — first real spec doc, lifts
+  S3's types, executor wiring, invariant, and exit-gate test into
+  prose.
+
 - **S2 — Persistent dual-projection invariant.**
   - `BalanceSlot` type with `EvmBalance` / `MoveCoinValue` projections.
     Proposition 1 enforced structurally: one canonical field, two views.
