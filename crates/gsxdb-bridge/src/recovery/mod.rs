@@ -23,4 +23,4 @@ pub mod store;
 
 pub use block::{Block, BlockHash};
 pub use replay::{replay, RecoveryError};
-pub use store::{BlockStore, InMemoryBlockStore};
+pub use store::{BlockStore, InMemoryBlockStore, RedbBlockStore};
