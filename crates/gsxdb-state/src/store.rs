@@ -46,6 +46,16 @@ pub trait BalanceStore {
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Snapshot of every (addr, slot) currently in the store. Order is
+    /// implementation-defined; consumers that need a canonical order
+    /// (e.g. the state-tree commitment) must sort.
+    ///
+    /// Phase-1 returns a `Vec` for simplicity — fine for the small-state
+    /// workloads property tests exercise. Production should add an
+    /// iterator variant; deferred to S8 when persistence + recovery
+    /// surface the question.
+    fn entries(&self) -> Vec<(Address, BalanceSlot)>;
 }
 
 /// `HashMap`-backed [`BalanceStore`]. Default backend for tests and the
@@ -74,6 +84,10 @@ impl BalanceStore for InMemoryBalanceStore {
 
     fn len(&self) -> usize {
         self.slots.len()
+    }
+
+    fn entries(&self) -> Vec<(Address, BalanceSlot)> {
+        self.slots.iter().map(|(a, s)| (*a, *s)).collect()
     }
 }
 

@@ -40,7 +40,7 @@ use crate::bundle::CallCtx;
 use crate::occ::mv_store::{MvStore, ReadSource, TxnIdx};
 use crate::occ::txn::{ReadEntry, Txn, Validator, WriteEntry};
 use crate::{Intent, RejectReason};
-use gsxdb_state::{Address, Balance, BalanceSlot, BridgeToken, State, StateChange};
+use gsxdb_state::{Address, Balance, BalanceSlot, BridgeToken, State, StateChange, StateTree};
 use rayon::prelude::*;
 
 /// Internal helper: a bundle-step read might resolve against the
@@ -73,6 +73,10 @@ pub struct BlockReport {
     pub iterations: usize,
     /// Total number of re-executions across all txns.
     pub aborts: usize,
+    /// State-tree root commitment after this block was consolidated.
+    /// Per-block hash-based commitment per IQ-6; real Verkle is a
+    /// launch-readiness item.
+    pub state_root: gsxdb_state::Commitment,
 }
 
 /// Block executor. Stateless; one call = one block.
@@ -120,6 +124,7 @@ impl BlockExecutor {
                 outcomes: Vec::new(),
                 iterations: 0,
                 aborts: 0,
+                state_root: StateTree::from_state(state).root(),
             };
         }
 
@@ -204,10 +209,16 @@ impl BlockExecutor {
             })
             .collect();
 
+        // Phase-1: rebuild the tree from full state per block. S6.5 / S8
+        // introduces incremental updates; the trait surface here doesn't
+        // need to change.
+        let state_root = StateTree::from_state(state).root();
+
         BlockReport {
             outcomes,
             iterations,
             aborts,
+            state_root,
         }
     }
 }

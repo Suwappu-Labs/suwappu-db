@@ -34,7 +34,7 @@
 
 use crate::store::BalanceStore;
 use crate::{Address, BalanceSlot};
-use redb::{Database, ReadableTableMetadata, TableDefinition};
+use redb::{Database, ReadableTable, ReadableTableMetadata, TableDefinition};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -169,6 +169,29 @@ impl BalanceStore for RedbBalanceStore {
                 .expect("RedbBalanceStore::len: table.len failed"),
         )
         .expect("len exceeds usize")
+    }
+
+    fn entries(&self) -> Vec<(Address, BalanceSlot)> {
+        let txn = self
+            .db
+            .begin_read()
+            .expect("RedbBalanceStore::entries: begin_read failed");
+        let table = txn
+            .open_table(TABLE_STATE)
+            .expect("RedbBalanceStore::entries: open_table(state) failed");
+        let mut out = Vec::new();
+        let iter = table
+            .iter()
+            .expect("RedbBalanceStore::entries: iter failed");
+        for entry in iter {
+            let (k, v) = entry.expect("RedbBalanceStore::entries: row read failed");
+            let kb = k.value();
+            assert_eq!(kb.len(), 20, "address key length");
+            let mut addr_bytes = [0u8; 20];
+            addr_bytes.copy_from_slice(kb);
+            out.push((Address(addr_bytes), Self::decode_value(v.value())));
+        }
+        out
     }
 }
 

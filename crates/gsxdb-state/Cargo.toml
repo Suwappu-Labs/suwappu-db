@@ -14,6 +14,10 @@ workspace = true
 # Storage backend: redb (pure-Rust) for dev/CI per IQ-1.
 # Production switches to RocksDB in S8 behind the `production-storage` feature.
 redb = "2"
+# State-tree commitment hash. Per IQ-6, hash-based commitment now;
+# real Verkle (polynomial commitments over banderwagon) is a launch-
+# readiness item.
+blake3 = "1"
 
 [dev-dependencies]
 proptest = "1"
