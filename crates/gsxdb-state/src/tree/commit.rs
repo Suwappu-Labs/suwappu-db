@@ -138,7 +138,10 @@ mod tests {
         b.insert(0u8, Box::new(Node::Leaf(BalanceSlot::new(10))));
         b.insert(2u8, Box::new(Node::Leaf(BalanceSlot::new(20))));
 
-        assert_eq!(commit_node(&Node::Internal(a)), commit_node(&Node::Internal(b)));
+        assert_eq!(
+            commit_node(&Node::Internal(a)),
+            commit_node(&Node::Internal(b))
+        );
     }
 
     #[test]
@@ -150,7 +153,10 @@ mod tests {
         let mut t1 = BTreeMap::new();
         t1.insert(1u8, Box::new(Node::Leaf(BalanceSlot::new(99))));
 
-        assert_ne!(commit_node(&Node::Internal(t0)), commit_node(&Node::Internal(t1)));
+        assert_ne!(
+            commit_node(&Node::Internal(t0)),
+            commit_node(&Node::Internal(t1))
+        );
     }
 
     #[test]

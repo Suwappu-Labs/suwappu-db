@@ -83,7 +83,12 @@ impl StateTree {
     ///   `proof.slot = None`. Verifies iff `root` is the empty
     ///   commitment.
     #[must_use]
-    pub fn verify(root: Commitment, addr: &Address, slot_opt: Option<BalanceSlot>, proof: &Proof) -> bool {
+    pub fn verify(
+        root: Commitment,
+        addr: &Address,
+        slot_opt: Option<BalanceSlot>,
+        proof: &Proof,
+    ) -> bool {
         use super::commit::empty_commitment;
         use blake3::Hasher;
         const TAG_INTERNAL: &[u8] = b"GSXDB-TREE/INT__";
@@ -292,7 +297,12 @@ mod tests {
 
         let p = t.proof(&addr(1));
         assert_eq!(p.slot, Some(BalanceSlot::new(42)));
-        assert!(StateTree::verify(t.root(), &addr(1), Some(BalanceSlot::new(42)), &p));
+        assert!(StateTree::verify(
+            t.root(),
+            &addr(1),
+            Some(BalanceSlot::new(42)),
+            &p
+        ));
     }
 
     #[test]

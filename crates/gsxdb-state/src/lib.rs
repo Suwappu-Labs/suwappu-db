@@ -23,7 +23,7 @@ pub use tree::{Commitment, Proof, ProofStep, StateTree};
 pub use vm::{CanonicalTransfer, EvmProjector, EvmTx, EvmView, MoveProjector, MoveTx, MoveView};
 
 /// 20-byte EVM-shaped address. Move addresses are projected onto this layout.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, PartialOrd, Ord)]
 pub struct Address(pub [u8; 20]);
 
 /// Balance held by an address. Newtyped to keep arithmetic intentional.
