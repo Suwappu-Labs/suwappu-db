@@ -10,6 +10,42 @@ once the project is tagged. Pre-tag, every change lands under `[Unreleased]`.
 
 ### Added
 
+- **S7 — Cross-chain anchor log + parity.**
+  - `gsxdb-bridge::anchor` module: `Anchor`, `AnchorLog`,
+    `AnchorDispatcher`, `parity_check`. In-memory + BLAKE3 keyed-MAC
+    per IQ-7.
+  - Per-chain append-only logs with parent-hash linkage; tampering is
+    detectable.
+  - `dispatch(height, state_root)` writes one anchor per registered
+    chain.
+  - `parity_check(height)` returns `Agreed { state_root }` iff every
+    chain's anchor at that height matches; `Disagreed { divergent,
+    missing }` otherwise.
+  - **Exit-gate test:** `cross_parity::cross_chain_parity_holds` —
+    10,000 cases pass (15s dev).
+  - **`scripts/cross-parity.sh`** — finally has a real
+    implementation (runs the 10k-case property test).
+  - **`docs/spec/anchor-log.md`** — full spec doc.
+- **IQ-7.** Anchor log is in-memory + MAC in phase-1; Solidity
+  `LTPAnchorRegistry` + ECDSA signatures at launch readiness.
+
+- **S8 — Block store + recovery via deterministic replay.**
+  - `gsxdb-bridge::recovery` module: `Block`, `BlockHash`,
+    `BlockStore` trait + `InMemoryBlockStore`, `replay`,
+    `RecoveryError`.
+  - Block hash = BLAKE3 of canonical encoding (height, parent, state
+    root, intent count, intents).
+  - `replay` walks blocks in height order, re-executes via
+    `BlockExecutor`, verifies recorded `state_root` matches computed
+    + cross-checks via fresh `StateTree::from_state` rebuild.
+  - Errors: `StateRootMismatch`, `HeightGap`, `ParentHashMismatch`.
+  - **Exit-gate test:** `recovery::recover_matches_live_state` —
+    10,000 cases pass (126s dev — defence-in-depth tree rebuild
+    dominates).
+  - **`docs/spec/recovery.md`** — full spec doc.
+- **IQ-8.** Block store is in-memory in phase-1; `RedbBlockStore`
+  lands in S8.5 before any deployment.
+
 - **S6 — State-tree commitment.**
   - `gsxdb-state::tree` module: 256-ary trie over
     `Address → BalanceSlot` with BLAKE3-based commitments per IQ-6.
