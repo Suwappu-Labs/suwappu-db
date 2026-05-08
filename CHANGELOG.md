@@ -10,6 +10,34 @@ once the project is tagged. Pre-tag, every change lands under `[Unreleased]`.
 
 ### Added
 
+- **S4 — CE-MVCC OCC (Aptos Block-STM style).**
+  - `gsxdb-bridge::occ::mv_store`: multi-version balance store with
+    per-address `BTreeMap<TxnIdx, BalanceSlot>`. Reads return the
+    highest-versioned write strictly below `my_idx`, falling through
+    to canonical `State` on cold-cache miss.
+  - `gsxdb-bridge::occ::txn`: per-tx read/write sets and a stateless
+    OCC `Validator`. Snapshot-vs-Version cell matrix drives
+    staleness detection.
+  - `gsxdb-bridge::occ::block_executor`: rayon-parallel speculative
+    execution + sequential validation + clear-and-retry loop. Cap of
+    `2*n+4` iterations. Consolidation via fresh `BridgeToken`.
+  - **Exit-gate test:** `block_executor::parallel_equals_sequential`
+    — 10,000 cases in release pass in 0.54s. Three sub-properties
+    (`dual_projection_holds_after_block`, `total_supply_preserved`,
+    `empty_block_is_identity`) also pass at 10k.
+  - **`docs/spec/ce-mvcc-occ.md`** — full spec doc.
+  - New dep: rayon.
+
+### Fixed
+
+- **`Bridge::submit` self-transfer bug.** With `from == to`, the
+  credit-write of `to` overwrote the debit-write of `from`, leaving
+  the address at `balance + amount`. Surfaced by S4's
+  `parallel_equals_sequential` proptest, which minimised to a
+  self-transfer of amount 1. Fix: explicit `from == to → no-op` guard
+  in `Bridge::submit`, after the balance check. Two regression tests
+  added (`self_transfer_is_a_no_op`, `self_transfer_still_checks_balance`).
+
 - **IQ-3 — Move VM choice deferred.** The Move dialect (Aptos / Sui /
   upstream / hand-rolled) is reframed as a launch-readiness decision,
   not a phase-1 sprint deliverable. Phase-1 ships with `MockMove`

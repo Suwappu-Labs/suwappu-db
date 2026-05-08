@@ -61,16 +61,16 @@ impl Validator {
             let observed = entry.source;
             let current = mv.highest_writer_below(&entry.addr, txn.idx);
             let still_consistent = match (observed, current) {
-                // Read against snapshot is valid only if no earlier txn
-                // has since written to `addr`.
+                // Read against snapshot: valid iff no earlier txn has
+                // since written to `addr`.
                 (ReadSource::Snapshot, None) => true,
-                (ReadSource::Snapshot, Some(_)) => false,
-                // Read against version `v` is valid only if `v` is
-                // still the highest writer below my index.
+                // Read against version `v`: valid iff `v` is still the
+                // highest writer below `my_idx`.
                 (ReadSource::Version(v), Some(c)) => v == c,
-                // We observed a version but no version exists now —
-                // means it was cleared by re-execution.
-                (ReadSource::Version(_), None) => false,
+                // Snapshot read but a writer now exists below us, OR a
+                // versioned read whose version was cleared. Either way,
+                // stale.
+                (ReadSource::Snapshot, Some(_)) | (ReadSource::Version(_), None) => false,
             };
             if !still_consistent {
                 return false;
@@ -90,7 +90,10 @@ mod tests {
     }
 
     fn entry(a: Address, src: ReadSource) -> ReadEntry {
-        ReadEntry { addr: a, source: src }
+        ReadEntry {
+            addr: a,
+            source: src,
+        }
     }
 
     #[test]

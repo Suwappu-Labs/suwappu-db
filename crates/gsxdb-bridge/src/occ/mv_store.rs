@@ -73,6 +73,13 @@ impl MvStore {
     /// invalidations.
     ///
     /// Reads from the canonical state on cold-cache fall through.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned (a panic in another
+    /// thread while holding the lock). Treated as a "should-never-
+    /// happen" — the lock guards a single insert/lookup, neither of
+    /// which can panic without the host already being unrecoverable.
     pub fn read(&self, state: &State, addr: &Address, my_idx: TxnIdx) -> (BalanceSlot, ReadSource) {
         let versions = self.versions.lock().expect("MvStore versions lock");
         if let Some(per_addr) = versions.get(addr) {
@@ -87,6 +94,10 @@ impl MvStore {
     }
 
     /// Insert (or overwrite) a versioned write at `my_idx`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned. See [`Self::read`].
     pub fn write(&self, addr: Address, slot: BalanceSlot, my_idx: TxnIdx) {
         let mut versions = self.versions.lock().expect("MvStore versions lock");
         versions.entry(addr).or_default().insert(my_idx, slot);
@@ -94,6 +105,10 @@ impl MvStore {
 
     /// Drop all writes belonging to `idx`. Called when a txn is being
     /// re-executed.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned. See [`Self::read`].
     pub fn clear_writes(&self, idx: TxnIdx) {
         let mut versions = self.versions.lock().expect("MvStore versions lock");
         for per_addr in versions.values_mut() {
@@ -104,6 +119,10 @@ impl MvStore {
 
     /// Highest versioned writer for `addr` strictly less than `bound`.
     /// Used by the validator to check if a recorded read is stale.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned. See [`Self::read`].
     pub fn highest_writer_below(&self, addr: &Address, bound: TxnIdx) -> Option<TxnIdx> {
         let versions = self.versions.lock().expect("MvStore versions lock");
         versions
@@ -114,6 +133,10 @@ impl MvStore {
     /// Walk the store at "highest version per address" and return one
     /// entry per touched address. Used at consolidation time to write
     /// the post-block state through the bridge.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned. See [`Self::read`].
     pub fn finalise(self) -> Vec<(Address, BalanceSlot)> {
         let versions = self.versions.into_inner().expect("MvStore versions lock");
         versions

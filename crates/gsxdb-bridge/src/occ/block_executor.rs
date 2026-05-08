@@ -84,7 +84,7 @@ impl BlockExecutor {
     /// Panics if the OCC re-execution loop fails to converge within
     /// `2 * block.len() + 4` iterations. This indicates an algorithmic
     /// bug, not bad input.
-    pub fn execute(self, state: &mut State, block: Vec<Intent>) -> BlockReport {
+    pub fn execute(self, state: &mut State, block: &[Intent]) -> BlockReport {
         let n = block.len();
         if n == 0 {
             return BlockReport {
@@ -118,14 +118,13 @@ impl BlockExecutor {
 
             // Re-execution pass. rayon scope — each pending txn runs
             // independently; writes to the MV store are atomic per call.
-            let block_ref = &block;
             let state_ref: &State = state;
             let mv_ref = &mv;
             let runs: Vec<(TxnIdx, Txn)> = pending
                 .par_iter()
                 .copied()
                 .map(|idx| {
-                    let intent = block_ref[idx];
+                    let intent = block[idx];
                     let txn = execute_one(intent, idx, state_ref, mv_ref);
                     (idx, txn)
                 })
@@ -139,8 +138,7 @@ impl BlockExecutor {
             // multi-thread re-entry into MvStore's lock during
             // back-to-back validates.
             let mut next_pending = Vec::new();
-            for idx in 0..n {
-                let txn = &txns[idx];
+            for (idx, txn) in txns.iter().enumerate() {
                 if !Validator.is_valid(txn, &mv) {
                     // Stale reads: clear writes, re-execute next iter.
                     mv.clear_writes(idx);
@@ -213,16 +211,13 @@ fn execute_one(intent: Intent, idx: TxnIdx, state: &State, mv: &MvStore) -> Txn 
                 };
             }
 
-            let new_to = match to_balance.checked_add(amount) {
-                Some(v) => v,
-                None => {
-                    return Txn {
-                        idx,
-                        read_set,
-                        write_set,
-                        rejected: Some(RejectReason::AmountOverflow),
-                    };
-                }
+            let Some(new_to) = to_balance.checked_add(amount) else {
+                return Txn {
+                    idx,
+                    read_set,
+                    write_set,
+                    rejected: Some(RejectReason::AmountOverflow),
+                };
             };
             let new_from = from_balance - amount;
 
@@ -290,7 +285,7 @@ mod tests {
     #[test]
     fn empty_block_is_noop() {
         let mut state = seeded_state();
-        let report = BlockExecutor.execute(&mut state, Vec::new());
+        let report = BlockExecutor.execute(&mut state, &[]);
         assert!(report.outcomes.is_empty());
         assert_eq!(report.iterations, 0);
         assert_eq!(report.aborts, 0);
@@ -302,7 +297,7 @@ mod tests {
         let mut state = seeded_state();
         let report = BlockExecutor.execute(
             &mut state,
-            vec![Intent::Transfer {
+            &[Intent::Transfer {
                 from: addr(0),
                 to: addr(1),
                 amount: 100,
@@ -319,7 +314,7 @@ mod tests {
         let mut state = seeded_state();
         let report = BlockExecutor.execute(
             &mut state,
-            vec![Intent::Transfer {
+            &[Intent::Transfer {
                 from: addr(0),
                 to: addr(1),
                 amount: 5_000, // > balance (1000)
@@ -354,11 +349,15 @@ mod tests {
                 amount: 30,
             },
         ];
-        let report = BlockExecutor.execute(&mut state, block);
+        let report = BlockExecutor.execute(&mut state, &block);
 
         assert_eq!(
             report.outcomes,
-            vec![TxOutcome::Committed, TxOutcome::Committed, TxOutcome::Committed]
+            vec![
+                TxOutcome::Committed,
+                TxOutcome::Committed,
+                TxOutcome::Committed
+            ]
         );
         assert_eq!(report.iterations, 1);
         assert_eq!(report.aborts, 0);
@@ -389,7 +388,7 @@ mod tests {
                 amount: 500,
             },
         ];
-        let report = BlockExecutor.execute(&mut state, block);
+        let report = BlockExecutor.execute(&mut state, &block);
 
         // tx 0 succeeds; tx 1 may have read stale value from snapshot
         // first time, retries, sees post-tx-0 balance (400) which is
@@ -422,7 +421,7 @@ mod tests {
         ];
 
         let mut s_par = seeded_state();
-        let _ = BlockExecutor.execute(&mut s_par, block.clone());
+        let _ = BlockExecutor.execute(&mut s_par, &block);
 
         let mut s_seq = seeded_state();
         for intent in block {
@@ -431,7 +430,10 @@ mod tests {
         }
 
         for n in 0..8u8 {
-            assert_eq!(s_par.balance_of(&Address([n; 20])), s_seq.balance_of(&Address([n; 20])));
+            assert_eq!(
+                s_par.balance_of(&Address([n; 20])),
+                s_seq.balance_of(&Address([n; 20]))
+            );
         }
     }
 
@@ -440,7 +442,7 @@ mod tests {
         let mut state = seeded_state();
         let report = BlockExecutor.execute(
             &mut state,
-            vec![Intent::Transfer {
+            &[Intent::Transfer {
                 from: addr(0),
                 to: addr(0),
                 amount: 100,
