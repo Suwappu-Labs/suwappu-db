@@ -13,15 +13,17 @@
 pub mod balance_slot;
 pub mod redb_store;
 pub mod store;
+pub mod tree;
 pub mod vm;
 
 pub use balance_slot::{BalanceSlot, EvmBalance, MoveCoinValue, SlotError};
 pub use redb_store::RedbBalanceStore;
 pub use store::{BalanceStore, InMemoryBalanceStore};
+pub use tree::{Commitment, Proof, ProofStep, StateTree};
 pub use vm::{CanonicalTransfer, EvmProjector, EvmTx, EvmView, MoveProjector, MoveTx, MoveView};
 
 /// 20-byte EVM-shaped address. Move addresses are projected onto this layout.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, PartialOrd, Ord)]
 pub struct Address(pub [u8; 20]);
 
 /// Balance held by an address. Newtyped to keep arithmetic intentional.
@@ -108,6 +110,15 @@ impl State {
     #[must_use]
     pub fn slot_of(&self, addr: &Address) -> BalanceSlot {
         self.store.get(addr)
+    }
+
+    /// Snapshot of every (addr, slot) currently in state. Used by the
+    /// state-tree commitment to recompute the post-block root. Order
+    /// is implementation-defined; consumers must sort if they need
+    /// canonical ordering.
+    #[must_use]
+    pub fn entries(&self) -> Vec<(Address, BalanceSlot)> {
+        self.store.entries()
     }
 
     /// Apply a validated change. Requires a [`BridgeToken`] — only the bridge

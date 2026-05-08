@@ -10,6 +10,32 @@ once the project is tagged. Pre-tag, every change lands under `[Unreleased]`.
 
 ### Added
 
+- **S6 — State-tree commitment.**
+  - `gsxdb-state::tree` module: 256-ary trie over
+    `Address → BalanceSlot` with BLAKE3-based commitments per IQ-6.
+    Verkle-aligned shape (same depth, traversal, proof format) so
+    real Verkle (IPA over banderwagon) is a single-function swap.
+  - `Node`, `Commitment`, `Proof`, `ProofStep` types.
+  - `commit_node` — domain-separated BLAKE3 commitments
+    (`GSXDB-TREE/EMPTY` / `LEAF_` / `INT__`).
+  - `StateTree::{new, from_entries, from_state, update, get, root,
+    proof, verify}`.
+  - Variable-length proofs: full-depth for inclusion, early-termination
+    for absence, empty for empty-tree absence.
+  - **Exit-gate test:** `cross_tree_root_agreement` — 10,000 cases
+    pass (in dev: 366s). Sub-properties: determinism, replay
+    equivalence, every inclusion verifies, absence verifies, tamper
+    resistance.
+  - `BalanceStore::entries()` extension with `InMemory` and `Redb`
+    impls.
+  - `BlockReport::state_root` — populated by `BlockExecutor` via
+    `StateTree::from_state` after consolidation.
+  - **`docs/spec/verkle-state-tree.md`** — full spec doc.
+- **IQ-6.** State-tree commitment is BLAKE3 in phase-1; real Verkle
+  (IPA over banderwagon, ~200-byte witnesses) is a launch-readiness
+  item parallel to IQ-3's Move VM choice. Witness-size caveat
+  documented; stateless-client work gated on the swap.
+
 - **S5 — Cross-VM intent bundles.**
   - `gsxdb-bridge::bundle` module: `Bundle` (Vec<BundleStep>) with
     `BundleStep::{Evm, Move}` and `BundleResult` /
