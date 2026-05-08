@@ -11,16 +11,23 @@
 
 #![deny(missing_docs)]
 
+pub mod bundle;
 pub mod occ;
 pub mod vm;
 
+pub use bundle::{
+    Bundle, BundleExecutor, BundleGenerator, BundleOutcome, BundleResult, BundleStep, CallCtx,
+    ContractRegistry,
+};
 pub use occ::{BlockExecutor, BlockReport, TxOutcome};
 pub use vm::{EvmError, MockEvm, MockMove, MoveError};
 
 use gsxdb_state::{Address, Balance, BridgeToken, State, StateChange};
 
 /// An untrusted intent submitted from the lane.
-#[derive(Debug, Clone, Copy)]
+///
+/// Not `Copy` — `Call` carries a `Vec<u8>` for calldata.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Intent {
     /// Transfer `amount` from `from` to `to`. Source must hold ≥ `amount`.
     Transfer {
@@ -30,6 +37,26 @@ pub enum Intent {
         to: Address,
         /// Amount in wei-equivalent units.
         amount: u128,
+    },
+    /// Invoke the contract at `target` with `calldata` and `value`. Dispatched
+    /// through the [`ContractRegistry`] at block-execution time. If `target`
+    /// isn't a registered contract, the call falls back to a plain transfer
+    /// of `value` from `caller` to `target`.
+    ///
+    /// Bridge-level [`Bridge::submit`] does NOT handle `Call` — only the
+    /// block executor does, because dispatch needs registry access. Calling
+    /// `Bridge::submit` with a `Call` returns
+    /// [`RejectReason::CallRequiresRegistry`].
+    Call {
+        /// Originating account (EOA for top-level, parent contract for sub-calls).
+        caller: Address,
+        /// Contract address being called. May or may not be a registered contract.
+        target: Address,
+        /// Native value passed with the call.
+        value: u128,
+        /// Opaque payload. Phase-1 mock contracts agree on shape; real
+        /// revm parses ABI.
+        calldata: Vec<u8>,
     },
 }
 
@@ -41,6 +68,10 @@ pub enum RejectReason {
     /// Transfer amount overflowed `u128` arithmetic. Phase-2 will use a
     /// 256-bit type internally.
     AmountOverflow,
+    /// `Bridge::submit` was called with `Intent::Call`. Calls require a
+    /// `ContractRegistry`, which only the block executor holds. Lift the
+    /// call into a block and use [`crate::BlockExecutor`].
+    CallRequiresRegistry,
 }
 
 /// Wraps a mutable [`State`] reference and offers the only validated path to
@@ -77,8 +108,10 @@ impl<'s> Bridge<'s> {
     /// is below the requested transfer amount, and
     /// [`RejectReason::AmountOverflow`] when the destination balance would
     /// overflow `u128`.
+    #[allow(clippy::needless_pass_by_value)] // by-value communicates "consumed intent"
     pub fn submit(&mut self, intent: Intent) -> Result<(), RejectReason> {
         match intent {
+            Intent::Call { .. } => Err(RejectReason::CallRequiresRegistry),
             Intent::Transfer { from, to, amount } => {
                 let from_balance = self.state.balance_of(&from).0;
 

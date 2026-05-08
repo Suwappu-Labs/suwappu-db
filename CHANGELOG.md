@@ -10,6 +10,32 @@ once the project is tagged. Pre-tag, every change lands under `[Unreleased]`.
 
 ### Added
 
+- **S5 — Cross-VM intent bundles.**
+  - `gsxdb-bridge::bundle` module: `Bundle` (Vec<BundleStep>) with
+    `BundleStep::{Evm, Move}` and `BundleResult` /
+    `BundleOutcome::{Committed, Reverted{failed_step}}`.
+  - `BundleExecutor::execute(&mut State, &Bundle)` — standalone
+    save-and-restore atomicity. Snapshot every touched address; on
+    revert, restore.
+  - `ContractRegistry` + `BundleGenerator` trait + `CallCtx`:
+    address-keyed mock-contract substrate. Closures with the right
+    shape are generators automatically. Per IQ-3, real revm and real
+    Move drop into the same trait when those land.
+  - `Intent::Call { caller, target, value, calldata }` variant.
+    `Intent` is no longer `Copy`. `Bridge::submit` returns
+    `RejectReason::CallRequiresRegistry` for `Call`.
+  - `BlockExecutor::execute_with_registry` — dispatches `Intent::Call`
+    within OCC: registry lookup, generator runs, bundle steps execute
+    atomically at one OCC tx-index. Per-bundle local accumulator
+    lets step `n+1` see step `n`'s writes.
+  - **Exit-gate test:** `cross_vm_bundles::bundle_atomicity` —
+    10,000 cases in release pass in 0.14s. Sub-properties
+    (`bundle_equivalence_to_sequential`,
+    `dual_projection_holds_across_bundles`,
+    `total_supply_preserved_across_bundles`,
+    `first_step_failure_is_pure_noop`) also pass at 10k.
+  - **`docs/spec/cross-vm-intent-queue.md`** — full spec doc.
+
 - **S4 — CE-MVCC OCC (Aptos Block-STM style).**
   - `gsxdb-bridge::occ::mv_store`: multi-version balance store with
     per-address `BTreeMap<TxnIdx, BalanceSlot>`. Reads return the

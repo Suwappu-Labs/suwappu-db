@@ -64,7 +64,7 @@ fn run_sequentially(block: &[Intent]) -> State {
     let mut state = seeded_state();
     for intent in block {
         let mut bridge = Bridge::new(&mut state);
-        let _ = bridge.submit(*intent);
+        let _ = bridge.submit(intent.clone());
     }
     state
 }
