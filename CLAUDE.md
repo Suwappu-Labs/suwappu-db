@@ -54,11 +54,11 @@ Between sessions, you resume via:
 | S6     | 11–12  | ✅ Closed    | State-tree commitment (BLAKE3 per IQ-6); cross_tree_root_agreement @ 10k passing |
 | S7     | 13–14  | ✅ Closed    | Cross-chain anchor log + parity (in-memory + MAC per IQ-7); cross_chain_parity_holds @ 10k passing |
 | S8     | 15–16  | ✅ Closed    | Block store + recovery (in-memory per IQ-8); recover_matches_live_state @ 10k passing |
-| S4     | 7–8    | ⏳ Queued    | CE-MVCC + OCC; 100k-iter serializability property test              |
-| S5     | 9–10   | ⏳ Queued    | Cross-VM intent queue Q close; 10k-iter crash-recovery test         |
-| S6     | 11–14  | ⏳ Queued    | Own-tree Verkle; N=10⁶ inclusion proof + go-ipa differential parity |
-| S7     | 15–16  | ⏳ Queued    | Anchor log + 36-pair cross-parity green in CI                       |
-| S8     | 17–18  | ⏳ Queued    | DAG store + recovery + telemetry; testnet shadow E2E                |
+| S8.5   | 17     | ⏳ Queued    | Redb-backed `RedbBlockStore` + replay persistence hardening (IQ-8)   |
+| S9     | 18+    | ⏳ Queued    | Launch-readiness: real Move VM + address-shape/nonce semantics (IQ-3/4/5) |
+| S10    | 18+    | ⏳ Queued    | Real Verkle commitments + IPA witnesses + parity harness (IQ-6)      |
+| S11    | 18+    | ⏳ Queued    | Solidity `LTPAnchorRegistry` + ECDSA parity (IQ-7)                   |
+| S12    | 18+    | ⏳ Queued    | DAG store, snapshots, telemetry, and testnet shadow E2E (IQ-9)       |
 
 Update this table when a sprint closes.
 

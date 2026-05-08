@@ -68,6 +68,82 @@ property test.
 | S7 | `cross_chain_parity_holds` | `crates/gsxdb-bridge/tests/cross_parity.rs` |
 | S8 | `recover_matches_live_state` | `crates/gsxdb-bridge/tests/recovery.rs` |
 
+
+## Step-by-step execution plan (post phase-1)
+
+The next delivery sequence is intentionally linear to reduce integration risk.
+Each sprint has explicit implementation steps, verification steps, and a hard
+exit gate.
+
+### S8.5 — RedbBlockStore + replay persistence hardening (IQ-8)
+
+1. Add `RedbBlockStore` under `gsxdb-bridge::recovery::store` behind the existing
+   `BlockStore` trait so no caller API changes are required.
+2. Implement append + get + iter semantics with deterministic ordering by height.
+3. Persist block metadata (`height`, `hash`, `parent`, `root`, tx digest list) and
+   verify round-trip encoding/decoding stability.
+4. Integrate replay path with the persistent store and run restart simulation tests
+   (execute → drop process → reopen → replay).
+5. Add fault-injection tests for partial writes and corrupted records; verify typed
+   `RecoveryError` paths and no silent acceptance.
+6. Exit gate: 10k-case `recover_matches_live_state` still green with the redb store
+   enabled, plus restart-specific property checks.
+
+### S9 — Real Move VM + address-shape + nonce semantics (IQ-3/4/5)
+
+1. Select and freeze Move VM dialect + runtime interface (documented in IQ update).
+2. Introduce a VM adapter trait boundary so mock and real Move VMs can be swapped in
+   tests and benchmarks without changing executor code.
+3. Add canonical address conversion policy (20-byte EVM ↔ 32-byte Move) with strict
+   validation and deterministic normalization rules.
+4. Define nonce model across EVM/Move paths (source of truth, increment rules,
+   rejection behavior) and wire it through OCC execution.
+5. Add cross-VM conformance tests for mixed address forms and nonce edge cases
+   (replay, duplicate nonce, gap nonce, malformed address).
+6. Exit gate: cross-VM parity properties remain green at 10k with real Move VM path
+   enabled in the matrix.
+
+### S10 — Real Verkle commitments + IPA witnesses (IQ-6)
+
+1. Keep `StateTree` API stable; swap commitment backend from BLAKE3 placeholder to
+   real Verkle commitment primitives.
+2. Implement witness generation and verification for inclusion proofs with explicit
+   domain separation and transcript binding.
+3. Add deterministic vector tests and differential tests against a reference
+   implementation (`go-ipa` parity harness).
+4. Benchmark prover/verifier performance and memory at realistic key counts; publish
+   limits and target budgets in docs.
+5. Harden serialization format for commitments/proofs with versioning for forward
+   compatibility.
+6. Exit gate: `cross_tree_root_agreement` plus inclusion-proof differential parity
+   pass at target scale (including large-N runs).
+
+### S11 — Solidity `LTPAnchorRegistry` + ECDSA parity (IQ-7)
+
+1. Implement Solidity contract surface for registry transitions matching Rust FSM
+   exactly (same states, guards, and error classes).
+2. Add ECDSA signing + verification pipeline for anchors (domain tag, chain id,
+   height, root, replay protection).
+3. Build shared parity fixtures used by both Solidity tests and Rust tests to avoid
+   drift in accepted/rejected cases.
+4. Add 36-pair conformance matrix tests and fuzz invalid signatures, bad transitions,
+   and malformed payloads.
+5. Integrate `scripts/cross-parity.sh` into CI so parity failures block merges.
+6. Exit gate: full 36-pair parity matrix green with signature verification enabled.
+
+### S12 — DAG store + snapshots + telemetry + shadow E2E (IQ-9)
+
+1. Define DAG block data model (multi-parent links, canonicalization policy, and
+   deterministic replay ordering).
+2. Add snapshot/checkpoint mechanism to bound replay time and support fast startup.
+3. Implement telemetry for execution/replay latency, conflict rate, anchor lag, and
+   snapshot health.
+4. Run long-horizon chaos scenarios (restart storms, delayed anchors, chain forks)
+   and verify invariant preservation under stress.
+5. Stand up testnet shadow mode and compare live-vs-shadow state roots continuously.
+6. Exit gate: shadow E2E stability window completed with zero invariant violations and
+   replay recovery within SLO.
+
 ## IQ decision points across sprints
 
 ```mermaid
