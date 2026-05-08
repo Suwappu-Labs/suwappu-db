@@ -10,6 +10,15 @@ once the project is tagged. Pre-tag, every change lands under `[Unreleased]`.
 
 ### Added
 
+- **IQ-3 — Move VM choice deferred.** The Move dialect (Aptos / Sui /
+  upstream / hand-rolled) is reframed as a launch-readiness decision,
+  not a phase-1 sprint deliverable. Phase-1 ships with `MockMove`
+  through S8; real Move VM integration lands when the chain is
+  preparing for testnet/mainnet. Hand-rolled minimal interpreter is
+  the contingency if a sprint forces the question first.
+- **S3.5 dissolved.** Real-revm integration folds into S5 (cross-VM
+  intent queue) where contract calls give it real bug-finding value.
+
 - **S3 — EVM + Move projector wiring.**
   - `gsxdb-state::vm` module: `EvmTx` / `MoveTx` typed transaction
     shapes both reducing to `CanonicalTransfer` via `to_canonical()`.

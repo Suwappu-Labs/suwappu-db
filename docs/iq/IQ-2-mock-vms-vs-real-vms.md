@@ -79,6 +79,12 @@ shape (`MockEvm`, `MockMove`) so swapping in `RevmExecutor` and a
 chosen-Move-VM executor is a drop-in replacement; the property test
 continues to enforce the same invariant against the real backends.
 
+> **Update (2026-05-08, per IQ-3):** S3.5 was dissolved. Real-revm
+> integration folds into S5 where contract calls give it real bug-
+> finding value. The Move VM dialect choice is reframed as a launch-
+> readiness decision, not a phase-1 sprint deliverable. Phase-1 ships
+> with `MockMove` through S8.
+
 ### Consequences
 
 - **Spec changes:** `docs/spec/dual-vm-projectors.md` (added in this
