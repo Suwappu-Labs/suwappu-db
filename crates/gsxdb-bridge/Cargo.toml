@@ -12,6 +12,8 @@ workspace = true
 
 [dependencies]
 gsxdb-state = { path = "../gsxdb-state" }
+# Work-stealing parallelism for the OCC block executor (S4).
+rayon = "1"
 
 [dev-dependencies]
 proptest = "1"

@@ -11,8 +11,10 @@
 
 #![deny(missing_docs)]
 
+pub mod occ;
 pub mod vm;
 
+pub use occ::{BlockExecutor, BlockReport, TxOutcome};
 pub use vm::{EvmError, MockEvm, MockMove, MoveError};
 
 use gsxdb_state::{Address, Balance, BridgeToken, State, StateChange};
@@ -79,11 +81,22 @@ impl<'s> Bridge<'s> {
         match intent {
             Intent::Transfer { from, to, amount } => {
                 let from_balance = self.state.balance_of(&from).0;
-                let to_balance = self.state.balance_of(&to).0;
 
                 if from_balance < amount {
                     return Err(RejectReason::InsufficientBalance);
                 }
+
+                // Self-transfer is a structural no-op. Without this
+                // guard the two `apply` calls below race: the second
+                // (credit) overwrites the first (debit) and leaves the
+                // address at `balance + amount`. We still validate the
+                // balance above so the error surface stays consistent
+                // with non-self transfers.
+                if from == to {
+                    return Ok(());
+                }
+
+                let to_balance = self.state.balance_of(&to).0;
                 let new_to = to_balance
                     .checked_add(amount)
                     .ok_or(RejectReason::AmountOverflow)?;
@@ -144,6 +157,42 @@ mod tests {
 
         assert_eq!(bridge.balance_of(&alice), Balance(70));
         assert_eq!(bridge.balance_of(&bob), Balance(30));
+    }
+
+    #[test]
+    fn self_transfer_is_a_no_op() {
+        // Regression test for a bug found by S4's property test:
+        // without the from==to guard, the credit-write of `to`
+        // overwrites the debit-write of `from`, inflating the balance.
+        let alice = Address([1; 20]);
+        let mut state = seeded_state(alice, 100);
+
+        let mut bridge = Bridge::new(&mut state);
+        bridge
+            .submit(Intent::Transfer {
+                from: alice,
+                to: alice,
+                amount: 30,
+            })
+            .unwrap();
+
+        assert_eq!(bridge.balance_of(&alice), Balance(100));
+    }
+
+    #[test]
+    fn self_transfer_still_checks_balance() {
+        let alice = Address([1; 20]);
+        let mut state = seeded_state(alice, 5);
+
+        let mut bridge = Bridge::new(&mut state);
+        let result = bridge.submit(Intent::Transfer {
+            from: alice,
+            to: alice,
+            amount: 30,
+        });
+
+        assert_eq!(result, Err(RejectReason::InsufficientBalance));
+        assert_eq!(bridge.balance_of(&alice), Balance(5));
     }
 
     #[test]
