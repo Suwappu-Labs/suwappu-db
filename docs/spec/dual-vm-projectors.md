@@ -113,11 +113,13 @@ asserted on every address. Runs in <250ms.
 
 ## Open questions
 
-- **IQ-3 (open):** Which Move VM crate (or hand-rolled interpreter)
-  for S3.5. Aptos vs Sui vs custom; each has tradeoffs for binary size,
-  framework lock-in, and on-chain compatibility.
+- **IQ-3 (decided):** Move VM dialect choice deferred to launch
+  readiness; hand-rolled minimal interpreter is the contingency. See
+  `docs/iq/IQ-3-move-vm-choice.md`. As a consequence, **S3.5 is
+  dissolved**: real-revm integration folds into S5 where contract
+  calls give it bug-finding value, and real Move VM integration
+  becomes a launch-readiness milestone.
 - **IQ-4 (open):** Address-shape mismatch. EVM is 20-byte; Aptos Move
-  is 32-byte. Pad globally or map at the projector layer?
+  is 32-byte. Becomes urgent when the Move dialect is chosen.
 - **IQ-5 (open):** Nonces. EVM uses them for replay protection; Move's
-  signing model doesn't use nonces in the same way. Phase-1 mocks
-  ignore the question; real revm forces it.
+  signing model differs. Becomes urgent when real Move execution lands.
