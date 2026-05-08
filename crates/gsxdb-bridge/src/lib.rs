@@ -11,6 +11,10 @@
 
 #![deny(missing_docs)]
 
+pub mod vm;
+
+pub use vm::{EvmError, MockEvm, MockMove, MoveError};
+
 use gsxdb_state::{Address, Balance, BridgeToken, State, StateChange};
 
 /// An untrusted intent submitted from the lane.
