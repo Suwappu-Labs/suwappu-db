@@ -232,10 +232,7 @@ mod tests {
         let result = BundleExecutor.execute(&mut state, &bundle);
 
         assert!(!result.is_committed());
-        assert_eq!(
-            result.outcome,
-            BundleOutcome::Reverted { failed_step: 1 }
-        );
+        assert_eq!(result.outcome, BundleOutcome::Reverted { failed_step: 1 });
         assert_eq!(result.step_outcomes.len(), 2); // step 3 never tried
         assert_eq!(result.step_outcomes[0], TxOutcome::Committed);
         assert_eq!(
@@ -259,10 +256,7 @@ mod tests {
         }));
         let result = BundleExecutor.execute(&mut state, &bundle);
 
-        assert_eq!(
-            result.outcome,
-            BundleOutcome::Reverted { failed_step: 0 }
-        );
+        assert_eq!(result.outcome, BundleOutcome::Reverted { failed_step: 0 });
         assert_eq!(state.balance_of(&addr(0)), Balance(1_000));
         assert_eq!(state.balance_of(&addr(1)), Balance(1_000));
     }
@@ -290,10 +284,7 @@ mod tests {
             }));
         let result = BundleExecutor.execute(&mut state, &bundle);
 
-        assert_eq!(
-            result.outcome,
-            BundleOutcome::Reverted { failed_step: 2 }
-        );
+        assert_eq!(result.outcome, BundleOutcome::Reverted { failed_step: 2 });
         for n in 0..8u8 {
             assert_eq!(
                 state.balance_of(&Address([n; 20])),

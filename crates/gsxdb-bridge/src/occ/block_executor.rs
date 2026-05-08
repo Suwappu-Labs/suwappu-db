@@ -372,12 +372,18 @@ fn execute_call(
 
         let (from_slot, from_src) = local_or_mv(from, &local);
         if let ReadSourceForLocal::Mv(src) = from_src {
-            read_set.push(ReadEntry { addr: from, source: src });
+            read_set.push(ReadEntry {
+                addr: from,
+                source: src,
+            });
         }
 
         let (to_slot, to_src) = local_or_mv(to, &local);
         if let ReadSourceForLocal::Mv(src) = to_src {
-            read_set.push(ReadEntry { addr: to, source: src });
+            read_set.push(ReadEntry {
+                addr: to,
+                source: src,
+            });
         }
 
         let from_balance = from_slot.canonical();

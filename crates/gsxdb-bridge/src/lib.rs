@@ -108,6 +108,7 @@ impl<'s> Bridge<'s> {
     /// is below the requested transfer amount, and
     /// [`RejectReason::AmountOverflow`] when the destination balance would
     /// overflow `u128`.
+    #[allow(clippy::needless_pass_by_value)] // by-value communicates "consumed intent"
     pub fn submit(&mut self, intent: Intent) -> Result<(), RejectReason> {
         match intent {
             Intent::Call { .. } => Err(RejectReason::CallRequiresRegistry),
