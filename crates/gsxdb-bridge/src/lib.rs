@@ -11,8 +11,10 @@
 
 #![deny(missing_docs)]
 
+pub mod occ;
 pub mod vm;
 
+pub use occ::{BlockExecutor, BlockReport, TxOutcome};
 pub use vm::{EvmError, MockEvm, MockMove, MoveError};
 
 use gsxdb_state::{Address, Balance, BridgeToken, State, StateChange};
