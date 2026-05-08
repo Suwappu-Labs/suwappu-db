@@ -14,6 +14,10 @@ workspace = true
 gsxdb-state = { path = "../gsxdb-state" }
 # Work-stealing parallelism for the OCC block executor (S4).
 rayon = "1"
+# Block hashing for the recovery store (S8).
+blake3 = "1"
+# Persistent block storage (S8). Same backend as state per IQ-1.
+redb = "2"
 
 [dev-dependencies]
 proptest = "1"

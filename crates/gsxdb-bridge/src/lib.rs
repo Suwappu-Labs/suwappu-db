@@ -11,15 +11,22 @@
 
 #![deny(missing_docs)]
 
+pub mod anchor;
 pub mod bundle;
 pub mod occ;
+pub mod recovery;
 pub mod vm;
 
+pub use anchor::{
+    Anchor, AnchorDispatcher, AnchorHash, AnchorLog, AppendError, ChainId, ParityResult,
+    GENESIS_PARENT,
+};
 pub use bundle::{
     Bundle, BundleExecutor, BundleGenerator, BundleOutcome, BundleResult, BundleStep, CallCtx,
     ContractRegistry,
 };
 pub use occ::{BlockExecutor, BlockReport, TxOutcome};
+pub use recovery::{replay, Block, BlockHash, BlockStore, InMemoryBlockStore, RecoveryError};
 pub use vm::{EvmError, MockEvm, MockMove, MoveError};
 
 use gsxdb_state::{Address, Balance, BridgeToken, State, StateChange};

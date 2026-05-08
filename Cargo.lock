@@ -192,9 +192,11 @@ dependencies = [
 name = "gsxdb-bridge"
 version = "0.0.1"
 dependencies = [
+ "blake3",
  "gsxdb-state",
  "proptest",
  "rayon",
+ "redb",
  "tempfile",
 ]
 
