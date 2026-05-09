@@ -414,6 +414,8 @@ dependencies = [
  "rayon",
  "redb",
  "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
