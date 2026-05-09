@@ -9,6 +9,31 @@ use gsxdb_state::Commitment;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ChainId(pub u32);
 
+/// Authentication scheme carried by an anchor.
+///
+/// Phase-1 uses keyed BLAKE3 MACs. Launch-readiness can upgrade this
+/// to signature schemes (including post-quantum variants) while
+/// preserving the anchor data model.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AuthScheme {
+    /// Keyed BLAKE3 MAC (phase-1 default).
+    Blake3Mac,
+    /// Proof verified through an SP1-compatible zk circuit.
+    Sp1ZkProof,
+    /// Post-quantum signature binding anchor fields.
+    PostQuantumSig,
+}
+
+/// Detailed anchor-auth verification result for scheme dispatch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthVerifyError {
+    /// The configured scheme has no verifier wired yet.
+    UnsupportedScheme(AuthScheme),
+    /// The authenticator bytes failed verification.
+    InvalidAuthenticator,
+}
+
 /// 32-byte anchor hash. BLAKE3 of the anchor's canonical encoding.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AnchorHash(pub [u8; 32]);
@@ -44,9 +69,14 @@ pub struct Anchor {
     /// Hash of the previous anchor on this chain. [`GENESIS_PARENT`]
     /// for the first anchor.
     pub parent: AnchorHash,
-    /// MAC over (`chain_id` | height | `state_root` | parent) under the
-    /// chain's key.
+    /// Authenticator over (`chain_id` | height | `state_root` | parent).
+    ///
+    /// For [`AuthScheme::Blake3Mac`] this is the keyed MAC output.
+    /// For other schemes this field is a compact commitment to external
+    /// proof/signature bytes managed by launch-readiness components.
     pub mac: [u8; 32],
+    /// Authentication mode used by this anchor.
+    pub auth_scheme: AuthScheme,
 }
 
 impl Anchor {
@@ -67,6 +97,7 @@ impl Anchor {
             state_root,
             parent,
             mac,
+            auth_scheme: AuthScheme::Blake3Mac,
         }
     }
 
@@ -84,7 +115,33 @@ impl Anchor {
         // Constant-time-ish comparison. BLAKE3 outputs are fixed
         // length so a simple `==` is fine here, but a real deploy
         // would use a CT comparator.
-        self.mac == expected
+        self.auth_scheme == AuthScheme::Blake3Mac && self.mac == expected
+    }
+
+    /// Verify the anchor authenticator for the configured scheme.
+    ///
+    /// For phase-1 this currently supports only [`AuthScheme::Blake3Mac`].
+    /// Other modes are reserved for launch-readiness verifier plumbing.
+    #[must_use]
+    pub fn verify_auth(&self, key: &[u8; 32]) -> bool {
+        self.verify_auth_result(key).is_ok()
+    }
+
+    /// Verify the anchor authenticator for the configured scheme and return
+    /// structured errors for callers that need diagnostics.
+    pub fn verify_auth_result(&self, key: &[u8; 32]) -> Result<(), AuthVerifyError> {
+        match self.auth_scheme {
+            AuthScheme::Blake3Mac => {
+                if self.verify_mac(key) {
+                    Ok(())
+                } else {
+                    Err(AuthVerifyError::InvalidAuthenticator)
+                }
+            }
+            AuthScheme::Sp1ZkProof | AuthScheme::PostQuantumSig => {
+                Err(AuthVerifyError::UnsupportedScheme(self.auth_scheme))
+            }
+        }
     }
 
     /// Hash of this anchor. Used as the `parent` field of the next
@@ -98,6 +155,7 @@ impl Anchor {
         h.update(&self.state_root.0);
         h.update(&self.parent.0);
         h.update(&self.mac);
+        h.update(&[self.auth_scheme as u8]);
         let mut out = [0u8; 32];
         out.copy_from_slice(h.finalize().as_bytes());
         AnchorHash(out)
@@ -181,6 +239,32 @@ mod tests {
         let a = Anchor::new(ChainId(1), 0, root(1), GENESIS_PARENT, &key());
         let b = Anchor::new(ChainId(2), 0, root(1), GENESIS_PARENT, &key());
         assert_ne!(a.mac, b.mac);
+    }
+
+    #[test]
+    fn verify_auth_rejects_non_mac_modes_for_now() {
+        let mut a = Anchor::new(ChainId(1), 0, root(1), GENESIS_PARENT, &key());
+        a.auth_scheme = AuthScheme::Sp1ZkProof;
+        assert!(!a.verify_auth(&key()));
+
+        a.auth_scheme = AuthScheme::PostQuantumSig;
+        assert!(!a.verify_auth(&key()));
+    }
+
+    #[test]
+    fn verify_auth_result_reports_unsupported_scheme() {
+        let mut a = Anchor::new(ChainId(1), 0, root(1), GENESIS_PARENT, &key());
+        a.auth_scheme = AuthScheme::Sp1ZkProof;
+        assert_eq!(
+            a.verify_auth_result(&key()),
+            Err(AuthVerifyError::UnsupportedScheme(AuthScheme::Sp1ZkProof))
+        );
+    }
+
+    #[test]
+    fn verify_auth_accepts_blake3_mac_mode() {
+        let a = Anchor::new(ChainId(1), 0, root(1), GENESIS_PARENT, &key());
+        assert!(a.verify_auth(&key()));
     }
 
     #[test]

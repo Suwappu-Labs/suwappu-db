@@ -170,10 +170,7 @@ impl BlockStore for RedbBlockStore {
         let heights = read_txn
             .open_table(HEIGHT_TO_HASH)
             .expect("open height_to_hash table");
-        let hash = heights
-            .get(height)
-            .expect("read hash by height")?
-            .value();
+        let hash = heights.get(height).expect("read hash by height")?.value();
         let blocks = read_txn
             .open_table(BLOCKS_BY_HASH)
             .expect("open blocks_by_hash table");
@@ -235,7 +232,11 @@ fn encode_block(block: &Block) -> Vec<u8> {
     out.extend_from_slice(&block.height.to_be_bytes());
     out.extend_from_slice(&block.parent.0);
     out.extend_from_slice(&block.state_root.0);
-    out.extend_from_slice(&u32::try_from(block.intents.len()).unwrap_or(u32::MAX).to_be_bytes());
+    out.extend_from_slice(
+        &u32::try_from(block.intents.len())
+            .unwrap_or(u32::MAX)
+            .to_be_bytes(),
+    );
     for intent in &block.intents {
         encode_intent(intent, &mut out);
     }
@@ -285,7 +286,11 @@ fn encode_intent(intent: &Intent, out: &mut Vec<u8>) {
             out.extend_from_slice(&caller.0);
             out.extend_from_slice(&target.0);
             out.extend_from_slice(&value.to_be_bytes());
-            out.extend_from_slice(&u32::try_from(calldata.len()).unwrap_or(u32::MAX).to_be_bytes());
+            out.extend_from_slice(
+                &u32::try_from(calldata.len())
+                    .unwrap_or(u32::MAX)
+                    .to_be_bytes(),
+            );
             out.extend_from_slice(calldata);
         }
     }
@@ -436,7 +441,6 @@ mod tests {
         let from_5 = s.iter_from(5);
         assert!(from_5.is_empty());
     }
-
 
     #[test]
     fn decode_rejects_unknown_version() {
