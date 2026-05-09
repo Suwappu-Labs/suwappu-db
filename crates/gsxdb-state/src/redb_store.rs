@@ -195,6 +195,52 @@ impl BalanceStore for RedbBalanceStore {
     }
 }
 
+impl RedbBalanceStore {
+    /// Write an EVM account nonce to the nonces table.
+    /// Used by L2 state sync to mirror nonce state from op-reth.
+    pub fn set_evm_nonce(&self, addr: &Address, nonce: u64) {
+        let txn = self
+            .db
+            .begin_write()
+            .expect("RedbBalanceStore::set_evm_nonce: begin_write failed");
+        {
+            let mut table = txn
+                .open_table(TABLE_EVM_NONCES)
+                .expect("RedbBalanceStore::set_evm_nonce: open_table(evm_nonces) failed");
+            let value = nonce.to_be_bytes();
+            table
+                .insert(addr.0.as_slice(), value.as_slice())
+                .unwrap_or_else(|e| {
+                    panic!("RedbBalanceStore::set_evm_nonce insert failed for {:?}: {e}", addr.0)
+                });
+        }
+        txn.commit()
+            .expect("RedbBalanceStore::set_evm_nonce: commit failed");
+    }
+
+    /// Read an EVM account nonce from the nonces table.
+    pub fn get_evm_nonce(&self, addr: &Address) -> Option<u64> {
+        let txn = self
+            .db
+            .begin_read()
+            .expect("RedbBalanceStore::get_evm_nonce: begin_read failed");
+        let table = txn
+            .open_table(TABLE_EVM_NONCES)
+            .expect("RedbBalanceStore::get_evm_nonce: open_table(evm_nonces) failed");
+        match table.get(addr.0.as_slice()) {
+            Ok(Some(v)) => {
+                let bytes = v.value();
+                assert_eq!(bytes.len(), 8, "nonce value: expected 8 bytes");
+                let mut buf = [0u8; 8];
+                buf.copy_from_slice(bytes);
+                Some(u64::from_be_bytes(buf))
+            }
+            Ok(None) => None,
+            Err(e) => panic!("RedbBalanceStore::get_evm_nonce failed for {:?}: {e}", addr.0),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

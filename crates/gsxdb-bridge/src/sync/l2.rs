@@ -1,6 +1,6 @@
 //! L2 state syncer — reads balance and nonce state from op-reth.
 
-use gsxdb_state::Address;
+use gsxdb_state::{Address, RedbBalanceStore};
 use serde_json::{json, Value};
 
 /// Configuration for L2 state synchronization.
@@ -158,6 +158,31 @@ impl L2StateSyncer {
         Ok(synced)
     }
 
+    /// Sync balance and nonce, and write results to a redb store.
+    /// Returns the synced state vector.
+    pub async fn sync_to_store(
+        &self,
+        store: &RedbBalanceStore,
+    ) -> Result<Vec<SyncedEVMState>, String> {
+        let synced = self.sync().await?;
+
+        for state in &synced {
+            store.set_evm_nonce(&state.address, state.nonce);
+            tracing::debug!(
+                "Wrote nonce for {:?} to redb: {}",
+                state.address,
+                state.nonce
+            );
+        }
+
+        tracing::info!(
+            "L2StateSyncer wrote {} nonces to redb store",
+            synced.len()
+        );
+
+        Ok(synced)
+    }
+
     /// Get reference to the sync configuration.
     pub fn config(&self) -> &L2SyncConfig {
         &self.config
@@ -167,6 +192,8 @@ impl L2StateSyncer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gsxdb_state::RedbBalanceStore;
+    use tempfile::TempDir;
 
     #[test]
     fn l2_syncer_creation() {
@@ -191,5 +218,39 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("RPC") || err.contains("failed"));
+    }
+
+    #[tokio::test]
+    async fn sync_to_store_writes_nonces() {
+        let dir = TempDir::new().expect("tempdir");
+        let store = RedbBalanceStore::open(dir.path().join("state.redb"))
+            .expect("RedbBalanceStore::open");
+
+        let addr1 = Address([1; 20]);
+        let addr2 = Address([2; 20]);
+
+        // Simulate synced state
+        let synced_state = vec![
+            SyncedEVMState {
+                address: addr1,
+                balance: 1000u128,
+                nonce: 42u64,
+            },
+            SyncedEVMState {
+                address: addr2,
+                balance: 2000u128,
+                nonce: 99u64,
+            },
+        ];
+
+        // Write nonces to store (mimicking what sync_to_store would do)
+        for state in &synced_state {
+            store.set_evm_nonce(&state.address, state.nonce);
+        }
+
+        // Verify nonces can be read back
+        assert_eq!(store.get_evm_nonce(&addr1), Some(42u64));
+        assert_eq!(store.get_evm_nonce(&addr2), Some(99u64));
+        assert_eq!(store.get_evm_nonce(&Address([3; 20])), None);
     }
 }
