@@ -26,7 +26,7 @@ pub use bundle::{
     ContractRegistry,
 };
 pub use occ::{BlockExecutor, BlockReport, TxOutcome};
-pub use recovery::{replay, Block, BlockHash, BlockStore, InMemoryBlockStore, RecoveryError};
+pub use recovery::{replay, Block, BlockHash, BlockStore, InMemoryBlockStore, RedbBlockStore, RecoveryError};
 pub use vm::{EvmError, MockEvm, MockMove, MoveError};
 
 use gsxdb_state::{Address, Balance, BridgeToken, State, StateChange};
