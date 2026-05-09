@@ -1,0 +1,57 @@
+# Docker Compose for gsxdb with op-reth integration
+# This demonstrates the full ecosystem setup for local development
+
+version: '3.8'
+
+services:
+  # OP Stack L2 node (op-reth)
+  op-reth:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-reth:latest
+    ports:
+      - "8545:8545"  # JSON-RPC
+      - "8546:8546"  # WebSocket
+    environment:
+      - OP_RETH_DATADIR=/data/op-reth
+      - OP_RETH_NETWORK=optimism-sepolia
+    volumes:
+      - op-reth-data:/data/op-reth
+    networks:
+      - gsxdb-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8545"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # GSX-DB Server
+  gsxdb-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8660:8660"  # RPC
+      - "9660:9660"  # Metrics
+    environment:
+      - CONFIG_PATH=/etc/gsxdb/config.toml
+      - RUST_LOG=info
+    volumes:
+      - gsxdb-data:/data/gsxdb
+      - ./config.example.toml:/etc/gsxdb/config.toml:ro
+    depends_on:
+      op-reth:
+        condition: service_healthy
+    networks:
+      - gsxdb-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8660/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  op-reth-data:
+  gsxdb-data:
+
+networks:
+  gsxdb-net:
+    driver: bridge
