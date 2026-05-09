@@ -51,6 +51,7 @@ impl L1AnchorReader for MockL1AnchorReader {
 /// Production L1 anchor reader that calls op-reth via JSON-RPC.
 /// Calls `eth_call` on `LTPAnchorRegistry` contract at address `registry_addr`.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct RpcL1AnchorReader {
     /// URL of the op-reth JSON-RPC endpoint (e.g., http://localhost:8545)
     rpc_url: String,

@@ -2,14 +2,12 @@ mod config;
 mod rpc;
 
 use axum::{
-    extract::State as AxumState,
     http::StatusCode,
-    response::IntoResponse,
     routing::{get, post},
-    Json, Router,
+    Router,
 };
 use config::Config;
-use gsxdb_bridge::{AnchorDispatcher, ChainId};
+use gsxdb_bridge::AnchorDispatcher;
 use gsxdb_state::{RedbBalanceStore, State};
 use rpc::RpcHandler;
 use std::sync::Arc;

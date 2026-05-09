@@ -154,6 +154,7 @@ impl RpcHandler {
 // JSON-RPC request/response types
 #[derive(serde::Deserialize)]
 pub struct RpcRequest {
+    #[allow(dead_code)]
     pub jsonrpc: String,
     pub method: String,
     pub params: Vec<Value>,
