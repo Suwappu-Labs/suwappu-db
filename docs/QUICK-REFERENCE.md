@@ -6,7 +6,7 @@ One-page cheat sheet. Pin this.
 
 ```bash
 cargo build --workspace
-cargo test --workspace                                 # ~30s, 178 tests
+cargo test --workspace                                 # ~30s, 181 tests
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
@@ -55,6 +55,7 @@ gsxdb-lane → gsxdb-bridge → gsxdb-state
 | `Address`, `Balance`, `BridgeToken`, `State` | gsxdb-state | `lib.rs` |
 | `BalanceSlot`, `EvmBalance`, `MoveCoinValue` | gsxdb-state | `balance_slot` |
 | `BalanceStore`, `InMemoryBalanceStore`, `RedbBalanceStore` | gsxdb-state | `store`, `redb_store` |
+| `BlockStore`, `InMemoryBlockStore`, `RedbBlockStore`, `replay` | gsxdb-bridge | `recovery` |
 | `Commitment`, `Node`, `Proof`, `StateTree` | gsxdb-state | `tree` |
 | `Bridge`, `Intent`, `RejectReason` | gsxdb-bridge | `lib.rs` |
 | `EvmTx`, `MoveTx`, `MockEvm`, `MockMove` | gsxdb-bridge | `vm` |
@@ -74,7 +75,7 @@ gsxdb-lane → gsxdb-bridge → gsxdb-state
 | IQ-5 (placeholder) | Nonce semantics | TBD with Move VM choice |
 | [IQ-6](iq/IQ-6-verkle-vs-hash-commitment.md) | Tree commitment | BLAKE3 now / IPA at launch |
 | [IQ-7](iq/IQ-7-anchor-log-onchain-vs-inmemory.md) | Anchor auth + storage | In-memory + MAC now / Solidity + ECDSA at launch |
-| [IQ-8](iq/IQ-8-recovery-store-inmemory-vs-redb.md) | Block store | In-memory now / redb at S8.5 |
+| [IQ-8](iq/IQ-8-recovery-store-inmemory-vs-redb.md) | Block store | In-memory + `RedbBlockStore` (S8.5 partial) |
 
 ## What does NOT exist
 
@@ -90,7 +91,7 @@ gsxdb-lane → gsxdb-bridge → gsxdb-state
 - Real Move VM
 - Real Verkle commitments
 - Real Solidity anchor contract
-- Persistent block storage
+- Real Solidity `LTPAnchorRegistry` deployment
 
 Each is its own sprint.
 

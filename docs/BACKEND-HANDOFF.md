@@ -1,7 +1,8 @@
 # Backend handoff
 
 For an engineer joining cold. Honest, current as of phase-1 close
-(2026-05-08). Read this top to bottom before touching the code.
++ S8.5 partial landing (2026-05-08). Read this top to bottom before
+touching the code.
 
 ## TL;DR
 
@@ -14,8 +15,9 @@ chain is open work.
 What works: state types, capability-gated mutation, block-level
 parallel execution (Aptos Block-STM in shape), cross-VM intent
 bundles, state-tree commitments, multi-chain anchor parity, recovery
-via deterministic replay. **178 property tests pass at 10,000 cases
-each on the load-bearing claims.**
+via deterministic replay (now also durable via `RedbBlockStore`).
+**181 property tests pass at 10,000 cases each on the load-bearing
+claims.**
 
 What's mocked or stubbed: the EVM, the Move VM, the Verkle tree
 commitment scheme, the cross-chain anchor authentication, the block
@@ -56,7 +58,7 @@ regression — flag it, don't push past it.
 | `crates/gsxdb-lane/` | Untrusted ingest layer | placeholder |
 | `crates/gsxdb-bridge/src/vm/` | `MockEvm`, `MockMove` | **mocked** — not real VMs |
 | `crates/gsxdb-bridge/src/anchor/` | Multi-chain anchor log + parity | **in-memory + HMAC**, not Solidity |
-| `crates/gsxdb-bridge/src/recovery/` | Block store + replay | **in-memory only** |
+| `crates/gsxdb-bridge/src/recovery/` | Block store + replay | in-memory + redb (S8.5) |
 | `crates/gsxdb-state/src/tree/` | 256-ary trie, BLAKE3 commitments | **BLAKE3, not real Verkle** |
 | `crates/gsxdb-state/src/redb_store.rs` | Persistent state via redb | working (dev backend per IQ-1) |
 | `docs/architecture/` | Diagrams + walkthrough | start here for the visual tour |
@@ -88,7 +90,7 @@ Each is a property test running 10,000 cases. **Don't break these.**
 | Tree commitment | BLAKE3 hash | IPA over banderwagon | Witness sizes are 100x too big for stateless clients |
 | Anchor auth | BLAKE3 keyed-MAC | ECDSA / EdDSA | Cannot deploy to real chains |
 | Anchor storage | in-memory | Solidity `LTPAnchorRegistry` | Anchors die on process exit |
-| Block store | in-memory | redb (S8.5) | State dies on process exit |
+| Block store | `InMemoryBlockStore` or `RedbBlockStore` | same `BlockStore` trait | redb impl available; pick per use case |
 
 These are tracked in IQs (`docs/iq/`). Each IQ explains the trade-off
 and the swap point. **The trait surfaces are stable** — when you swap
