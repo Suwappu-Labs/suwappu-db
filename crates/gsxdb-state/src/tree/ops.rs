@@ -116,22 +116,12 @@ impl StateTree {
         }
 
         // Bottom-up reconstruction.
-        let mut current: Commitment;
-        let mut include_self_in_parent: bool;
-        if let Some(slot) = proof.slot {
-            current = commit_node(&Node::Leaf(slot));
-            include_self_in_parent = true;
-        } else {
-            // Absence: bottom step's byte has no child at this level.
-            // We don't include it in the parent's commitment hash.
-            current = empty_commitment(); // placeholder; not used while include_self == false
-            include_self_in_parent = false;
-        }
+        let mut current = proof.slot.map(|slot| commit_node(&Node::Leaf(slot)));
 
         for step in proof.path.iter().rev() {
             let mut combined = step.siblings.clone();
-            if include_self_in_parent {
-                combined.insert(step.byte, current);
+            if let Some(c) = current {
+                combined.insert(step.byte, c);
             }
             let mut h = Hasher::new();
             h.update(TAG_INTERNAL);
@@ -141,13 +131,10 @@ impl StateTree {
             }
             let mut out = [0u8; 32];
             out.copy_from_slice(h.finalize().as_bytes());
-            current = Commitment(out);
-            // Above the bottom step, the path always continues (we have
-            // a reconstructed-internal commitment to contribute upward).
-            include_self_in_parent = true;
+            current = Some(Commitment(out));
         }
 
-        current == root
+        current == Some(root)
     }
 }
 

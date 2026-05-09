@@ -14,13 +14,15 @@
 //! replayed paths.
 
 use super::block::{BlockHash, GENESIS_PARENT};
-use super::store::BlockStore;
+use super::store::{BlockStore, BlockStoreError};
 use crate::{BlockExecutor, ContractRegistry};
 use gsxdb_state::{Commitment, State, StateTree};
 
 /// Reasons replay can fail.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RecoveryError {
+    /// Storage layer failed while reading replay data.
+    Storage(BlockStoreError),
     /// Block at `height` has a parent hash that doesn't match the
     /// previous block's hash.
     ParentHashMismatch {
@@ -68,7 +70,7 @@ pub fn replay(
     registry: &ContractRegistry,
     from: u64,
 ) -> Result<(), RecoveryError> {
-    let blocks = store.iter_from(from);
+    let blocks = store.iter_from(from).map_err(RecoveryError::Storage)?;
     let mut prev_hash = if from == 0 {
         GENESIS_PARENT
     } else {
@@ -78,6 +80,7 @@ pub fn replay(
         // ensuring `state` matches the start condition.
         store
             .get_by_height(from - 1)
+            .map_err(RecoveryError::Storage)?
             .map_or(GENESIS_PARENT, |b| b.hash())
     };
 
@@ -132,7 +135,7 @@ pub fn replay(
 mod tests {
     use super::*;
     use crate::recovery::block::Block;
-    use crate::recovery::store::InMemoryBlockStore;
+    use crate::recovery::store::{BlockStore, BlockStoreError, InMemoryBlockStore};
     use crate::Intent;
     use gsxdb_state::{Address, Balance, BridgeToken, StateChange};
 
@@ -174,7 +177,7 @@ mod tests {
             parent: GENESIS_PARENT,
             state_root: report.state_root,
             intents,
-        });
+        }).unwrap();
 
         let mut replayed = seeded_state();
         replay(&store, &mut replayed, &ContractRegistry::new(), 0).unwrap();
@@ -207,7 +210,7 @@ mod tests {
                 intents,
             };
             prev = block.hash();
-            store.put(block);
+            store.put(block).unwrap();
         }
 
         let mut replayed = seeded_state();
@@ -239,7 +242,7 @@ mod tests {
             parent: GENESIS_PARENT,
             state_root: Commitment([0xff; 32]),
             intents,
-        });
+        }).unwrap();
         // Use `report.state_root` to silence unused warning — the
         // tamper here is independent of the live one.
         let _ = report.state_root;
@@ -269,7 +272,7 @@ mod tests {
             parent: GENESIS_PARENT,
             state_root: report.state_root,
             intents,
-        });
+        }).unwrap();
 
         let mut replayed = seeded_state();
         let err = replay(&store, &mut replayed, &ContractRegistry::new(), 0).unwrap_err();
@@ -299,7 +302,7 @@ mod tests {
             state_root: report_a.state_root,
             intents: intents_a,
         };
-        store.put(block_a.clone());
+        store.put(block_a.clone()).unwrap();
 
         let intents_b = vec![Intent::Transfer {
             from: addr(2),
@@ -313,7 +316,7 @@ mod tests {
             state_root: report_b.state_root,
             intents: intents_b,
         };
-        store.put(block_b);
+        store.put(block_b).unwrap();
 
         let mut replayed = seeded_state();
         let err = replay(&store, &mut replayed, &ContractRegistry::new(), 0).unwrap_err();
@@ -339,7 +342,7 @@ mod tests {
             parent: GENESIS_PARENT,
             state_root: report.state_root,
             intents,
-        });
+        }).unwrap();
 
         let mut a = seeded_state();
         replay(&store, &mut a, &ContractRegistry::new(), 0).unwrap();
@@ -351,6 +354,43 @@ mod tests {
                 a.balance_of(&Address([n; 20])),
                 b.balance_of(&Address([n; 20]))
             );
+        }
+    }
+
+    #[derive(Default)]
+    struct FailingStore;
+
+    impl BlockStore for FailingStore {
+        fn put(&mut self, _block: Block) -> Result<(), BlockStoreError> {
+            Err(BlockStoreError::Backend("injected put failure".into()))
+        }
+        fn get_by_hash(&self, _hash: &BlockHash) -> Result<Option<Block>, BlockStoreError> {
+            Err(BlockStoreError::Backend("injected get_by_hash failure".into()))
+        }
+        fn get_by_height(&self, _height: u64) -> Result<Option<Block>, BlockStoreError> {
+            Err(BlockStoreError::Backend("injected get_by_height failure".into()))
+        }
+        fn latest(&self) -> Result<Option<Block>, BlockStoreError> {
+            Err(BlockStoreError::Backend("injected latest failure".into()))
+        }
+        fn len(&self) -> Result<usize, BlockStoreError> {
+            Err(BlockStoreError::Backend("injected len failure".into()))
+        }
+        fn iter_from(&self, _from: u64) -> Result<Vec<Block>, BlockStoreError> {
+            Err(BlockStoreError::Backend("injected iter_from failure".into()))
+        }
+    }
+
+    #[test]
+    fn replay_surfaces_storage_error_from_iter() {
+        let store = FailingStore;
+        let mut state = seeded_state();
+        let err = replay(&store, &mut state, &ContractRegistry::new(), 0).unwrap_err();
+        match err {
+            RecoveryError::Storage(BlockStoreError::Backend(msg)) => {
+                assert!(msg.contains("iter_from"));
+            }
+            other => panic!("expected storage error, got {other:?}"),
         }
     }
 }

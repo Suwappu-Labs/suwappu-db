@@ -13,14 +13,14 @@ relevant doc here.
 
 | File                     | Sprint | Status                  |
 |--------------------------|--------|-------------------------|
-| `lane-separation.md`     | S1     | implicit in code + script (TODO: lift to spec) |
-| `pbm-balance-slot.md`    | S2     | implicit in code (TODO: lift to spec) |
-| `dual-vm-projectors.md`  | S3     | not yet written         |
-| `ce-mvcc-occ.md`         | S4     | not yet written         |
-| `cross-vm-intent-queue.md` | S5   | not yet written         |
-| `verkle-state-tree.md`   | S6     | not yet written         |
-| `anchor-log.md`          | S7     | not yet written         |
-| `dag-store-recovery.md`  | S8     | not yet written         |
+| `lane-separation.md`     | S1     | written |
+| `pbm-balance-slot.md`    | S2     | written |
+| `dual-vm-projectors.md`  | S3     | written                 |
+| `ce-mvcc-occ.md`         | S4     | written                 |
+| `cross-vm-intent-queue.md` | S5   | written                 |
+| `verkle-state-tree.md`   | S6     | written                 |
+| `anchor-log.md`          | S7     | written                 |
+| `recovery.md`            | S8     | written                 |
 | `storage.md`             | cross  | not yet written (also propagates IQ-1) |
 
 ## Convention
