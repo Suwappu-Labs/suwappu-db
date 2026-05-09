@@ -15,9 +15,11 @@
 //! readiness items.
 
 pub mod dispatcher;
+pub mod l1_reader;
 pub mod log;
 pub mod types;
 
 pub use dispatcher::{AnchorDispatcher, ParityResult};
+pub use l1_reader::{L1AnchorReader, MockL1AnchorReader, RpcL1AnchorReader};
 pub use log::{AnchorLog, AppendError};
 pub use types::{Anchor, AnchorHash, ChainId, GENESIS_PARENT};

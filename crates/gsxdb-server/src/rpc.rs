@@ -1,4 +1,5 @@
 use axum::{extract::State as AxumState, Json};
+use gsxdb_bridge::AnchorDispatcher;
 use gsxdb_state::Address;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -9,11 +10,12 @@ pub type AppState = Arc<Mutex<gsxdb_state::State>>;
 #[derive(Clone)]
 pub struct RpcHandler {
     state: AppState,
+    dispatcher: Arc<Mutex<AnchorDispatcher>>,
 }
 
 impl RpcHandler {
-    pub fn new(state: AppState) -> Self {
-        Self { state }
+    pub fn new(state: AppState, dispatcher: Arc<Mutex<AnchorDispatcher>>) -> Self {
+        Self { state, dispatcher }
     }
 
     pub async fn handle(&self, method: &str, params: Vec<Value>) -> Value {
@@ -101,11 +103,43 @@ impl RpcHandler {
         }
 
         if let Some(height) = params[0].as_u64() {
-            // TODO: Wire AnchorDispatcher when available in state
-            // For now, return placeholder
-            json!({
-                "error": "parity check requires AnchorDispatcher wiring"
-            })
+            let dispatcher = self.dispatcher.lock().await;
+            let result = dispatcher.parity_check(height);
+
+            match result {
+                gsxdb_bridge::ParityResult::Agreed { state_root } => {
+                    let root_hex = state_root.0.iter()
+                        .map(|b| format!("{:02x}", b))
+                        .collect::<String>();
+                    json!({
+                        "parity": "agreed",
+                        "state_root": root_hex,
+                        "height": height
+                    })
+                }
+                gsxdb_bridge::ParityResult::Disagreed { divergent, missing } => {
+                    let divergent_json: Vec<_> = divergent.iter()
+                        .map(|(chain_id, root)| {
+                            let root_hex = root.0.iter()
+                                .map(|b| format!("{:02x}", b))
+                                .collect::<String>();
+                            json!({
+                                "chain_id": chain_id.0,
+                                "state_root": root_hex
+                            })
+                        })
+                        .collect();
+
+                    let missing_ids: Vec<u32> = missing.iter().map(|c| c.0).collect();
+
+                    json!({
+                        "parity": "disagreed",
+                        "height": height,
+                        "divergent": divergent_json,
+                        "missing": missing_ids
+                    })
+                }
+            }
         } else {
             json!({ "error": "height must be a valid u64" })
         }

@@ -9,6 +9,7 @@ use axum::{
     Json, Router,
 };
 use config::Config;
+use gsxdb_bridge::{AnchorDispatcher, ChainId};
 use gsxdb_state::{RedbBalanceStore, State};
 use rpc::RpcHandler;
 use std::sync::Arc;
@@ -36,8 +37,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state_db = RedbBalanceStore::open(&config.state_db_path)?;
     let state = Arc::new(Mutex::new(State::with_store(Box::new(state_db))));
 
+    // Initialize anchor dispatcher and register chains from config
+    let mut dispatcher = AnchorDispatcher::new();
+    for anchor_config in &config.anchors {
+        // Parse hex key (32 bytes)
+        let key_bytes = hex::decode(&anchor_config.key)?;
+        if key_bytes.len() != 32 {
+            return Err(format!("Anchor key must be 32 bytes, got {}", key_bytes.len()).into());
+        }
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&key_bytes);
+
+        // Convert u64 chain_id to ChainId(u32)
+        let chain_id = gsxdb_bridge::ChainId(anchor_config.chain_id as u32);
+        dispatcher.register(chain_id, key);
+        tracing::info!("Registered anchor chain {}", anchor_config.chain_id);
+    }
+    let dispatcher = Arc::new(Mutex::new(dispatcher));
+
     // Create RPC handler
-    let rpc_handler = RpcHandler::new(state.clone());
+    let rpc_handler = RpcHandler::new(state.clone(), dispatcher.clone());
 
     // Build router
     let app = Router::new()
