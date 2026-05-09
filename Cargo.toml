@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "crates/gsxdb-state",
     "crates/gsxdb-bridge",
-    "crates/gsxdb-lane",
+    "crates/gsxdb-lane", "crates/gsxdb-server",
 ]
 
 [workspace.package]

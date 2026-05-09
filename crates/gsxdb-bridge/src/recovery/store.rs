@@ -468,4 +468,99 @@ mod tests {
         assert_eq!(reopened.get_by_height(0), Some(b0));
         assert_eq!(reopened.get_by_height(1), Some(b1));
     }
+
+    #[test]
+    fn redb_recover_across_restart_with_many_blocks() {
+        let tmp = TempDir::new().expect("tempdir");
+        let db_path = tmp.path().join("blocks.redb");
+
+        // Phase 1: write 10 blocks
+        let mut s = RedbBlockStore::open(&db_path).expect("open redb");
+        let mut blocks = vec![];
+        let mut parent = GENESIS_PARENT;
+        for i in 0..10u64 {
+            let b = Block {
+                height: i,
+                parent,
+                state_root: Commitment([i as u8; 32]),
+                intents: vec![Intent::Transfer {
+                    from: addr(0),
+                    to: addr(1),
+                    amount: i as u128,
+                }],
+            };
+            parent = b.hash();
+            s.put(b.clone());
+            blocks.push(b);
+        }
+        drop(s);
+
+        // Phase 2: reopen and verify all blocks recovered
+        let reopened = RedbBlockStore::open(&db_path).expect("reopen redb");
+        assert_eq!(reopened.len(), 10);
+
+        for (i, expected) in blocks.iter().enumerate() {
+            let retrieved = reopened.get_by_height(i as u64);
+            assert_eq!(retrieved, Some(expected.clone()), "block {i} mismatch after restart");
+        }
+
+        // Verify iter_from works
+        let all = reopened.iter_from(0);
+        assert_eq!(all.len(), 10);
+        for (i, expected) in blocks.iter().enumerate() {
+            assert_eq!(all[i], *expected);
+        }
+
+        let from_5 = reopened.iter_from(5);
+        assert_eq!(from_5.len(), 5);
+        for (i, expected) in blocks[5..].iter().enumerate() {
+            assert_eq!(from_5[i], *expected);
+        }
+    }
+
+    #[test]
+    fn redb_multiple_restarts_preserve_state() {
+        let tmp = TempDir::new().expect("tempdir");
+        let db_path = tmp.path().join("blocks.redb");
+
+        // First cycle: write blocks 0-3
+        {
+            let mut s = RedbBlockStore::open(&db_path).expect("open redb cycle 1");
+            let mut parent = GENESIS_PARENT;
+            for i in 0..4u64 {
+                let b = Block {
+                    height: i,
+                    parent,
+                    state_root: Commitment([i as u8; 32]),
+                    intents: vec![],
+                };
+                parent = b.hash();
+                s.put(b);
+            }
+        }
+
+        // Second cycle: reopen, add blocks 4-6
+        {
+            let mut s = RedbBlockStore::open(&db_path).expect("open redb cycle 2");
+            assert_eq!(s.len(), 4);
+            let parent = s.latest().expect("latest").hash();
+            for i in 4..7u64 {
+                let b = Block {
+                    height: i,
+                    parent: if i == 4 { parent } else { Block { height: i - 1, parent: GENESIS_PARENT, state_root: Commitment([(i - 1) as u8; 32]), intents: vec![] }.hash() },
+                    state_root: Commitment([i as u8; 32]),
+                    intents: vec![],
+                };
+                s.put(b);
+            }
+        }
+
+        // Third cycle: verify all blocks are still there
+        {
+            let s = RedbBlockStore::open(&db_path).expect("open redb cycle 3");
+            assert_eq!(s.len(), 7);
+            assert_eq!(s.get_by_height(0).map(|b| b.height), Some(0));
+            assert_eq!(s.get_by_height(6).map(|b| b.height), Some(6));
+        }
+    }
 }
