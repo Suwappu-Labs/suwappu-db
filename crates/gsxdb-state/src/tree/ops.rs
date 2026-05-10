@@ -58,11 +58,19 @@ impl StateTree {
     ///
     /// The returned `Proof` includes the slot (if present) and one
     /// step per address byte. Verifiable via [`StateTree::verify`].
+    ///
+    /// In Phase 1, the IPA witness is `None`. In S10+, it's populated
+    /// by the Verkle prover for witness compression.
     #[must_use]
     pub fn proof(&self, addr: &Address) -> Proof {
         let mut path = Vec::with_capacity(addr.0.len());
         let slot = collect_proof(&self.root, &addr.0, 0, &mut path);
-        Proof { path, slot }
+        Proof {
+            path,
+            slot,
+            #[cfg(feature = "production-verkle")]
+            ipa_witness: None,
+        }
     }
 
     /// Verify a proof against a known root.

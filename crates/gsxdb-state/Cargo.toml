@@ -27,6 +27,11 @@ hex = "0.4"
 # production-move-executor: real Aptos move-vm-runtime (S9+).
 production-move-executor = []
 
+# Commitment scheme strategy.
+# Default (none): hash-based (BLAKE3) for Phase 1.
+# production-verkle: real Verkle with IPA for S10+.
+production-verkle = []
+
 [dev-dependencies]
 proptest = "1"
 tempfile = "3"

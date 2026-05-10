@@ -29,7 +29,9 @@
 pub mod commit;
 pub mod ops;
 pub mod types;
+pub mod verkle;
 
 pub use commit::{commit_node, EMPTY_COMMITMENT};
 pub use ops::StateTree;
 pub use types::{Commitment, Node, Proof, ProofStep};
+pub use verkle::{GroupElement, IpaWitness};

@@ -3,6 +3,9 @@
 use crate::BalanceSlot;
 use std::collections::BTreeMap;
 
+#[cfg(feature = "production-verkle")]
+use super::verkle::IpaWitness;
+
 /// 32-byte commitment. Output of [`super::commit::commit_node`].
 ///
 /// Newtype to keep "this is a tree commitment" distinct from "this is
@@ -55,6 +58,9 @@ pub struct ProofStep {
 }
 
 /// Inclusion or non-inclusion proof for an address.
+///
+/// Phase 1 (S1–S8): Contains only the Merkle path and slot.
+/// Phase 2 (S10+): Optionally includes an IPA witness for Verkle compression.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Proof {
     /// One step per byte of the address (depth 20 for 20-byte addresses).
@@ -62,6 +68,10 @@ pub struct Proof {
     pub path: Vec<ProofStep>,
     /// The slot present at the address, or `None` if proving non-inclusion.
     pub slot: Option<BalanceSlot>,
+    /// Verkle IPA witness for compressed verification (S10+).
+    /// `None` in Phase 1; filled by IPA prover in S10+.
+    #[cfg(feature = "production-verkle")]
+    pub ipa_witness: Option<IpaWitness>,
 }
 
 #[cfg(test)]
