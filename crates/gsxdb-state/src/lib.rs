@@ -10,17 +10,26 @@
 
 #![deny(missing_docs)]
 
+pub mod address_shape;
 pub mod balance_slot;
+pub mod nonce_semantics;
 pub mod redb_store;
 pub mod store;
 pub mod tree;
 pub mod vm;
 
+pub use address_shape::MoveAddress;
 pub use balance_slot::{BalanceSlot, EvmBalance, MoveCoinValue, SlotError};
+pub use nonce_semantics::{AccountNonce, EvmNonce, MoveSequenceNumber};
 pub use redb_store::RedbBalanceStore;
 pub use store::{BalanceStore, InMemoryBalanceStore};
 pub use tree::{Commitment, Proof, ProofStep, StateTree};
-pub use vm::{CanonicalTransfer, EvmProjector, EvmTx, EvmView, MoveProjector, MoveTx, MoveView};
+pub use vm::{
+    CanonicalTransfer, EvmProjector, EvmTx, EvmView, ExecutionOutcome, MockMoveExecutor,
+    MoveExecutor, MoveProjector, MoveTx, MoveView,
+};
+#[cfg(feature = "production-move-executor")]
+pub use vm::AptosMoveExecutor;
 
 /// 20-byte EVM-shaped address. Move addresses are projected onto this layout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, PartialOrd, Ord)]

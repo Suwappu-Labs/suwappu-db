@@ -18,6 +18,14 @@ redb = "2"
 # real Verkle (polynomial commitments over banderwagon) is a launch-
 # readiness item.
 blake3 = "1"
+# Hex encoding/decoding for address serialization (S9)
+hex = "0.4"
+
+[features]
+# Move VM execution strategy.
+# Default (none): mock executor for Phase 1.
+# production-move-executor: real Aptos move-vm-runtime (S9+).
+production-move-executor = []
 
 [dev-dependencies]
 proptest = "1"

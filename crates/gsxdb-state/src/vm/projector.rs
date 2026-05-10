@@ -12,8 +12,14 @@
 //! The dual-projection invariant (Proposition 1) is true at this layer
 //! by construction — there is one canonical field, and both projections
 //! read from it.
+//!
+//! Phase 2 (S9+) extends the invariant to nonce: one canonical nonce field
+//! projects to both EVM nonce and Move sequence number.
 
-use crate::{Address, BalanceSlot, EvmBalance, MoveCoinValue, State};
+use crate::{
+    Address, BalanceSlot, EvmBalance, EvmNonce, MoveCoinValue, MoveSequenceNumber,
+    State,
+};
 
 /// Read EVM-shaped state.
 pub trait EvmProjector {
@@ -22,6 +28,13 @@ pub trait EvmProjector {
     /// (an ERC-20-like contract that aliases to the canonical balance)
     /// in EVM bytecode.
     fn balance_of(&self, state: &State, addr: &Address) -> EvmBalance;
+
+    /// EVM nonce read for `addr`. Equivalent to evaluating `nonce[addr]`
+    /// in EVM bytecode. This nonce is incremented on every transaction
+    /// originated by the account.
+    fn nonce(&self, state: &State, addr: &Address) -> EvmNonce {
+        EvmNonce(state.slot_of(addr).nonce().evm_nonce().0)
+    }
 
     /// Read the full canonical slot. Most callers want
     /// [`Self::balance_of`]; this is exposed for property tests that
@@ -37,6 +50,13 @@ pub trait MoveProjector {
     /// `Coin::value(&Coin)` against the resource at `addr` in Move
     /// bytecode.
     fn coin_value(&self, state: &State, addr: &Address) -> MoveCoinValue;
+
+    /// Move sequence number read for `addr`. Equivalent to evaluating
+    /// `account.sequence_number` in Move bytecode. This number increments
+    /// on every transaction from the account (same semantics as EVM nonce).
+    fn sequence_number(&self, state: &State, addr: &Address) -> MoveSequenceNumber {
+        MoveSequenceNumber(state.slot_of(addr).nonce().move_sequence().0)
+    }
 
     /// Read the full canonical slot. See [`EvmProjector::slot`].
     fn slot(&self, state: &State, addr: &Address) -> BalanceSlot {
@@ -124,5 +144,52 @@ mod tests {
 
         assert_eq!(direct, via_evm);
         assert_eq!(direct, via_move);
+    }
+
+    #[test]
+    fn nonce_projections_agree() {
+        let state = State::default();
+        let addr = Address([1; 20]);
+
+        // Both projections should read nonce 0 by default.
+        let evm_nonce = EvmView.nonce(&state, &addr);
+        let move_seq = MoveView.sequence_number(&state, &addr);
+
+        assert_eq!(evm_nonce.0, 0);
+        assert_eq!(move_seq.0, 0);
+        assert_eq!(evm_nonce.0, move_seq.0);
+    }
+
+    #[test]
+    fn nonce_dual_projection_invariant() {
+        use crate::AccountNonce;
+
+        let mut state = State::default();
+        let token = crate::BridgeToken::__for_bridge_only();
+        let addr = Address([5; 20]);
+
+        // Set balance.
+        state.apply(
+            &token,
+            &crate::StateChange::SetBalance {
+                addr,
+                to: crate::Balance(100),
+            },
+        );
+
+        // Note: StateChange::SetBalance currently resets nonce to default.
+        // This test documents that constraint; nonce mutation via StateChange
+        // would require a new variant or extended SetBalance.
+        let evm_nonce = EvmView.nonce(&state, &addr);
+        let move_seq = MoveView.sequence_number(&state, &addr);
+
+        // Both should be 0 (default nonce after SetBalance).
+        assert_eq!(evm_nonce.0, 0);
+        assert_eq!(move_seq.0, 0);
+        assert_eq!(evm_nonce.0, move_seq.0);
+
+        // Document the with_nonce constructor works structurally even if
+        // StateChange doesn't yet support nonce mutation.
+        let _ = crate::BalanceSlot::with_nonce(100, AccountNonce::new(42));
     }
 }

@@ -484,6 +484,7 @@ name = "gsxdb-state"
 version = "0.0.1"
 dependencies = [
  "blake3",
+ "hex",
  "proptest",
  "redb",
  "tempfile",

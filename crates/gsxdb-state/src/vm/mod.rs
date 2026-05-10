@@ -7,8 +7,12 @@
 //! promise. The execution paths live in `gsxdb-bridge::vm` because they
 //! mutate state through the `BridgeToken` capability gate.
 
+pub mod executor;
 pub mod projector;
 pub mod tx;
 
+pub use executor::{ExecutionOutcome, MockMoveExecutor, MoveExecutor};
+#[cfg(feature = "production-move-executor")]
+pub use executor::AptosMoveExecutor;
 pub use projector::{EvmProjector, EvmView, MoveProjector, MoveView};
 pub use tx::{CanonicalTransfer, EvmTx, MoveTx};
