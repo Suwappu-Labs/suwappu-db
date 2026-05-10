@@ -1,0 +1,22 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+cache_path = "cache"
+
+# Solidity compiler settings
+solc = "0.8.20"
+optimizer = true
+optimizer_runs = 200
+
+# EVM settings
+evm_version = "shanghai"
+
+[profile.test]
+# Faster compilation for tests
+optimizer = false
+
+# Dependencies via npm or submodules
+# Run: npm install @openzeppelin/contracts
+# Or: git submodule add https://github.com/OpenZeppelin/openzeppelin-contracts lib/openzeppelin-contracts

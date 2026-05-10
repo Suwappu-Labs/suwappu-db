@@ -19,6 +19,9 @@ pub mod l1_reader;
 pub mod log;
 pub mod types;
 
+#[cfg(test)]
+mod parity_test;
+
 pub use dispatcher::{AnchorDispatcher, ParityResult};
 pub use l1_reader::{L1AnchorReader, MockL1AnchorReader, RpcL1AnchorReader};
 pub use log::{AnchorLog, AppendError};

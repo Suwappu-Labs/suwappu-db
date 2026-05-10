@@ -33,3 +33,5 @@ hex = "0.4"
 proptest = "1"
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt"] }
+# Keccak256 for Solidity parity testing (Phase 1 placeholder MAC)
+sha3 = "0.10"
