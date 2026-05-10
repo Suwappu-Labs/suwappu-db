@@ -12,8 +12,10 @@
 
 pub mod address_shape;
 pub mod balance_slot;
+pub mod dag;
 pub mod nonce_semantics;
 pub mod redb_store;
+pub mod snapshot;
 pub mod store;
 pub mod tree;
 pub mod vm;

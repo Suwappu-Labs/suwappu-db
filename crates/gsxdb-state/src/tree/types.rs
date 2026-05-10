@@ -1,6 +1,7 @@
 //! State-tree data types.
 
 use crate::BalanceSlot;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[cfg(feature = "production-verkle")]
@@ -10,7 +11,7 @@ use super::verkle::IpaWitness;
 ///
 /// Newtype to keep "this is a tree commitment" distinct from "this is
 /// some other 32-byte hash" at the type level.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Commitment(pub [u8; 32]);
 
 impl std::fmt::Debug for Commitment {

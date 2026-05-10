@@ -536,6 +536,8 @@ dependencies = [
  "hex",
  "proptest",
  "redb",
+ "serde",
+ "serde_json",
  "tempfile",
 ]
 
