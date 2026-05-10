@@ -13,6 +13,7 @@
 pub mod address_shape;
 pub mod balance_slot;
 pub mod dag;
+pub mod metrics;
 pub mod nonce_semantics;
 pub mod redb_store;
 pub mod snapshot;
@@ -22,6 +23,7 @@ pub mod vm;
 
 pub use address_shape::MoveAddress;
 pub use balance_slot::{BalanceSlot, EvmBalance, MoveCoinValue, SlotError};
+pub use metrics::{Counter, Gauge, Histogram, Metrics, Timer};
 pub use nonce_semantics::{AccountNonce, EvmNonce, MoveSequenceNumber};
 pub use redb_store::RedbBalanceStore;
 pub use store::{BalanceStore, InMemoryBalanceStore};

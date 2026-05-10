@@ -16,6 +16,7 @@ pub mod bundle;
 pub mod occ;
 pub mod recovery;
 pub mod sync;
+pub mod telemetry;
 pub mod vm;
 
 pub use anchor::{
@@ -29,6 +30,7 @@ pub use bundle::{
 pub use occ::{BlockExecutor, BlockReport, TxOutcome};
 pub use recovery::{replay, Block, BlockHash, BlockStore, InMemoryBlockStore, RedbBlockStore, RecoveryError};
 pub use sync::{L2StateSyncer, L2SyncConfig};
+pub use telemetry::{AnchorTimer, BlockTimer, ParityTimer, record_state_metrics};
 pub use vm::{EvmError, MockEvm, MockMove, MoveError};
 
 use gsxdb_state::{Address, Balance, BridgeToken, State, StateChange};
