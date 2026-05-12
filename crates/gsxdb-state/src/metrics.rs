@@ -195,6 +195,33 @@ pub struct Metrics {
     pub anchors_submitted: Counter,
     /// Parity check failures.
     pub parity_failures: Counter,
+
+    // HARDENING rec 8 — four metrics that named other-chain
+    // post-mortems cite as load-bearing. Each emits even when zero
+    // so absence of the metric is itself an alert.
+
+    /// HARDENING rec 2.2 — number of blocks where the OCC scheduler
+    /// detected a hot-slot conflict storm and collapsed remaining
+    /// txns to sequential execution. First sustained increase here
+    /// is the canonical Block-STM contention signal; per Aptos
+    /// AIP-47, the right response is an Aggregator-style write, not
+    /// a DAG-liveness investigation.
+    pub occ_collapse_to_sequential_total: Counter,
+    /// HARDENING rec 2.2 — total OCC aborts observed across all
+    /// blocks. Paired with `blocks_committed` to compute the abort
+    /// rate; a sustained ratio above ~0.3 is the Block-STM PPoPP
+    /// paper's worst-case bound and indicates the workload is
+    /// past the parallel break-even.
+    pub occ_aborts_total: Counter,
+    /// HARDENING rec 6 — chains-with-missing-anchor count from the
+    /// most recent parity check. KelpDAO lost $292M when a single
+    /// missing-verifier path drained funds; this metric exposes
+    /// the same condition before the loss.
+    pub anchor_parity_missing_chains: Gauge,
+    /// HARDENING rec 6 — sum of divergent (chain, state_root) pairs
+    /// observed in parity checks. Paired with the per-chain log
+    /// for forensic replay.
+    pub anchor_parity_divergent_total: Counter,
 }
 
 impl Metrics {
@@ -212,6 +239,10 @@ impl Metrics {
             blocks_committed: Counter::new(),
             anchors_submitted: Counter::new(),
             parity_failures: Counter::new(),
+            occ_collapse_to_sequential_total: Counter::new(),
+            occ_aborts_total: Counter::new(),
+            anchor_parity_missing_chains: Gauge::new(),
+            anchor_parity_divergent_total: Counter::new(),
         }
     }
 
@@ -328,6 +359,49 @@ impl Metrics {
         output.push_str(&format!(
             "gsxdb_parity_failures {}\n",
             self.parity_failures.get()
+        ));
+
+        // HARDENING rec 8 — additional metrics anchored to peer-chain
+        // post-mortems. Each emits even when zero so absence is itself
+        // an alert.
+        output.push_str(
+            "# HELP gsxdb_occ_collapse_to_sequential_total \
+             Hot-slot conflict-storm collapses (HARDENING rec 2.2; Aptos AIP-47)\n",
+        );
+        output.push_str("# TYPE gsxdb_occ_collapse_to_sequential_total counter\n");
+        output.push_str(&format!(
+            "gsxdb_occ_collapse_to_sequential_total {}\n",
+            self.occ_collapse_to_sequential_total.get()
+        ));
+
+        output.push_str(
+            "# HELP gsxdb_occ_aborts_total \
+             OCC re-executions; abort_rate = total / blocks_committed (Block-STM PPoPP)\n",
+        );
+        output.push_str("# TYPE gsxdb_occ_aborts_total counter\n");
+        output.push_str(&format!(
+            "gsxdb_occ_aborts_total {}\n",
+            self.occ_aborts_total.get()
+        ));
+
+        output.push_str(
+            "# HELP gsxdb_anchor_parity_missing_chains \
+             Chains missing an anchor at last parity check (HARDENING rec 6; KelpDAO 292M)\n",
+        );
+        output.push_str("# TYPE gsxdb_anchor_parity_missing_chains gauge\n");
+        output.push_str(&format!(
+            "gsxdb_anchor_parity_missing_chains {}\n",
+            self.anchor_parity_missing_chains.get() as u64
+        ));
+
+        output.push_str(
+            "# HELP gsxdb_anchor_parity_divergent_total \
+             Cumulative divergent (chain, state_root) pairs across parity checks\n",
+        );
+        output.push_str("# TYPE gsxdb_anchor_parity_divergent_total counter\n");
+        output.push_str(&format!(
+            "gsxdb_anchor_parity_divergent_total {}\n",
+            self.anchor_parity_divergent_total.get()
         ));
 
         output

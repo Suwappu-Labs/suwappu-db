@@ -10,6 +10,13 @@
 //! (cross-VM intent queue) extend [`Bridge::submit`] with real validation.
 
 #![deny(missing_docs)]
+// HARDENING rec 2.3 — Wormhole 2022 ($326M) traced to a deprecated
+// `load_instruction_at` accepting a forged sysvar account. The
+// gsxdb-bridge crate is the only capability-gated mutation surface;
+// deny deprecated functions at the crate level so a future
+// "legacy verify" or "unchecked variant" can't slip past review.
+// Halborn: https://www.halborn.com/blog/post/explained-the-wormhole-hack-february-2022
+#![deny(deprecated)]
 
 pub mod anchor;
 pub mod bundle;
@@ -32,7 +39,10 @@ pub use recovery::{
     replay, Block, BlockHash, BlockStore, InMemoryBlockStore, RecoveryError, RedbBlockStore,
 };
 pub use sync::{L2StateSyncer, L2SyncConfig};
-pub use telemetry::{record_state_metrics, AnchorTimer, BlockTimer, ParityTimer};
+pub use telemetry::{
+    record_block_metrics, record_parity_metrics, record_state_metrics, AnchorTimer, BlockTimer,
+    ParityTimer,
+};
 pub use vm::{EvmError, MockEvm, MockMove, MoveError};
 
 use gsxdb_state::{Address, Balance, BridgeToken, State, StateChange};

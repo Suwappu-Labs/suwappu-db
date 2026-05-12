@@ -610,6 +610,26 @@ improvement-for-its-own-sake. Where we already match the leader (eclipse
 defence via SCION, state-bloat mitigation via Verkle, property-test coverage,
 recovery posture after slash) we say so and move on.
 
+## 10.1 Implementation status
+
+| # | Recommendation | Status | Landed in |
+|---|---|---|---|
+| H2 | `CommitmentScheme` trait | ✅ landed | `crates/gsxdb-state/src/tree/commit.rs` |
+| H5 | OCC sequential-collapse circuit breaker | ✅ landed + tested | `crates/gsxdb-bridge/src/occ/block_executor.rs`, `tests/occ_circuit_breaker.rs` |
+| H6 | Hard-coded `5/9` minimum quorum | ✅ landed | `crates/gsxdb-bridge/src/anchor/dispatcher.rs` (`LTP_QUORUM_MIN_NUMERATOR`) |
+| H13 | 8 Prometheus metrics + 5 single-shot alerts | ✅ landed | `crates/gsxdb-state/src/metrics.rs`, `crates/gsxdb-bridge/src/telemetry.rs`, [`docs/spec/observability.md`](spec/observability.md) |
+| H11 | HSM custody profile | spec written | [`docs/spec/key-custody.md`](spec/key-custody.md) |
+| — | `#[deny(deprecated)]` lint at bridge crate | ✅ landed | `crates/gsxdb-bridge/src/lib.rs` (rec 2.3) |
+| H1 | Hybrid sig AND-gate | pending S11 | needs Solidity contract |
+| H3 | Misbehaviour predicate | pending S11 | needs IBC-style relayer |
+| H4 | Aggregator-slot inventory | pending S9 | needs real Move VM |
+| H7 | Snapshot root in anchor log | pending S12 | needs validator-set integration |
+| H8 | N-version second verifier | pending S11 | needs separate Rust impl |
+| H9 | Bond scales with corridor TVL | pending S11 | needs validator-set state |
+| H10 | Quadratic slashing curve | pending S11 | needs slashing pipeline |
+| H12 | Archive node policy | pending S12 | written policy |
+| H14 | Sui-Prover-style proofs | pending audit | needs Move-Prover or analog |
+
 ---
 
 ## Sources

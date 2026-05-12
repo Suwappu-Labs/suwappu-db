@@ -77,7 +77,26 @@ pub struct BlockReport {
     /// Per-block hash-based commitment per IQ-6; real Verkle is a
     /// launch-readiness item.
     pub state_root: gsxdb_state::Commitment,
+    /// HARDENING rec 2.2 — `Some(addr)` if the OCC scheduler detected
+    /// a hot-slot conflict storm and collapsed the remaining pending
+    /// txns to sequential execution for this block. `None` if the
+    /// block converged via standard parallel OCC. Per the Block-STM
+    /// paper, worst-case parallel-vs-sequential is ~30% — but only
+    /// when the scheduler notices hot slots and collapses. Without
+    /// this telemetry, operators mis-diagnose contention as DAG
+    /// liveness bugs.
+    pub collapsed_to_sequential: Option<gsxdb_state::Address>,
 }
+
+/// HARDENING rec 2.2 — abort-rate threshold for collapsing to
+/// sequential execution. Computed per write address per iteration:
+/// if `aborts_touching_addr / pending_count >= COLLAPSE_THRESHOLD_NUM
+/// / COLLAPSE_THRESHOLD_DEN`, the scheduler degrades the remaining
+/// pending txns to sequential. The recommended trigger from the
+/// HARDENING.md is 25%; expressed as a fraction so reasoning is
+/// integer-exact and no float comparison is required.
+const COLLAPSE_THRESHOLD_NUM: usize = 1;
+const COLLAPSE_THRESHOLD_DEN: usize = 4;
 
 /// Block executor. Stateless; one call = one block.
 #[derive(Debug, Default, Clone, Copy)]
@@ -125,6 +144,7 @@ impl BlockExecutor {
                 iterations: 0,
                 aborts: 0,
                 state_root: StateTree::from_state(state).root(),
+                collapsed_to_sequential: None,
             };
         }
 
@@ -141,6 +161,10 @@ impl BlockExecutor {
         let cap = 2 * n + 4;
         let mut iterations = 0usize;
         let mut aborts = 0usize;
+        // HARDENING rec 2.2 — hot-slot circuit breaker. Once set, the
+        // scheduler drops to sequential execution for the rest of the
+        // block. Reported in BlockReport.collapsed_to_sequential.
+        let mut collapsed_hot_addr: Option<gsxdb_state::Address> = None;
 
         while !pending.is_empty() {
             iterations += 1;
@@ -176,15 +200,69 @@ impl BlockExecutor {
             // multi-thread re-entry into MvStore's lock during
             // back-to-back validates.
             let mut next_pending = Vec::new();
+            // HARDENING rec 2.2 — per-iteration per-address abort
+            // tally, used to detect a hot-slot conflict storm.
+            let mut aborts_by_addr: std::collections::BTreeMap<
+                gsxdb_state::Address,
+                usize,
+            > = std::collections::BTreeMap::new();
+            let prev_pending_count = pending.len();
             for (idx, txn) in txns.iter().enumerate() {
                 if !Validator.is_valid(txn, &mv) {
                     // Stale reads: clear writes, re-execute next iter.
                     mv.clear_writes(idx);
                     next_pending.push(idx);
                     aborts += 1;
+                    // Tally aborts by every addr in this txn's write set —
+                    // hot slot is the one that's the common factor across
+                    // many aborting txns this iteration.
+                    for w in &txn.write_set {
+                        *aborts_by_addr.entry(w.addr).or_insert(0) += 1;
+                    }
+                }
+            }
+            // Did any single address cross the collapse threshold?
+            if collapsed_hot_addr.is_none() && prev_pending_count > 0 {
+                for (addr, count) in &aborts_by_addr {
+                    if count * COLLAPSE_THRESHOLD_DEN
+                        >= prev_pending_count * COLLAPSE_THRESHOLD_NUM
+                        && *count >= 2
+                    {
+                        collapsed_hot_addr = Some(*addr);
+                        break;
+                    }
                 }
             }
             pending = next_pending;
+
+            // HARDENING rec 2.2 — if we tripped the breaker, clear
+            // all parallel-iteration writes and re-execute the entire
+            // block sequentially in idx order. Aptos's Block-STM
+            // PPoPP paper bounds parallel-vs-sequential at ~30% worst
+            // case, but only when the scheduler can collapse on hot
+            // slots. Without this, a hot-slot workload thrashes
+            // Block-STM and operators mis-diagnose contention as a
+            // DAG-liveness bug.
+            //
+            // Correctness: we drop every parallel-iteration record
+            // and re-run from idx 0 against fresh MV state. This is
+            // exactly the Block-STM sequential schedule. The cost is
+            // O(N) extra executions, paid only on the rare hot-slot
+            // block; the alternative (incremental drain of pending
+            // only) is fragile because txns that "validated" in
+            // earlier iterations can race against later sequential
+            // writes to the same address.
+            if collapsed_hot_addr.is_some() {
+                for idx in 0..n {
+                    mv.clear_writes(idx);
+                }
+                for idx in 0..n {
+                    let intent = block[idx].clone();
+                    let txn = execute_one(intent, idx, state, &mv, registry);
+                    txns[idx] = txn;
+                }
+                break;
+            }
         }
 
         // Consolidation: walk the MV store at highest version per
@@ -219,6 +297,7 @@ impl BlockExecutor {
             iterations,
             aborts,
             state_root,
+            collapsed_to_sequential: collapsed_hot_addr,
         }
     }
 }
