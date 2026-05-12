@@ -13,8 +13,13 @@ end of phase-1: what's where, what flows through it, and why.
   agree by construction, not by reconciliation
 - [State tree](state-tree.md) — 256-ary trie shape, commitment scheme,
   proof structure
-- [Sprint map](sprint-map.md) — sprint-to-component dependency DAG +
-  which sprint introduced which type
+- [Sprint map](sprint-map.md) — phase-1 sprint dependency DAG
+- [Sprint timeline](sprint-timeline.md) — Gantt + S1..S12 timeline + test-count growth chart
+- [Deployment topology](deployment-topology.md) — what's live now, shadow option, target full L1
+- [Validator rings](validator-rings.md) — Authority Ring + Validator Ring (academic paper §5)
+- [LTP lifecycle](ltp-lifecycle.md) — commit-lattice-materialize, six-layer security
+- [Request lifecycle](request-lifecycle.md) — wallet RPC → state → response
+- [Visual index](visual-index.md) — every Mermaid diagram catalogued
 - [Open IQs](open-iqs.md) — launch-readiness backlog with cross-refs
 - [Placeholder audit plan](audit-plan.md) — line-by-line process for finding and resolving deferred/stale facts
 - [Audit ledger](audit-ledger.md) — line-level inventory of placeholders/deferred facts and sprint owners
@@ -66,8 +71,8 @@ is durable enough to replay from genesis to recover.
 ## What's not yet here (launch-readiness backlog)
 
 - Real Move VM (per [IQ-3](../iq/IQ-3-move-vm-choice.md))
-- Real Verkle commitments (per [IQ-6](../iq/IQ-6-verkle-vs-hash-commitment.md))
-- Solidity `LTPAnchorRegistry` + ECDSA signatures (per [IQ-7](../iq/IQ-7-anchor-log-onchain-vs-inmemory.md))
+- Real Verkle commitments (per [IQ-6](../iq/IQ-6-verkle-commitment.md))
+- Solidity `LTPAnchorRegistry` + ECDSA signatures (per [IQ-7](../iq/IQ-7-anchor-parity.md))
 - Persistent block storage (per [IQ-8](../iq/IQ-8-recovery-store-inmemory-vs-redb.md))
 
 These are tracked in IQs because the **trait surfaces are stable** —

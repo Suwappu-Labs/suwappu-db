@@ -117,9 +117,9 @@ Phase-1 covers balance only. VMs *can* still disagree about:
   doesn't unify these; the reserved tables (`evm_storage`,
   `move_resources` in the redb backend) are placeholders.
 - **Nonces** — EVM has them, Move's signing is different. Per
-  [IQ-5](../iq/IQ-5-nonces.md) (placeholder), deferred to launch.
+  [IQ-5](../iq/IQ-3-move-vm-choice.md) (placeholder), deferred to launch.
 - **Address shape** — phase-1 uses 20-byte. Aptos Move is 32. Per
-  [IQ-4](../iq/IQ-4-address-shape.md) (placeholder), deferred.
+  [IQ-4](../iq/IQ-4-move-execution.md) (placeholder), deferred.
 
 These don't break the dual-projection invariant for balances; they
 expand the surface where the dual-projection idea applies. Each one
