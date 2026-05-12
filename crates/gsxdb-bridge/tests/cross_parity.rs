@@ -99,6 +99,7 @@ proptest! {
             state_root: Commitment([0xff; 32]),
             parent: GENESIS_PARENT,
             mac: [0; 32],
+            auth_scheme: gsxdb_bridge::anchor::types::AuthScheme::Blake3Mac,
         };
         d.__log_mut_for_tests(ChainId(tamper_chain))
             .unwrap()

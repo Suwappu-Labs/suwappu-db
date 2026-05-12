@@ -146,7 +146,7 @@ impl AnchorDispatcher {
                 None => missing.push(*chain_id),
                 Some(anchor) => {
                     let key = self.keys.get(chain_id).expect("registered keys match logs");
-                    if !anchor.verify_mac(key) {
+                    if !anchor.verify_auth(key) {
                         // Tampered after-the-fact — treat as divergent
                         // but record explicitly so callers can see why.
                         tampered.push(*chain_id);
@@ -164,7 +164,7 @@ impl AnchorDispatcher {
             };
         }
 
-        // If any anchor's MAC failed, parity fails.
+        // If any anchor authenticator failed, parity fails.
         if !tampered.is_empty() {
             return ParityResult::Disagreed {
                 divergent: roots,
@@ -172,7 +172,7 @@ impl AnchorDispatcher {
             };
         }
 
-        // All chains have an anchor at this height with valid MACs.
+        // All chains have an anchor at this height with valid authenticators.
         // Agree iff every state_root is identical.
         if let Some((_, first)) = roots.first().copied() {
             if roots.iter().all(|(_, r)| *r == first) {
@@ -273,6 +273,7 @@ mod tests {
             state_root: root(99),
             parent: GENESIS_PARENT,
             mac: [0; 32], // invalid MAC
+            auth_scheme: crate::anchor::types::AuthScheme::Blake3Mac,
         };
         d.__log_mut_for_tests(ChainId(2))
             .unwrap()
@@ -318,6 +319,6 @@ mod tests {
         // But subsequent dispatches use the new key — the old anchor
         // won't verify under it.
         let old_anchor = d.log(ChainId(1)).unwrap().at(0).unwrap().clone();
-        assert!(!old_anchor.verify_mac(&[9; 32]));
+        assert!(!old_anchor.verify_auth(&[9; 32]));
     }
 }

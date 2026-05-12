@@ -159,16 +159,17 @@ impl RpcL1AnchorReader {
         let state_root = Commitment(state_root_bytes);
         let parent = super::types::AnchorHash(parent_bytes);
 
-        // Verify MAC before returning
+        // Verify authenticator before returning
         let anchor = Anchor {
             chain_id,
             height,
             state_root,
             parent,
             mac: mac_bytes,
+            auth_scheme: super::types::AuthScheme::Blake3Mac,
         };
 
-        if anchor.verify_mac(key) {
+        if anchor.verify_auth(key) {
             Some(anchor)
         } else {
             None

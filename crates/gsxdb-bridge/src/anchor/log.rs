@@ -1,6 +1,6 @@
 //! Append-only per-chain anchor log.
 
-use super::types::{Anchor, AnchorHash, ChainId, GENESIS_PARENT};
+use super::types::{Anchor, AnchorHash, AuthScheme, AuthVerifyError, ChainId, GENESIS_PARENT};
 
 /// Reasons an [`AnchorLog::append`] can fail.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,8 +27,10 @@ pub enum AppendError {
         /// Got height.
         got: u64,
     },
-    /// Anchor's MAC doesn't verify under the provided key.
-    BadMac,
+    /// Anchor authenticator doesn't verify under the provided key.
+    BadAuth,
+    /// Anchor uses an auth scheme that has no verifier in this phase.
+    UnsupportedAuthScheme(AuthScheme),
 }
 
 /// Append-only per-chain log of anchors.
@@ -49,7 +51,7 @@ impl AnchorLog {
     }
 
     /// Append `anchor`. Validates chain id, parent linkage, height
-    /// monotonicity, and MAC under `key`.
+    /// monotonicity, and authenticator validity under `key`.
     ///
     /// # Errors
     ///
@@ -78,8 +80,12 @@ impl AnchorLog {
                 got: anchor.height,
             });
         }
-        if !anchor.verify_mac(key) {
-            return Err(AppendError::BadMac);
+        match anchor.verify_auth_result(key) {
+            Ok(()) => {}
+            Err(AuthVerifyError::InvalidAuthenticator) => return Err(AppendError::BadAuth),
+            Err(AuthVerifyError::UnsupportedScheme(scheme)) => {
+                return Err(AppendError::UnsupportedAuthScheme(scheme));
+            }
         }
         self.entries.push(anchor);
         Ok(())
@@ -226,12 +232,12 @@ mod tests {
     }
 
     #[test]
-    fn append_rejects_bad_mac() {
+    fn append_rejects_bad_auth() {
         let mut log = AnchorLog::new(ChainId(1));
         let a = Anchor::new(ChainId(1), 0, root(1), GENESIS_PARENT, &KEY);
         let wrong_key = [0; 32];
         let err = log.append(a, &wrong_key).unwrap_err();
-        assert_eq!(err, AppendError::BadMac);
+        assert_eq!(err, AppendError::BadAuth);
     }
 
     #[test]

@@ -78,6 +78,7 @@ mod tests {
             state_root,
             parent: super::super::types::AnchorHash(parent.0),
             mac,
+            auth_scheme: super::super::types::AuthScheme::Blake3Mac,
         };
 
         // Verify it has the correct MAC
@@ -103,6 +104,7 @@ mod tests {
                 state_root: root(1),
                 parent: GENESIS_PARENT,
                 mac,
+                auth_scheme: super::super::types::AuthScheme::Blake3Mac,
             }
         };
 
@@ -123,6 +125,7 @@ mod tests {
                 state_root: root(2),
                 parent: parent_of_second,
                 mac,
+                auth_scheme: super::super::types::AuthScheme::Blake3Mac,
             }
         };
 
@@ -174,6 +177,7 @@ mod tests {
                 state_root: root(4),
                 parent: GENESIS_PARENT,
                 mac,
+                auth_scheme: super::super::types::AuthScheme::Blake3Mac,
             }
         };
 
@@ -213,6 +217,7 @@ mod tests {
                     },
                 )),
                 mac,
+                auth_scheme: super::super::types::AuthScheme::Blake3Mac,
             }
         };
 

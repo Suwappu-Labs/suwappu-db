@@ -9,6 +9,7 @@
 //! PROPTEST_CASES=1000 cargo test --test parity-fixtures
 //! ```
 
+use gsxdb_bridge::anchor::types::AuthScheme;
 use gsxdb_bridge::anchor::{Anchor, AnchorHash, ChainId, GENESIS_PARENT};
 use gsxdb_state::Commitment;
 use proptest::prelude::*;
@@ -77,6 +78,7 @@ fn fixture_valid_anchor_acceptance() {
         state_root,
         parent: GENESIS_PARENT,
         mac,
+        auth_scheme: AuthScheme::Blake3Mac,
     };
 
     // Rust: Anchor must verify under its key
@@ -160,6 +162,7 @@ fn fixture_parent_chain_link_rejection() {
             state_root: Commitment([1u8; 32]),
             parent: GENESIS_PARENT,
             mac,
+            auth_scheme: AuthScheme::Blake3Mac,
         }
     };
 
@@ -184,6 +187,7 @@ fn fixture_parent_chain_link_rejection() {
             state_root: Commitment([2u8; 32]),
             parent: wrong_parent,
             mac,
+            auth_scheme: AuthScheme::Blake3Mac,
         }
     };
 
@@ -229,6 +233,7 @@ fn fixture_non_monotonic_height_rejection() {
             state_root: Commitment([10u8; 32]),
             parent: GENESIS_PARENT,
             mac,
+            auth_scheme: AuthScheme::Blake3Mac,
         }
     };
 
@@ -327,6 +332,7 @@ proptest! {
                 &GENESIS_PARENT.0,
                 &[1u8; 32],
             ),
+                    auth_scheme: AuthScheme::Blake3Mac,
         };
 
         // Should be accepted by Solidity as first anchor on the chain
