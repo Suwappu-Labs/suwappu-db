@@ -35,7 +35,7 @@ flowchart LR
 | **Backend engineer joining cold** | [HANDOFF.md](HANDOFF.md) → [architecture/README.md](architecture/README.md) → [architecture/data-flow.md](architecture/data-flow.md) → `crates/gsxdb-state/src/lib.rs` |
 | **Academic reviewer** | [paper-additions/README.md](paper-additions/README.md) → [architecture/dual-projection.md](architecture/dual-projection.md) → [architecture/state-tree.md](architecture/state-tree.md) → [iq/README.md](iq/README.md) |
 | **Ops engineer deploying** | [architecture/deployment-topology.md](architecture/deployment-topology.md) → [architecture/request-lifecycle.md](architecture/request-lifecycle.md) → [ECOSYSTEM-AUDIT.md](ECOSYSTEM-AUDIT.md) |
-| **Security auditor** | [iq/README.md](iq/README.md) → [spec/README.md](spec/README.md) → [paper-additions/dag-l1-section-11-empirical.md](paper-additions/dag-l1-section-11-empirical.md) → invariant tests under `crates/*/tests/` |
+| **Security auditor** | [HARDENING.md](HARDENING.md) → [iq/README.md](iq/README.md) → [spec/README.md](spec/README.md) → [paper-additions/dag-l1-section-11-empirical.md](paper-additions/dag-l1-section-11-empirical.md) → invariant tests under `crates/*/tests/` |
 
 ## High-level architecture
 
@@ -84,6 +84,7 @@ flowchart TB
 docs/
 ├── README.md                       this file
 ├── HANDOFF.md                      backend engineer onboarding
+├── HARDENING.md                    14 hardening recs from Sui/Aptos/Monad/etc post-mortems
 ├── ECOSYSTEM-AUDIT.md              ecosystem map + production readiness
 │
 ├── architecture/                   how the substrate works
