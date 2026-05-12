@@ -102,6 +102,43 @@ pub fn record_state_metrics(metrics: &Metrics, state: &gsxdb_state::State) {
     metrics.tree_depth.set(20.0);
 }
 
+/// Record an executed block's OCC telemetry into [`Metrics`].
+///
+/// HARDENING rec 8 — emits the four counters that peer-chain
+/// post-mortems flagged as load-bearing: `occ_aborts_total`,
+/// `occ_collapse_to_sequential_total`, plus the standard
+/// `blocks_committed` counter.
+pub fn record_block_metrics(metrics: &Metrics, report: &crate::BlockReport) {
+    metrics.blocks_committed.inc();
+    metrics.occ_aborts_total.add(report.aborts as u64);
+    if report.collapsed_to_sequential.is_some() {
+        metrics.occ_collapse_to_sequential_total.inc();
+    }
+}
+
+/// Record a parity check result.
+///
+/// HARDENING rec 8 — emits `anchor_parity_missing_chains` (gauge,
+/// current) and `anchor_parity_divergent_total` (counter, cumulative).
+/// Source: KelpDAO/LayerZero DVN compromise post-mortem.
+pub fn record_parity_metrics(metrics: &Metrics, result: &crate::ParityResult) {
+    match result {
+        crate::ParityResult::Agreed { .. } => {
+            metrics.anchor_parity_missing_chains.set(0.0);
+        }
+        crate::ParityResult::Disagreed {
+            divergent,
+            missing,
+        } => {
+            metrics.anchor_parity_missing_chains.set(missing.len() as f64);
+            metrics
+                .anchor_parity_divergent_total
+                .add(divergent.len() as u64);
+            metrics.parity_failures.inc();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

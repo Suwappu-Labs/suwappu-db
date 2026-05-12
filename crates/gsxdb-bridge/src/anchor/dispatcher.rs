@@ -5,6 +5,18 @@ use super::types::{Anchor, ChainId, GENESIS_PARENT};
 use gsxdb_state::Commitment;
 use std::collections::BTreeMap;
 
+/// HARDENING rec 6.2 — hard-coded minimum quorum floor for the LTP
+/// super-node attestation surface. Per the LTP paper §10.1 the
+/// attestation quorum is 7-of-9; we set the absolute floor at 5/9 so
+/// that any future reconfiguration that drops below honest-majority
+/// (5/9 = first integer > 4) is rejected at the type level. KelpDAO
+/// lost $292M when LayerZero allowed a single configurable DVN to
+/// approve withdrawals.
+/// Source: https://www.blockaid.io/blog/how-a-single-layerzero-dvn-compromise-drained-292m-from-kelpdao
+pub const LTP_QUORUM_MIN_NUMERATOR: usize = 5;
+/// LTP super-node committee size denominator (paper §3.2: seven of nine).
+pub const LTP_QUORUM_DENOMINATOR: usize = 9;
+
 /// Result of [`AnchorDispatcher::parity_check`] at one height.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParityResult {
