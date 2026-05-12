@@ -34,8 +34,8 @@ flowchart LR
 | [IQ-3](../iq/IQ-3-move-vm-choice.md) | `MockMove` | a chosen Move VM (Aptos / Sui / hand-rolled / new) | `BundleGenerator` registry entry |
 | IQ-4 (placeholder) | 20-byte address | likely 32-byte (Aptos Move) or 20-padded | `Address` newtype shape |
 | IQ-5 (placeholder) | no nonces | EVM nonces + signing | new field on `Intent` + bridge validation |
-| [IQ-6](../iq/IQ-6-verkle-vs-hash-commitment.md) | BLAKE3 256-ary | IPA over banderwagon | `tree::commit::commit_node` |
-| [IQ-7](../iq/IQ-7-anchor-log-onchain-vs-inmemory.md) | in-memory log + MAC | Solidity contract + ECDSA | `Anchor::compute_mac` + `AnchorLog::append` storage |
+| [IQ-6](../iq/IQ-6-verkle-commitment.md) | BLAKE3 256-ary | IPA over banderwagon | `tree::commit::commit_node` |
+| [IQ-7](../iq/IQ-7-anchor-parity.md) | in-memory log + MAC | Solidity contract + ECDSA | `Anchor::compute_mac` + `AnchorLog::append` storage |
 | [IQ-8](../iq/IQ-8-recovery-store-inmemory-vs-redb.md) | `InMemoryBlockStore` | `RedbBlockStore` | `BlockStore` trait |
 
 ## Decision graph — what unblocks what

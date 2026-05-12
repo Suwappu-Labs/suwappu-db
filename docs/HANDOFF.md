@@ -18,7 +18,7 @@ turns it into a chain is open work.
 What works: state types, capability-gated mutation, block-level
 parallel execution (Aptos Block-STM in shape), cross-VM intent
 bundles, state-tree commitments, multi-chain anchor parity, recovery
-via deterministic replay (durable via `RedbBlockStore`). **181
+via deterministic replay (durable via `RedbBlockStore`). **269
 property tests pass at 10,000 cases each on the load-bearing claims.**
 
 What's mocked or stubbed: the EVM, the Move VM, the Verkle tree
@@ -41,14 +41,14 @@ rustup toolchain install stable
 
 # Smoke
 cargo build --workspace
-cargo test --workspace                    # ~30s, 181 tests
+cargo test --workspace                    # ~30s, 269 tests
 cargo clippy --workspace --all-targets -- -D warnings
 ./scripts/check-lane-separation.sh        # structural invariant
 ./scripts/cross-parity.sh --quick         # 256-case anchor parity
 ./scripts/bootstrap.sh smoke              # all-in-one
 ```
 
-Expected: 181 tests pass, no warnings. If anything fails, that's a
+Expected: 269 tests pass, no warnings. If anything fails, that's a
 regression — flag it, don't push past it.
 
 ## 4. The 8 invariants this substrate guarantees
@@ -174,7 +174,7 @@ and to pick something to own.
 
 ```bash
 cargo build --workspace
-cargo test --workspace                                 # ~30s, 181 tests
+cargo test --workspace                                 # ~30s, 269 tests
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
@@ -236,12 +236,12 @@ gsxdb-lane → gsxdb-bridge → gsxdb-state
 | IQ | Topic | Decision |
 |---|---|---|
 | [IQ-1](iq/IQ-1-redb-vs-rocksdb.md) | State backend | redb in dev, RocksDB at launch |
-| [IQ-2](iq/IQ-2-mock-vms-vs-real.md) | EVM/Move integration | Mocks in S3, real VMs fold into S5 |
+| [IQ-2](iq/IQ-2-mock-vms-vs-real-vms.md) | EVM/Move integration | Mocks in S3, real VMs fold into S5 |
 | [IQ-3](iq/IQ-3-move-vm-choice.md) | Move VM dialect | Deferred to launch readiness |
 | IQ-4 (placeholder) | Address shape | TBD with Move VM choice |
 | IQ-5 (placeholder) | Nonce semantics | TBD with Move VM choice |
-| [IQ-6](iq/IQ-6-verkle-vs-hash-commitment.md) | Tree commitment | BLAKE3 now / IPA at launch |
-| [IQ-7](iq/IQ-7-anchor-log-onchain-vs-inmemory.md) | Anchor auth + storage | In-memory + MAC now / Solidity + ECDSA at launch |
+| [IQ-6](iq/IQ-6-verkle-commitment.md) | Tree commitment | BLAKE3 now / IPA at launch |
+| [IQ-7](iq/IQ-7-anchor-parity.md) | Anchor auth + storage | In-memory + MAC now / Solidity + ECDSA at launch |
 | [IQ-8](iq/IQ-8-recovery-store-inmemory-vs-redb.md) | Block store | In-memory + `RedbBlockStore` (S8.5 partial) |
 
 ### Common pitfalls

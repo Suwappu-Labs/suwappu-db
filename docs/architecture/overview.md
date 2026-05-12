@@ -90,7 +90,7 @@ After every block:
 
 1. **Canonical state** is updated through the bridge gate.
 2. **State tree** root is recomputed (256-ary, BLAKE3 per
-   [IQ-6](../iq/IQ-6-verkle-vs-hash-commitment.md), Verkle-shaped for
+   [IQ-6](../iq/IQ-6-verkle-commitment.md), Verkle-shaped for
    future swap).
 3. **Anchor** is dispatched to every registered chain (one per chain,
    MAC'd under that chain's key, linked via `parent_anchor`).

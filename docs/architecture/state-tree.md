@@ -2,7 +2,7 @@
 
 Per-block commitment to the canonical state. 256-ary trie shape
 (Verkle-aligned). Hash-based commitments now (BLAKE3 per
-[IQ-6](../iq/IQ-6-verkle-vs-hash-commitment.md)); polynomial
+[IQ-6](../iq/IQ-6-verkle-commitment.md)); polynomial
 commitments at launch.
 
 ## Tree shape
