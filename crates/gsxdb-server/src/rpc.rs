@@ -86,7 +86,11 @@ impl RpcHandler {
         let state = self.state.lock().await;
         let tree = gsxdb_state::StateTree::from_state(&*state);
         let root = tree.root();
-        let root_hex = root.0.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+        let root_hex = root
+            .0
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<String>();
         json!({
             "state_root": root_hex,
         })
@@ -108,7 +112,9 @@ impl RpcHandler {
 
             match result {
                 gsxdb_bridge::ParityResult::Agreed { state_root } => {
-                    let root_hex = state_root.0.iter()
+                    let root_hex = state_root
+                        .0
+                        .iter()
                         .map(|b| format!("{:02x}", b))
                         .collect::<String>();
                     json!({
@@ -118,9 +124,12 @@ impl RpcHandler {
                     })
                 }
                 gsxdb_bridge::ParityResult::Disagreed { divergent, missing } => {
-                    let divergent_json: Vec<_> = divergent.iter()
+                    let divergent_json: Vec<_> = divergent
+                        .iter()
                         .map(|(chain_id, root)| {
-                            let root_hex = root.0.iter()
+                            let root_hex = root
+                                .0
+                                .iter()
                                 .map(|b| format!("{:02x}", b))
                                 .collect::<String>();
                             json!({

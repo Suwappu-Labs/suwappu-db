@@ -32,18 +32,22 @@ state_root, intent count, then each intent in order with type tags).
 
 ```rust
 pub trait BlockStore {
-    fn put(&mut self, block: Block);
-    fn get_by_hash(&self, hash: &BlockHash) -> Option<Block>;
-    fn get_by_height(&self, height: u64) -> Option<Block>;
-    fn latest(&self) -> Option<Block>;
-    fn len(&self) -> usize;
+    fn put(&mut self, block: Block) -> Result<(), BlockStoreError>;
+    fn get_by_hash(&self, hash: &BlockHash) -> Result<Option<Block>, BlockStoreError>;
+    fn get_by_height(&self, height: u64) -> Result<Option<Block>, BlockStoreError>;
+    fn latest(&self) -> Result<Option<Block>, BlockStoreError>;
+    fn len(&self) -> Result<usize, BlockStoreError>;
     fn is_empty(&self) -> bool { ... }
-    fn iter_from(&self, from: u64) -> Vec<Block>;
+    fn iter_from(&self, from: u64) -> Result<Vec<Block>, BlockStoreError>;
 }
 ```
 
 Append-only. Phase-1 ships `InMemoryBlockStore`; S8.5 adds
 `RedbBlockStore` (per IQ-8).
+
+`BlockStoreError` carries backend failures. `replay` maps those errors
+to `RecoveryError::Storage` so recovery can fail explicitly on I/O
+instead of panicking.
 
 ### Replay
 
@@ -91,9 +95,42 @@ Phase-1 in-memory:
 - `BTreeMap<u64, BlockHash>` height index
 
 S8.5 redb (per IQ-8):
-- Table `blocks_by_hash`: `&[u8] → &[u8]` (32-byte hash → encoded block)
-- Table `height_to_hash`: `u64 → &[u8]` (height → 32-byte hash)
+- Table `blocks_by_hash`: `[u8; 32] → &[u8]` (32-byte hash → encoded block)
+- Table `height_to_hash`: `u64 → [u8; 32]` (height → 32-byte hash)
 - One write txn per `put` covering both tables.
+
+### Encoded block format (versioned)
+
+`blocks_by_hash` value bytes are:
+
+```text
+version: u8                      // currently 1
+height: u64 BE
+parent: [u8; 32]
+state_root: [u8; 32]
+intent_count: u32 BE
+intents: repeated intent encoding
+```
+
+Intent encoding:
+
+- `Transfer`:
+  - tag `0u8`
+  - `from: [u8; 20]`
+  - `to: [u8; 20]`
+  - `amount: u128 BE`
+- `Call`:
+  - tag `1u8`
+  - `caller: [u8; 20]`
+  - `target: [u8; 20]`
+  - `value: u128 BE`
+  - `calldata_len: u32 BE`
+  - `calldata: [u8; calldata_len]`
+
+Decoder behavior:
+- unknown `version` => reject (`None`)
+- truncated payload => reject (`None`)
+- trailing bytes after full decode => reject (`None`)
 
 ## Failure model
 
@@ -105,6 +142,9 @@ S8.5 redb (per IQ-8):
   store.
 - **Parent hash mismatch**: replay aborts. Indicates a fork or
   tampering.
+- **Storage backend error**: replay aborts with
+  `RecoveryError::Storage`. Indicates read/iteration/transaction
+  failure from the underlying block store.
 
 ## Tests
 
@@ -130,6 +170,8 @@ seeded store. Every address must match.
 
 - 6 block tests (hash determinism, sensitivity to every field)
 - 5 store tests (round-trip, latest, iter_from)
+- corruption-handling tests (unknown version, truncated bytes, corrupt
+  persisted payloads rejected without panic)
 - 5 replay tests (single/multi block reproduction, tamper detection,
   height gap, parent chain)
 

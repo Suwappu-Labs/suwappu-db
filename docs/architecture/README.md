@@ -17,6 +17,7 @@ end of phase-1: what's where, what flows through it, and why.
   which sprint introduced which type
 - [Open IQs](open-iqs.md) — launch-readiness backlog with cross-refs
 - [Placeholder audit plan](audit-plan.md) — line-by-line process for finding and resolving deferred/stale facts
+- [Audit ledger](audit-ledger.md) — line-level inventory of placeholders/deferred facts and sprint owners
 - [Engineering standards](engineering-standards.md) — enterprise + academic quality gates and repo structure contract
 - [Sprint execution checklist](sprint-execution-checklist.md) — standards-driven tracker for S8.5-S12
 

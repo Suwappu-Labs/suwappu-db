@@ -41,11 +41,7 @@ impl MoveAddress {
 
     /// Parse a hex string as a Move address (32 bytes, 0x-prefixed or raw).
     pub fn from_hex(s: &str) -> Result<Self, String> {
-        let hex_str = if s.starts_with("0x") {
-            &s[2..]
-        } else {
-            s
-        };
+        let hex_str = if s.starts_with("0x") { &s[2..] } else { s };
 
         if hex_str.len() != 64 {
             return Err(format!(
@@ -54,8 +50,7 @@ impl MoveAddress {
             ));
         }
 
-        let bytes =
-            hex::decode(hex_str).map_err(|e| format!("Invalid hex: {}", e))?;
+        let bytes = hex::decode(hex_str).map_err(|e| format!("Invalid hex: {}", e))?;
         let mut addr = [0u8; 32];
         addr.copy_from_slice(&bytes);
         Ok(MoveAddress(addr))
@@ -82,16 +77,16 @@ mod tests {
     #[test]
     fn move_to_evm_takes_last_20_bytes() {
         let mut move_addr = [0u8; 32];
-        move_addr[0] = 255;  // Leading byte
-        move_addr[12] = 42;  // At position 12
-        move_addr[31] = 99;  // Last byte
+        move_addr[0] = 255; // Leading byte
+        move_addr[12] = 42; // At position 12
+        move_addr[31] = 99; // Last byte
 
         let move_addr = MoveAddress(move_addr);
         let evm = move_addr.to_evm();
 
         // The EVM address should be the last 20 bytes
-        assert_eq!(evm.0[0], 42);    // Position 12 → position 0 in EVM
-        assert_eq!(evm.0[19], 99);   // Position 31 → position 19 in EVM
+        assert_eq!(evm.0[0], 42); // Position 12 → position 0 in EVM
+        assert_eq!(evm.0[19], 99); // Position 31 → position 19 in EVM
     }
 
     #[test]

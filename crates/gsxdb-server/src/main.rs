@@ -76,7 +76,10 @@ async fn health() -> (StatusCode, Json<HealthResponse>) {
 
 /// Handler: GET /metrics (placeholder)
 async fn metrics() -> (StatusCode, String) {
-    (StatusCode::OK, "# HELP gsxdb_info GSX-DB server info\n".to_string())
+    (
+        StatusCode::OK,
+        "# HELP gsxdb_info GSX-DB server info\n".to_string(),
+    )
 }
 
 /// Handler: POST /rpc
@@ -103,17 +106,15 @@ async fn rpc(
                                     id: req.id,
                                 }
                             }
-                            Err(_) => {
-                                JsonRpcResponse {
-                                    jsonrpc: "2.0".to_string(),
-                                    result: None,
-                                    error: Some(JsonRpcError {
-                                        code: -32602,
-                                        message: "Invalid address format".to_string(),
-                                    }),
-                                    id: req.id,
-                                }
-                            }
+                            Err(_) => JsonRpcResponse {
+                                jsonrpc: "2.0".to_string(),
+                                result: None,
+                                error: Some(JsonRpcError {
+                                    code: -32602,
+                                    message: "Invalid address format".to_string(),
+                                }),
+                                id: req.id,
+                            },
                         }
                     } else {
                         JsonRpcResponse {
@@ -168,17 +169,15 @@ async fn rpc(
                 id: req.id,
             }
         }
-        _ => {
-            JsonRpcResponse {
-                jsonrpc: "2.0".to_string(),
-                result: None,
-                error: Some(JsonRpcError {
-                    code: -32601,
-                    message: "Method not found".to_string(),
-                }),
-                id: req.id,
-            }
-        }
+        _ => JsonRpcResponse {
+            jsonrpc: "2.0".to_string(),
+            result: None,
+            error: Some(JsonRpcError {
+                code: -32601,
+                message: "Method not found".to_string(),
+            }),
+            id: req.id,
+        },
     };
 
     (StatusCode::OK, Json(response))
@@ -186,11 +185,7 @@ async fn rpc(
 
 /// Parse an address string (0x-prefixed hex or raw hex) into Address.
 fn parse_address(s: &str) -> Result<Address, String> {
-    let hex_str = if s.starts_with("0x") {
-        &s[2..]
-    } else {
-        s
-    };
+    let hex_str = if s.starts_with("0x") { &s[2..] } else { s };
 
     if hex_str.len() != 40 {
         return Err("Address must be 20 bytes (40 hex chars)".to_string());

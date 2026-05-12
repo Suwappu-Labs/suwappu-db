@@ -175,12 +175,7 @@ mod tests {
 
     #[test]
     fn snapshot_new_has_timestamp() {
-        let snapshot = StateSnapshot::new(
-            100,
-            root(7),
-            vec![1, 2, 3, 4, 5],
-            Some([1u8; 32]),
-        );
+        let snapshot = StateSnapshot::new(100, root(7), vec![1, 2, 3, 4, 5], Some([1u8; 32]));
 
         assert_eq!(snapshot.height, 100);
         assert_eq!(snapshot.state_root, root(7));
@@ -189,12 +184,7 @@ mod tests {
 
     #[test]
     fn snapshot_size_includes_all_fields() {
-        let snapshot = StateSnapshot::new(
-            42,
-            root(1),
-            vec![0u8; 1000],
-            Some([2u8; 32]),
-        );
+        let snapshot = StateSnapshot::new(42, root(1), vec![0u8; 1000], Some([2u8; 32]));
 
         let size = snapshot.size_bytes();
         // height (8) + root (32) + timestamp (8) + anchor (32) + data (1000) = 1080
@@ -230,12 +220,7 @@ mod tests {
     #[test]
     fn snapshot_verify_anchor_matches() {
         let anchor = [42u8; 32];
-        let snapshot = StateSnapshot::new(
-            10,
-            root(3),
-            vec![1, 2, 3],
-            Some(anchor),
-        );
+        let snapshot = StateSnapshot::new(10, root(3), vec![1, 2, 3], Some(anchor));
 
         assert!(snapshot.verify_anchor(&anchor));
         assert!(!snapshot.verify_anchor(&[99u8; 32]));
@@ -243,12 +228,7 @@ mod tests {
 
     #[test]
     fn snapshot_to_metadata_json() {
-        let snapshot = StateSnapshot::new(
-            50,
-            root(7),
-            vec![1; 500],
-            Some([9u8; 32]),
-        );
+        let snapshot = StateSnapshot::new(50, root(7), vec![1; 500], Some([9u8; 32]));
 
         let json = snapshot.to_metadata_json();
         assert_eq!(json["height"], 50);

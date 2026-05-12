@@ -216,13 +216,7 @@ mod tests {
         let key = [0u8; 32];
 
         // Create an anchor with the key
-        let anchor = Anchor::new(
-            chain_id,
-            height,
-            Commitment([42; 32]),
-            GENESIS_PARENT,
-            &key,
-        );
+        let anchor = Anchor::new(chain_id, height, Commitment([42; 32]), GENESIS_PARENT, &key);
 
         // Build the expected response format
         let mut response_data = Vec::new();

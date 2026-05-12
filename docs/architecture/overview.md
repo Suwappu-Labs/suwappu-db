@@ -107,7 +107,7 @@ all four bit-for-bit.
 |---|---|---|---|
 | State backend | redb | RocksDB | `BalanceStore` trait |
 | EVM execution | `MockEvm` | revm | `BundleGenerator` registry entry |
-| Move execution | `MockMove` | TBD per IQ-3 | `BundleGenerator` registry entry |
+| Move execution | `MockMove` | Aptos Move VM adapter (S9 decision gate per IQ-3) | `BundleGenerator` registry entry |
 | Tree commitment | BLAKE3 hash | IPA over banderwagon | `tree::commit::commit_node` |
 | Anchor auth | BLAKE3 keyed-MAC | ECDSA / EdDSA | `Anchor::compute_mac` |
 | Anchor storage | in-memory | Solidity `LTPAnchorRegistry` | `AnchorLog` trait surface |

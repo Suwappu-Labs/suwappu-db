@@ -73,7 +73,11 @@ impl Histogram {
 
     /// Get mean of samples.
     pub fn mean(&self) -> f64 {
-        let samples = self.samples.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let samples = self
+            .samples
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         if samples.is_empty() {
             0.0
         } else {
@@ -83,7 +87,11 @@ impl Histogram {
 
     /// Get P99 percentile.
     pub fn p99(&self) -> f64 {
-        let mut samples = self.samples.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let mut samples = self
+            .samples
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         if samples.is_empty() {
             return 0.0;
         }
@@ -214,7 +222,10 @@ impl Metrics {
         // Gauges
         output.push_str("# HELP gsxdb_block_height Current block height\n");
         output.push_str("# TYPE gsxdb_block_height gauge\n");
-        output.push_str(&format!("gsxdb_block_height {}\n", self.block_height.get() as u64));
+        output.push_str(&format!(
+            "gsxdb_block_height {}\n",
+            self.block_height.get() as u64
+        ));
 
         output.push_str("# HELP gsxdb_snapshot_size_bytes Latest snapshot size in bytes\n");
         output.push_str("# TYPE gsxdb_snapshot_size_bytes gauge\n");
@@ -225,7 +236,10 @@ impl Metrics {
 
         output.push_str("# HELP gsxdb_tree_depth State tree depth\n");
         output.push_str("# TYPE gsxdb_tree_depth gauge\n");
-        output.push_str(&format!("gsxdb_tree_depth {}\n", self.tree_depth.get() as u64));
+        output.push_str(&format!(
+            "gsxdb_tree_depth {}\n",
+            self.tree_depth.get() as u64
+        ));
 
         output.push_str("# HELP gsxdb_address_count Number of addresses in state\n");
         output.push_str("# TYPE gsxdb_address_count gauge\n");
@@ -242,9 +256,8 @@ impl Metrics {
         ));
 
         // Histograms (as summary metrics)
-        output.push_str(
-            "# HELP gsxdb_block_duration_ms Block execution duration in milliseconds\n",
-        );
+        output
+            .push_str("# HELP gsxdb_block_duration_ms Block execution duration in milliseconds\n");
         output.push_str("# TYPE gsxdb_block_duration_ms histogram\n");
         output.push_str(&format!(
             "gsxdb_block_duration_ms_count {}\n",
@@ -252,12 +265,16 @@ impl Metrics {
         ));
         output.push_str(&format!(
             "gsxdb_block_duration_ms_sum {}\n",
-            self.block_duration_ms.samples.lock().unwrap_or_else(|e| e.into_inner()).iter().sum::<f64>()
+            self.block_duration_ms
+                .samples
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .iter()
+                .sum::<f64>()
         ));
 
-        output.push_str(
-            "# HELP gsxdb_anchor_latency_ms Anchor submission latency in milliseconds\n",
-        );
+        output
+            .push_str("# HELP gsxdb_anchor_latency_ms Anchor submission latency in milliseconds\n");
         output.push_str("# TYPE gsxdb_anchor_latency_ms histogram\n");
         output.push_str(&format!(
             "gsxdb_anchor_latency_ms_count {}\n",
@@ -265,7 +282,12 @@ impl Metrics {
         ));
         output.push_str(&format!(
             "gsxdb_anchor_latency_ms_sum {}\n",
-            self.anchor_latency_ms.samples.lock().unwrap_or_else(|e| e.into_inner()).iter().sum::<f64>()
+            self.anchor_latency_ms
+                .samples
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .iter()
+                .sum::<f64>()
         ));
 
         output.push_str(
@@ -278,13 +300,21 @@ impl Metrics {
         ));
         output.push_str(&format!(
             "gsxdb_parity_check_duration_ms_sum {}\n",
-            self.parity_check_duration_ms.samples.lock().unwrap_or_else(|e| e.into_inner()).iter().sum::<f64>()
+            self.parity_check_duration_ms
+                .samples
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .iter()
+                .sum::<f64>()
         ));
 
         // Counters
         output.push_str("# HELP gsxdb_blocks_committed Total blocks committed\n");
         output.push_str("# TYPE gsxdb_blocks_committed counter\n");
-        output.push_str(&format!("gsxdb_blocks_committed {}\n", self.blocks_committed.get()));
+        output.push_str(&format!(
+            "gsxdb_blocks_committed {}\n",
+            self.blocks_committed.get()
+        ));
 
         output.push_str("# HELP gsxdb_anchors_submitted Total anchors submitted\n");
         output.push_str("# TYPE gsxdb_anchors_submitted counter\n");

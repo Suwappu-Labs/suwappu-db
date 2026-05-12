@@ -25,12 +25,7 @@ pub struct DagBlock {
 
 impl DagBlock {
     /// Create a new block with a single parent (linear chain compatible).
-    pub fn new(
-        height: u64,
-        state_root: [u8; 32],
-        parent_hash: BlockHash,
-        timestamp: u64,
-    ) -> Self {
+    pub fn new(height: u64, state_root: [u8; 32], parent_hash: BlockHash, timestamp: u64) -> Self {
         Self {
             height,
             state_root,

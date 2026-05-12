@@ -18,8 +18,8 @@ Each sprint must satisfy `engineering-standards.md` quality and evidence gates.
 - [x] restart round-trip test exists
 - [x] decoder hardened against truncated/corrupt payloads
 - [x] explicit encoding version byte added
-- [ ] persistence format section added to `docs/spec/recovery.md`
-- [ ] crash/partial-write fault-injection tests added
+- [x] persistence format section added to `docs/spec/recovery.md`
+- [x] crash/partial-write fault-injection tests added
 
 ## S9 — Real Move VM + address/nonce semantics
 

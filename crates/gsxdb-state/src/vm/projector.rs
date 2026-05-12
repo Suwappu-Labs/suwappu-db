@@ -16,10 +16,7 @@
 //! Phase 2 (S9+) extends the invariant to nonce: one canonical nonce field
 //! projects to both EVM nonce and Move sequence number.
 
-use crate::{
-    Address, BalanceSlot, EvmBalance, EvmNonce, MoveCoinValue, MoveSequenceNumber,
-    State,
-};
+use crate::{Address, BalanceSlot, EvmBalance, EvmNonce, MoveCoinValue, MoveSequenceNumber, State};
 
 /// Read EVM-shaped state.
 pub trait EvmProjector {

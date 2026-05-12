@@ -81,7 +81,7 @@ proptest! {
                 intents: intents.clone(),
             };
             prev_hash = block.hash();
-            store.put(block);
+            store.put(block).unwrap();
         }
 
         let mut replayed = seeded_state();
@@ -108,7 +108,7 @@ proptest! {
                 intents: intents.clone(),
             };
             prev_hash = block.hash();
-            store.put(block);
+            store.put(block).unwrap();
         }
 
         let mut a = seeded_state();
@@ -138,7 +138,7 @@ proptest! {
                 intents: intents.clone(),
             };
             prev_hash = block.hash();
-            store.put(block.clone());
+            store.put(block.clone()).unwrap();
             block_intents.push(block);
         }
 
@@ -152,7 +152,7 @@ proptest! {
                 block.state_root = gsxdb_state::Commitment([0xee; 32]);
             }
             new_prev = block.hash();
-            tampered_store.put(block);
+            tampered_store.put(block).unwrap();
         }
 
         let mut replayed = seeded_state();

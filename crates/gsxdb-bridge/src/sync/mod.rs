@@ -7,4 +7,4 @@
 
 pub mod l2;
 
-pub use l2::{L2SyncConfig, L2StateSyncer};
+pub use l2::{L2StateSyncer, L2SyncConfig};

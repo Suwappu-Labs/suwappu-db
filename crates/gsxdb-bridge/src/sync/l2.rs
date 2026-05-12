@@ -113,7 +113,9 @@ impl L2StateSyncer {
         let nonce_hex = result
             .get("result")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| "Missing result field in eth_getTransactionCount response".to_string())?;
+            .ok_or_else(|| {
+                "Missing result field in eth_getTransactionCount response".to_string()
+            })?;
 
         // Parse hex string (remove '0x' prefix)
         let nonce_bytes = hex::decode(&nonce_hex[2..])
@@ -146,7 +148,12 @@ impl L2StateSyncer {
                 nonce,
             });
 
-            tracing::debug!("Synced address {:?}: balance={}, nonce={}", address, balance, nonce);
+            tracing::debug!(
+                "Synced address {:?}: balance={}, nonce={}",
+                address,
+                balance,
+                nonce
+            );
         }
 
         tracing::info!(
@@ -175,10 +182,7 @@ impl L2StateSyncer {
             );
         }
 
-        tracing::info!(
-            "L2StateSyncer wrote {} nonces to redb store",
-            synced.len()
-        );
+        tracing::info!("L2StateSyncer wrote {} nonces to redb store", synced.len());
 
         Ok(synced)
     }
@@ -223,8 +227,8 @@ mod tests {
     #[tokio::test]
     async fn sync_to_store_writes_nonces() {
         let dir = TempDir::new().expect("tempdir");
-        let store = RedbBalanceStore::open(dir.path().join("state.redb"))
-            .expect("RedbBalanceStore::open");
+        let store =
+            RedbBalanceStore::open(dir.path().join("state.redb")).expect("RedbBalanceStore::open");
 
         let addr1 = Address([1; 20]);
         let addr2 = Address([2; 20]);

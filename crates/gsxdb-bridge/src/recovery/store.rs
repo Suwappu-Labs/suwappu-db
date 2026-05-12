@@ -16,32 +16,45 @@ const BLOCKS_BY_HASH: TableDefinition<[u8; 32], &[u8]> = TableDefinition::new("b
 const HEIGHT_TO_HASH: TableDefinition<u64, [u8; 32]> = TableDefinition::new("height_to_hash");
 const BLOCK_ENCODING_VERSION: u8 = 1;
 
+/// Storage-layer failures surfaced by [`BlockStore`] implementations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BlockStoreError {
+    /// Underlying storage backend error.
+    Backend(String),
+}
+
+impl BlockStoreError {
+    fn backend(err: impl ToString) -> Self {
+        Self::Backend(err.to_string())
+    }
+}
+
 /// Append-only block storage.
 pub trait BlockStore {
     /// Append `block`. Stores the block keyed by its hash and indexed
     /// by its height.
-    fn put(&mut self, block: Block);
+    fn put(&mut self, block: Block) -> Result<(), BlockStoreError>;
 
     /// Lookup by hash.
-    fn get_by_hash(&self, hash: &BlockHash) -> Option<Block>;
+    fn get_by_hash(&self, hash: &BlockHash) -> Result<Option<Block>, BlockStoreError>;
 
     /// Lookup by logical height.
-    fn get_by_height(&self, height: u64) -> Option<Block>;
+    fn get_by_height(&self, height: u64) -> Result<Option<Block>, BlockStoreError>;
 
     /// Latest block by height, if any.
-    fn latest(&self) -> Option<Block>;
+    fn latest(&self) -> Result<Option<Block>, BlockStoreError>;
 
     /// Number of blocks.
-    fn len(&self) -> usize;
+    fn len(&self) -> Result<usize, BlockStoreError>;
 
     /// `true` iff no blocks stored.
     fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.len().map_or(true, |n| n == 0)
     }
 
     /// Iterate every block in height order, starting at `from`
     /// inclusive. Phase-1 returns a `Vec` for simplicity.
-    fn iter_from(&self, from: u64) -> Vec<Block>;
+    fn iter_from(&self, from: u64) -> Result<Vec<Block>, BlockStoreError>;
 }
 
 /// In-memory block store. Cheap; loses everything on drop.
@@ -94,138 +107,150 @@ impl InMemoryBlockStore {
 }
 
 impl BlockStore for InMemoryBlockStore {
-    fn put(&mut self, block: Block) {
+    fn put(&mut self, block: Block) -> Result<(), BlockStoreError> {
         let hash = block.hash();
         self.by_height.insert(block.height, hash);
         self.by_hash.insert(hash, block);
+        Ok(())
     }
 
-    fn get_by_hash(&self, hash: &BlockHash) -> Option<Block> {
-        self.by_hash.get(hash).cloned()
+    fn get_by_hash(&self, hash: &BlockHash) -> Result<Option<Block>, BlockStoreError> {
+        Ok(self.by_hash.get(hash).cloned())
     }
 
-    fn get_by_height(&self, height: u64) -> Option<Block> {
-        self.by_height
+    fn get_by_height(&self, height: u64) -> Result<Option<Block>, BlockStoreError> {
+        Ok(self
+            .by_height
             .get(&height)
-            .and_then(|h| self.by_hash.get(h).cloned())
+            .and_then(|h| self.by_hash.get(h).cloned()))
     }
 
-    fn latest(&self) -> Option<Block> {
-        self.by_height
+    fn latest(&self) -> Result<Option<Block>, BlockStoreError> {
+        Ok(self
+            .by_height
             .iter()
             .next_back()
-            .and_then(|(_, h)| self.by_hash.get(h).cloned())
+            .and_then(|(_, h)| self.by_hash.get(h).cloned()))
     }
 
-    fn len(&self) -> usize {
-        self.by_hash.len()
+    fn len(&self) -> Result<usize, BlockStoreError> {
+        Ok(self.by_hash.len())
     }
 
-    fn iter_from(&self, from: u64) -> Vec<Block> {
-        self.by_height
+    fn iter_from(&self, from: u64) -> Result<Vec<Block>, BlockStoreError> {
+        Ok(self
+            .by_height
             .range(from..)
             .filter_map(|(_, h)| self.by_hash.get(h).cloned())
-            .collect()
+            .collect())
     }
 }
 
 impl BlockStore for RedbBlockStore {
-    fn put(&mut self, block: Block) {
+    fn put(&mut self, block: Block) -> Result<(), BlockStoreError> {
         let hash = block.hash();
         let encoded = encode_block(&block);
 
-        let write_txn = self.db.begin_write().expect("redb begin_write");
+        let write_txn = self.db.begin_write().map_err(BlockStoreError::backend)?;
         {
             let mut blocks = write_txn
                 .open_table(BLOCKS_BY_HASH)
-                .expect("open blocks_by_hash table");
+                .map_err(BlockStoreError::backend)?;
             blocks
                 .insert(hash.0, encoded.as_slice())
-                .expect("insert block bytes by hash");
+                .map_err(BlockStoreError::backend)?;
         }
         {
             let mut heights = write_txn
                 .open_table(HEIGHT_TO_HASH)
-                .expect("open height_to_hash table");
+                .map_err(BlockStoreError::backend)?;
             heights
                 .insert(block.height, hash.0)
-                .expect("insert hash by height");
+                .map_err(BlockStoreError::backend)?;
         }
-        write_txn.commit().expect("commit block put");
+        write_txn.commit().map_err(BlockStoreError::backend)?;
+        Ok(())
     }
 
-    fn get_by_hash(&self, hash: &BlockHash) -> Option<Block> {
-        let read_txn = self.db.begin_read().expect("redb begin_read");
+    fn get_by_hash(&self, hash: &BlockHash) -> Result<Option<Block>, BlockStoreError> {
+        let read_txn = self.db.begin_read().map_err(BlockStoreError::backend)?;
         let table = read_txn
             .open_table(BLOCKS_BY_HASH)
-            .expect("open blocks_by_hash table");
-        table
+            .map_err(BlockStoreError::backend)?;
+        Ok(table
             .get(hash.0)
-            .expect("read block by hash")
-            .and_then(|v| decode_block(v.value()))
+            .map_err(BlockStoreError::backend)?
+            .and_then(|v| decode_block(v.value())))
     }
 
-    fn get_by_height(&self, height: u64) -> Option<Block> {
-        let read_txn = self.db.begin_read().expect("redb begin_read");
+    fn get_by_height(&self, height: u64) -> Result<Option<Block>, BlockStoreError> {
+        let read_txn = self.db.begin_read().map_err(BlockStoreError::backend)?;
         let heights = read_txn
             .open_table(HEIGHT_TO_HASH)
-            .expect("open height_to_hash table");
-        let hash = heights
-            .get(height)
-            .expect("read hash by height")?
-            .value();
+            .map_err(BlockStoreError::backend)?;
+        let Some(hash) = heights.get(height).map_err(BlockStoreError::backend)? else {
+            return Ok(None);
+        };
         let blocks = read_txn
             .open_table(BLOCKS_BY_HASH)
-            .expect("open blocks_by_hash table");
-        blocks
-            .get(hash)
-            .expect("read block by hash")
-            .and_then(|v| decode_block(v.value()))
-    }
-
-    fn latest(&self) -> Option<Block> {
-        let read_txn = self.db.begin_read().expect("redb begin_read");
-        let heights = read_txn
-            .open_table(HEIGHT_TO_HASH)
-            .expect("open height_to_hash table");
-        let (_, hash) = heights.last().expect("get latest height entry")?;
-        let blocks = read_txn
-            .open_table(BLOCKS_BY_HASH)
-            .expect("open blocks_by_hash table");
-        blocks
+            .map_err(BlockStoreError::backend)?;
+        Ok(blocks
             .get(hash.value())
-            .expect("read latest block by hash")
-            .and_then(|v| decode_block(v.value()))
+            .map_err(BlockStoreError::backend)?
+            .and_then(|v| decode_block(v.value())))
     }
 
-    fn len(&self) -> usize {
-        let read_txn = self.db.begin_read().expect("redb begin_read");
+    fn latest(&self) -> Result<Option<Block>, BlockStoreError> {
+        let read_txn = self.db.begin_read().map_err(BlockStoreError::backend)?;
+        let heights = read_txn
+            .open_table(HEIGHT_TO_HASH)
+            .map_err(BlockStoreError::backend)?;
+        let (_, hash) = heights
+            .last()
+            .map_err(BlockStoreError::backend)?
+            .ok_or_else(|| BlockStoreError::backend("missing latest height entry"))?;
+        let blocks = read_txn
+            .open_table(BLOCKS_BY_HASH)
+            .map_err(BlockStoreError::backend)?;
+        Ok(blocks
+            .get(hash.value())
+            .map_err(BlockStoreError::backend)?
+            .and_then(|v| decode_block(v.value())))
+    }
+
+    fn len(&self) -> Result<usize, BlockStoreError> {
+        let read_txn = self.db.begin_read().map_err(BlockStoreError::backend)?;
         let table = read_txn
             .open_table(BLOCKS_BY_HASH)
-            .expect("open blocks_by_hash table");
-        table
+            .map_err(BlockStoreError::backend)?;
+        Ok(table
             .len()
-            .expect("read block table len")
+            .map_err(BlockStoreError::backend)?
             .try_into()
-            .unwrap_or(usize::MAX)
+            .unwrap_or(usize::MAX))
     }
 
-    fn iter_from(&self, from: u64) -> Vec<Block> {
-        let read_txn = self.db.begin_read().expect("redb begin_read");
+    fn iter_from(&self, from: u64) -> Result<Vec<Block>, BlockStoreError> {
+        let read_txn = self.db.begin_read().map_err(BlockStoreError::backend)?;
         let heights = read_txn
             .open_table(HEIGHT_TO_HASH)
-            .expect("open height_to_hash table");
+            .map_err(BlockStoreError::backend)?;
         let blocks = read_txn
             .open_table(BLOCKS_BY_HASH)
-            .expect("open blocks_by_hash table");
+            .map_err(BlockStoreError::backend)?;
 
-        heights
-            .range(from..)
-            .expect("iterate heights")
-            .filter_map(Result::ok)
-            .filter_map(|(_, h)| blocks.get(h.value()).expect("read iter block"))
-            .filter_map(|v| decode_block(v.value()))
-            .collect()
+        let mut out = Vec::new();
+        for row in heights.range(from..).map_err(BlockStoreError::backend)? {
+            let (_, h) = row.map_err(BlockStoreError::backend)?;
+            if let Some(v) = blocks
+                .get(h.value())
+                .map_err(BlockStoreError::backend)?
+                .and_then(|v| decode_block(v.value()))
+            {
+                out.push(v);
+            }
+        }
+        Ok(out)
     }
 }
 
@@ -235,7 +260,11 @@ fn encode_block(block: &Block) -> Vec<u8> {
     out.extend_from_slice(&block.height.to_be_bytes());
     out.extend_from_slice(&block.parent.0);
     out.extend_from_slice(&block.state_root.0);
-    out.extend_from_slice(&u32::try_from(block.intents.len()).unwrap_or(u32::MAX).to_be_bytes());
+    out.extend_from_slice(
+        &u32::try_from(block.intents.len())
+            .unwrap_or(u32::MAX)
+            .to_be_bytes(),
+    );
     for intent in &block.intents {
         encode_intent(intent, &mut out);
     }
@@ -285,7 +314,11 @@ fn encode_intent(intent: &Intent, out: &mut Vec<u8>) {
             out.extend_from_slice(&caller.0);
             out.extend_from_slice(&target.0);
             out.extend_from_slice(&value.to_be_bytes());
-            out.extend_from_slice(&u32::try_from(calldata.len()).unwrap_or(u32::MAX).to_be_bytes());
+            out.extend_from_slice(
+                &u32::try_from(calldata.len())
+                    .unwrap_or(u32::MAX)
+                    .to_be_bytes(),
+            );
             out.extend_from_slice(calldata);
         }
     }
@@ -385,9 +418,9 @@ mod tests {
     fn empty_store_is_empty() {
         let s = InMemoryBlockStore::new();
         assert!(s.is_empty());
-        assert_eq!(s.len(), 0);
-        assert!(s.latest().is_none());
-        assert!(s.get_by_height(0).is_none());
+        assert_eq!(s.len(), Ok(0));
+        assert_eq!(s.latest(), Ok(None));
+        assert_eq!(s.get_by_height(0), Ok(None));
     }
 
     #[test]
@@ -395,12 +428,12 @@ mod tests {
         let mut s = InMemoryBlockStore::new();
         let b = block(0, GENESIS_PARENT, Commitment([1; 32]));
         let hash = b.hash();
-        s.put(b.clone());
+        s.put(b.clone()).unwrap();
 
-        assert_eq!(s.len(), 1);
-        assert_eq!(s.get_by_hash(&hash), Some(b.clone()));
-        assert_eq!(s.get_by_height(0), Some(b.clone()));
-        assert_eq!(s.latest(), Some(b));
+        assert_eq!(s.len(), Ok(1));
+        assert_eq!(s.get_by_hash(&hash), Ok(Some(b.clone())));
+        assert_eq!(s.get_by_height(0), Ok(Some(b.clone())));
+        assert_eq!(s.latest(), Ok(Some(b)));
     }
 
     #[test]
@@ -409,13 +442,13 @@ mod tests {
         let b0 = block(0, GENESIS_PARENT, Commitment([1; 32]));
         let b1 = block(1, b0.hash(), Commitment([2; 32]));
         let b2 = block(2, b1.hash(), Commitment([3; 32]));
-        s.put(b1.clone()); // out of order
-        s.put(b2.clone());
-        s.put(b0.clone());
+        s.put(b1.clone()).unwrap(); // out of order
+        s.put(b2.clone()).unwrap();
+        s.put(b0.clone()).unwrap();
 
-        assert_eq!(s.latest(), Some(b2));
-        assert_eq!(s.get_by_height(0), Some(b0));
-        assert_eq!(s.get_by_height(1), Some(b1));
+        assert_eq!(s.latest(), Ok(Some(b2)));
+        assert_eq!(s.get_by_height(0), Ok(Some(b0)));
+        assert_eq!(s.get_by_height(1), Ok(Some(b1)));
     }
 
     #[test]
@@ -424,19 +457,18 @@ mod tests {
         let b0 = block(0, GENESIS_PARENT, Commitment([1; 32]));
         let b1 = block(1, b0.hash(), Commitment([2; 32]));
         let b2 = block(2, b1.hash(), Commitment([3; 32]));
-        s.put(b0);
-        s.put(b1.clone());
-        s.put(b2.clone());
+        s.put(b0).unwrap();
+        s.put(b1.clone()).unwrap();
+        s.put(b2.clone()).unwrap();
 
-        let from_1 = s.iter_from(1);
+        let from_1 = s.iter_from(1).unwrap();
         assert_eq!(from_1.len(), 2);
         assert_eq!(from_1[0], b1);
         assert_eq!(from_1[1], b2);
 
-        let from_5 = s.iter_from(5);
+        let from_5 = s.iter_from(5).unwrap();
         assert!(from_5.is_empty());
     }
-
 
     #[test]
     fn decode_rejects_unknown_version() {
@@ -458,15 +490,15 @@ mod tests {
         let mut s = RedbBlockStore::open(&db_path).expect("open redb");
         let b0 = block(0, GENESIS_PARENT, Commitment([1; 32]));
         let b1 = block(1, b0.hash(), Commitment([2; 32]));
-        s.put(b0.clone());
-        s.put(b1.clone());
-        assert_eq!(s.latest(), Some(b1.clone()));
+        s.put(b0.clone()).unwrap();
+        s.put(b1.clone()).unwrap();
+        assert_eq!(s.latest(), Ok(Some(b1.clone())));
         drop(s);
 
         let reopened = RedbBlockStore::open(&db_path).expect("reopen redb");
-        assert_eq!(reopened.len(), 2);
-        assert_eq!(reopened.get_by_height(0), Some(b0));
-        assert_eq!(reopened.get_by_height(1), Some(b1));
+        assert_eq!(reopened.len(), Ok(2));
+        assert_eq!(reopened.get_by_height(0), Ok(Some(b0)));
+        assert_eq!(reopened.get_by_height(1), Ok(Some(b1)));
     }
 
     #[test]
@@ -486,32 +518,35 @@ mod tests {
                 intents: vec![Intent::Transfer {
                     from: addr(0),
                     to: addr(1),
-                    amount: i as u128,
+                    amount: u128::from(i),
                 }],
             };
             parent = b.hash();
-            s.put(b.clone());
+            s.put(b.clone()).unwrap();
             blocks.push(b);
         }
         drop(s);
 
-        // Phase 2: reopen and verify all blocks recovered
+        // Phase 2: reopen and verify all blocks recovered.
         let reopened = RedbBlockStore::open(&db_path).expect("reopen redb");
-        assert_eq!(reopened.len(), 10);
+        assert_eq!(reopened.len(), Ok(10));
 
         for (i, expected) in blocks.iter().enumerate() {
-            let retrieved = reopened.get_by_height(i as u64);
-            assert_eq!(retrieved, Some(expected.clone()), "block {i} mismatch after restart");
+            let retrieved = reopened.get_by_height(i as u64).unwrap();
+            assert_eq!(
+                retrieved,
+                Some(expected.clone()),
+                "block {i} mismatch after restart"
+            );
         }
 
-        // Verify iter_from works
-        let all = reopened.iter_from(0);
+        let all = reopened.iter_from(0).unwrap();
         assert_eq!(all.len(), 10);
         for (i, expected) in blocks.iter().enumerate() {
             assert_eq!(all[i], *expected);
         }
 
-        let from_5 = reopened.iter_from(5);
+        let from_5 = reopened.iter_from(5).unwrap();
         assert_eq!(from_5.len(), 5);
         for (i, expected) in blocks[5..].iter().enumerate() {
             assert_eq!(from_5[i], *expected);
@@ -535,32 +570,90 @@ mod tests {
                     intents: vec![],
                 };
                 parent = b.hash();
-                s.put(b);
+                s.put(b).unwrap();
             }
         }
 
         // Second cycle: reopen, add blocks 4-6
         {
             let mut s = RedbBlockStore::open(&db_path).expect("open redb cycle 2");
-            assert_eq!(s.len(), 4);
-            let parent = s.latest().expect("latest").hash();
+            assert_eq!(s.len(), Ok(4));
+            let mut parent = s.latest().unwrap().expect("latest").hash();
             for i in 4..7u64 {
                 let b = Block {
                     height: i,
-                    parent: if i == 4 { parent } else { Block { height: i - 1, parent: GENESIS_PARENT, state_root: Commitment([(i - 1) as u8; 32]), intents: vec![] }.hash() },
+                    parent,
                     state_root: Commitment([i as u8; 32]),
                     intents: vec![],
                 };
-                s.put(b);
+                parent = b.hash();
+                s.put(b).unwrap();
             }
         }
 
-        // Third cycle: verify all blocks are still there
+        // Third cycle: verify all blocks are still there.
         {
             let s = RedbBlockStore::open(&db_path).expect("open redb cycle 3");
-            assert_eq!(s.len(), 7);
-            assert_eq!(s.get_by_height(0).map(|b| b.height), Some(0));
-            assert_eq!(s.get_by_height(6).map(|b| b.height), Some(6));
+            assert_eq!(s.len(), Ok(7));
+            assert_eq!(s.get_by_height(0).unwrap().map(|b| b.height), Some(0));
+            assert_eq!(s.get_by_height(6).unwrap().map(|b| b.height), Some(6));
         }
+    }
+
+    #[test]
+    fn redb_corrupt_payload_is_rejected_without_panic() {
+        let tmp = TempDir::new().expect("tempdir");
+        let db_path = tmp.path().join("blocks.redb");
+        let db = Database::create(&db_path).expect("create redb");
+
+        let bad_hash = [0xabu8; 32];
+        let write_txn = db.begin_write().expect("begin_write");
+        {
+            let mut blocks = write_txn
+                .open_table(BLOCKS_BY_HASH)
+                .expect("open blocks table");
+            blocks
+                .insert(bad_hash, [BLOCK_ENCODING_VERSION, 1, 2, 3].as_slice())
+                .expect("insert bad payload");
+            let mut heights = write_txn
+                .open_table(HEIGHT_TO_HASH)
+                .expect("open heights table");
+            heights
+                .insert(7, bad_hash)
+                .expect("insert bad height->hash");
+        }
+        write_txn.commit().expect("commit bad payload");
+        drop(db);
+
+        let reopened = RedbBlockStore::open(&db_path).expect("reopen redb");
+        assert_eq!(reopened.get_by_hash(&BlockHash(bad_hash)), Ok(None));
+        assert_eq!(reopened.get_by_height(7), Ok(None));
+        assert_eq!(reopened.iter_from(0).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn redb_aborted_write_txn_leaves_no_partial_state() {
+        let tmp = TempDir::new().expect("tempdir");
+        let db_path = tmp.path().join("blocks.redb");
+        let db = Database::create(&db_path).expect("create redb");
+
+        let fake_hash = [0x42_u8; 32];
+        let write_txn = db.begin_write().expect("begin_write");
+        {
+            let mut blocks = write_txn
+                .open_table(BLOCKS_BY_HASH)
+                .expect("open blocks table");
+            blocks
+                .insert(fake_hash, [BLOCK_ENCODING_VERSION, 0, 0, 0].as_slice())
+                .expect("insert uncommitted payload");
+        }
+        drop(write_txn);
+        drop(db);
+
+        let reopened = RedbBlockStore::open(&db_path).expect("reopen redb");
+        assert_eq!(reopened.get_by_hash(&BlockHash(fake_hash)), Ok(None));
+        assert_eq!(reopened.get_by_height(0), Ok(None));
+        assert_eq!(reopened.len(), Ok(0));
+        assert!(reopened.iter_from(0).unwrap().is_empty());
     }
 }

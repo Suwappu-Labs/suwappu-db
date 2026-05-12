@@ -7,7 +7,7 @@ use super::dispatcher::{AnchorDispatcher, ParityResult};
 use super::types::{Anchor, ChainId, GENESIS_PARENT};
 use gsxdb_state::Commitment;
 use proptest::prelude::*;
-use sha3::{Keccak256, Digest};
+use sha3::{Digest, Keccak256};
 
 /// Compute Keccak256 MAC for Solidity parity testing.
 /// Matches `LTPAnchorRegistry.computeMac()` exactly.
@@ -70,13 +70,7 @@ mod tests {
         let parent = GENESIS_PARENT;
         let key = [3u8; 32];
 
-        let mac = compute_keccak_mac(
-            chain_id.0,
-            height,
-            &state_root.0,
-            &parent.0,
-            &key,
-        );
+        let mac = compute_keccak_mac(chain_id.0, height, &state_root.0, &parent.0, &key);
 
         let anchor = Anchor {
             chain_id,
@@ -102,13 +96,7 @@ mod tests {
 
         // First anchor (genesis)
         let anchor0 = {
-            let mac = compute_keccak_mac(
-                chain_id.0,
-                0,
-                &root(1).0,
-                &GENESIS_PARENT.0,
-                &key,
-            );
+            let mac = compute_keccak_mac(chain_id.0, 0, &root(1).0, &GENESIS_PARENT.0, &key);
             Anchor {
                 chain_id,
                 height: 0,
@@ -128,13 +116,7 @@ mod tests {
         ));
 
         let anchor1 = {
-            let mac = compute_keccak_mac(
-                chain_id.0,
-                1,
-                &root(2).0,
-                &parent_of_second.0,
-                &key,
-            );
+            let mac = compute_keccak_mac(chain_id.0, 1, &root(2).0, &parent_of_second.0, &key);
             Anchor {
                 chain_id,
                 height: 1,
@@ -164,13 +146,7 @@ mod tests {
         let key = [7u8; 32];
 
         // Correct MAC
-        let correct_mac = compute_keccak_mac(
-            chain_id.0,
-            height,
-            &state_root.0,
-            &parent.0,
-            &key,
-        );
+        let correct_mac = compute_keccak_mac(chain_id.0, height, &state_root.0, &parent.0, &key);
 
         // Wrong MAC (different key used)
         let wrong_mac = compute_keccak_mac(
@@ -191,13 +167,7 @@ mod tests {
 
         // Anchor at height 5
         let anchor_h5 = {
-            let mac = compute_keccak_mac(
-                chain_id.0,
-                5,
-                &root(4).0,
-                &GENESIS_PARENT.0,
-                &key,
-            );
+            let mac = compute_keccak_mac(chain_id.0, 5, &root(4).0, &GENESIS_PARENT.0, &key);
             Anchor {
                 chain_id,
                 height: 5,
@@ -219,16 +189,12 @@ mod tests {
                     &root(4).0,
                     &GENESIS_PARENT.0,
                     &{
-                        let m = compute_keccak_mac(
-                            chain_id.0,
-                            5,
-                            &root(4).0,
-                            &GENESIS_PARENT.0,
-                            &key,
-                        );
+                        let m =
+                            compute_keccak_mac(chain_id.0, 5, &root(4).0, &GENESIS_PARENT.0, &key);
                         m
                     },
-                )).0,
+                ))
+                .0,
                 &key,
             );
             Anchor {
@@ -241,13 +207,8 @@ mod tests {
                     &root(4).0,
                     &GENESIS_PARENT.0,
                     &{
-                        let m = compute_keccak_mac(
-                            chain_id.0,
-                            5,
-                            &root(4).0,
-                            &GENESIS_PARENT.0,
-                            &key,
-                        );
+                        let m =
+                            compute_keccak_mac(chain_id.0, 5, &root(4).0, &GENESIS_PARENT.0, &key);
                         m
                     },
                 )),

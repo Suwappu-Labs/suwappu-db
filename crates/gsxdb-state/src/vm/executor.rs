@@ -44,11 +44,7 @@ pub trait MoveExecutor: std::fmt::Debug {
     ///
     /// Returns the resulting coin value and nonce, or `ExecutionOutcome::Failure` if
     /// the execution failed or the account's resources could not be accessed.
-    fn execute(
-        &self,
-        addr: &MoveAddress,
-        initial: BalanceSlot,
-    ) -> ExecutionOutcome;
+    fn execute(&self, addr: &MoveAddress, initial: BalanceSlot) -> ExecutionOutcome;
 }
 
 /// Mock Move executor for development and testing.
@@ -62,11 +58,7 @@ pub trait MoveExecutor: std::fmt::Debug {
 pub struct MockMoveExecutor;
 
 impl MoveExecutor for MockMoveExecutor {
-    fn execute(
-        &self,
-        _addr: &MoveAddress,
-        initial: BalanceSlot,
-    ) -> ExecutionOutcome {
+    fn execute(&self, _addr: &MoveAddress, initial: BalanceSlot) -> ExecutionOutcome {
         ExecutionOutcome::Success {
             coin_value: initial.move_coin_value(),
             sequence: initial.nonce(),
@@ -90,11 +82,7 @@ pub struct AptosMoveExecutor {
 
 #[cfg(feature = "production-move-executor")]
 impl MoveExecutor for AptosMoveExecutor {
-    fn execute(
-        &self,
-        _addr: &MoveAddress,
-        _initial: BalanceSlot,
-    ) -> ExecutionOutcome {
+    fn execute(&self, _addr: &MoveAddress, _initial: BalanceSlot) -> ExecutionOutcome {
         // TODO(S9): Implement real Aptos move-vm-runtime execution.
         // This is a placeholder that always succeeds with the input state.
         // At S9 close, this will:
@@ -114,14 +102,19 @@ mod tests {
     #[test]
     fn mock_executor_preserves_state() {
         let executor = MockMoveExecutor;
-        let addr = MoveAddress::from_hex("0x0000000000000000000000000000000000000000000000000000000000000001")
-            .unwrap();
+        let addr = MoveAddress::from_hex(
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+        )
+        .unwrap();
         let slot = BalanceSlot::with_nonce(100, AccountNonce::new(42));
 
         let outcome = executor.execute(&addr, slot);
 
         match outcome {
-            ExecutionOutcome::Success { coin_value, sequence } => {
+            ExecutionOutcome::Success {
+                coin_value,
+                sequence,
+            } => {
                 assert_eq!(coin_value.to_u128(), 100);
                 assert_eq!(sequence.value, 42);
             }
@@ -132,14 +125,19 @@ mod tests {
     #[test]
     fn mock_executor_handles_zero_nonce() {
         let executor = MockMoveExecutor;
-        let addr = MoveAddress::from_hex("0x0000000000000000000000000000000000000000000000000000000000000002")
-            .unwrap();
+        let addr = MoveAddress::from_hex(
+            "0x0000000000000000000000000000000000000000000000000000000000000002",
+        )
+        .unwrap();
         let slot = BalanceSlot::new(999);
 
         let outcome = executor.execute(&addr, slot);
 
         match outcome {
-            ExecutionOutcome::Success { coin_value, sequence } => {
+            ExecutionOutcome::Success {
+                coin_value,
+                sequence,
+            } => {
                 assert_eq!(coin_value.to_u128(), 999);
                 assert_eq!(sequence.value, 0);
             }

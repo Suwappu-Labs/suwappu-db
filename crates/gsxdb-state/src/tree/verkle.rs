@@ -82,12 +82,15 @@ impl IpaWitness {
 impl IpaWitness {
     /// Size in bytes of the witness (for measurement).
     pub fn size_bytes(&self) -> usize {
-        32 * (self.left.len() + self.right.len()) + 32 + 32  // L + R + final_commitment + final_evaluation
+        32 * (self.left.len() + self.right.len()) + 32 + 32 // L + R + final_commitment + final_evaluation
     }
 }
 
 /// Represents whether to use hash-based (Phase 1) or Verkle (S10+) commitments.
-#[cfg_attr(feature = "production-verkle", derive(Debug, Clone, Copy, PartialEq, Eq))]
+#[cfg_attr(
+    feature = "production-verkle",
+    derive(Debug, Clone, Copy, PartialEq, Eq)
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommitmentScheme {
     /// Hash-based (BLAKE3) for Phase 1.

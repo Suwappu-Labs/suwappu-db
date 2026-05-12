@@ -28,12 +28,12 @@ pub use nonce_semantics::{AccountNonce, EvmNonce, MoveSequenceNumber};
 pub use redb_store::RedbBalanceStore;
 pub use store::{BalanceStore, InMemoryBalanceStore};
 pub use tree::{Commitment, Proof, ProofStep, StateTree};
+#[cfg(feature = "production-move-executor")]
+pub use vm::AptosMoveExecutor;
 pub use vm::{
     CanonicalTransfer, EvmProjector, EvmTx, EvmView, ExecutionOutcome, MockMoveExecutor,
     MoveExecutor, MoveProjector, MoveTx, MoveView,
 };
-#[cfg(feature = "production-move-executor")]
-pub use vm::AptosMoveExecutor;
 
 /// 20-byte EVM-shaped address. Move addresses are projected onto this layout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, PartialOrd, Ord)]

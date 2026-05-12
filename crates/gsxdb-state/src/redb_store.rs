@@ -211,7 +211,10 @@ impl RedbBalanceStore {
             table
                 .insert(addr.0.as_slice(), value.as_slice())
                 .unwrap_or_else(|e| {
-                    panic!("RedbBalanceStore::set_evm_nonce insert failed for {:?}: {e}", addr.0)
+                    panic!(
+                        "RedbBalanceStore::set_evm_nonce insert failed for {:?}: {e}",
+                        addr.0
+                    )
                 });
         }
         txn.commit()
@@ -236,7 +239,10 @@ impl RedbBalanceStore {
                 Some(u64::from_be_bytes(buf))
             }
             Ok(None) => None,
-            Err(e) => panic!("RedbBalanceStore::get_evm_nonce failed for {:?}: {e}", addr.0),
+            Err(e) => panic!(
+                "RedbBalanceStore::get_evm_nonce failed for {:?}: {e}",
+                addr.0
+            ),
         }
     }
 }

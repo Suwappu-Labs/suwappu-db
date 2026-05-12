@@ -11,15 +11,13 @@
 //! that all subsystems work together coherently.
 
 use gsxdb_bridge::{
-    BlockExecutor, Intent, AnchorDispatcher, Block,
-    InMemoryBlockStore, BlockStore, BlockTimer, ParityTimer, record_state_metrics,
-    ChainId, BlockHash,
+    record_state_metrics, AnchorDispatcher, Block, BlockExecutor, BlockHash, BlockStore,
+    BlockTimer, ChainId, InMemoryBlockStore, Intent, ParityTimer,
 };
 use gsxdb_state::{
-    Address, Balance, BridgeToken, State, StateChange, StateTree, Metrics,
-    dag::{DagBlock, DagStore, BlockHash as DagBlockHash},
-    snapshot::{StateSnapshot, SnapshotManager},
-    Commitment,
+    dag::{BlockHash as DagBlockHash, DagBlock, DagStore},
+    snapshot::{SnapshotManager, StateSnapshot},
+    Address, Balance, BridgeToken, Commitment, Metrics, State, StateChange, StateTree,
 };
 use std::sync::Arc;
 
@@ -75,16 +73,32 @@ fn block_execution_records_metrics() {
 
     // Verify block executed.
     assert_eq!(_report.outcomes.len(), 3);
-    assert!(_report.outcomes.iter().all(|o| matches!(o, gsxdb_bridge::TxOutcome::Committed)));
+    assert!(_report
+        .outcomes
+        .iter()
+        .all(|o| matches!(o, gsxdb_bridge::TxOutcome::Committed)));
 
     // Verify metrics recorded.
-    assert!(metrics.block_duration_ms.count() > 0, "block_duration_ms not recorded");
-    assert!(metrics.block_duration_ms.mean() >= 0.0, "block_duration_ms mean invalid");
+    assert!(
+        metrics.block_duration_ms.count() > 0,
+        "block_duration_ms not recorded"
+    );
+    assert!(
+        metrics.block_duration_ms.mean() >= 0.0,
+        "block_duration_ms mean invalid"
+    );
 
     // Record state metrics.
     record_state_metrics(&metrics, &state);
-    assert_eq!(metrics.address_count.get() as usize, 4, "address_count not updated");
-    assert!(metrics.state_size_bytes.get() > 0.0, "state_size_bytes not recorded");
+    assert_eq!(
+        metrics.address_count.get() as usize,
+        4,
+        "address_count not updated"
+    );
+    assert!(
+        metrics.state_size_bytes.get() > 0.0,
+        "state_size_bytes not recorded"
+    );
 }
 
 /// S12 exit gate 2: State snapshots capture block state.
@@ -142,7 +156,10 @@ fn dag_store_enforces_causality() {
 
     // Verify reachability: root should be reachable FROM child (via parent links).
     let path = store.find_path(&child_hash, &root_hash);
-    assert!(path.is_some(), "root should be reachable from child by following parent links");
+    assert!(
+        path.is_some(),
+        "root should be reachable from child by following parent links"
+    );
 
     // Verify path includes both blocks.
     let path = path.unwrap();
@@ -164,7 +181,9 @@ fn anchor_parity_detects_divergence() {
 
     // Dispatch genesis anchor (height 0).
     let genesis_root = Commitment([4; 32]);
-    dispatcher.dispatch(0, genesis_root).expect("dispatch genesis");
+    dispatcher
+        .dispatch(0, genesis_root)
+        .expect("dispatch genesis");
 
     // Dispatch an anchor at height 1.
     let root = Commitment([5; 32]);
@@ -217,10 +236,13 @@ fn block_recovery_from_store() {
     };
 
     let mut mutable_store = block_store;
-    mutable_store.put(block);
+    mutable_store.put(block).expect("put block");
 
     // Retrieve and verify.
-    let retrieved = mutable_store.get_by_height(1).expect("retrieve block");
+    let retrieved = mutable_store
+        .get_by_height(1)
+        .expect("get_by_height ok")
+        .expect("retrieve block");
     assert_eq!(retrieved.height, 1);
     assert_eq!(retrieved.state_root, root_before);
     assert_eq!(retrieved.intents.len(), 1);
@@ -262,8 +284,14 @@ fn shadow_testnet_bootstrap() {
         };
 
         // Verify all txns committed.
-        assert!(report.outcomes.iter().all(|o| matches!(o, gsxdb_bridge::TxOutcome::Committed)),
-            "block {} should commit all txns", block_height);
+        assert!(
+            report
+                .outcomes
+                .iter()
+                .all(|o| matches!(o, gsxdb_bridge::TxOutcome::Committed)),
+            "block {} should commit all txns",
+            block_height
+        );
 
         // Record state metrics.
         record_state_metrics(&metrics, &state);
@@ -279,14 +307,14 @@ fn shadow_testnet_bootstrap() {
             intents: intents.clone(),
         };
 
-        mutable_store.put(block.clone());
+        mutable_store.put(block.clone()).expect("put block");
 
         // Add to DAG.
         let dag_hash: DagBlockHash = [block_height as u8; 32];
         let dag_block = DagBlock {
             height: block_height as u64,
-            state_root: post_root.0,  // Extract the raw [u8; 32] from Commitment
-            parent_hashes: vec![prev_hash.0],  // Extract from BlockHash struct
+            state_root: post_root.0, // Extract the raw [u8; 32] from Commitment
+            parent_hashes: vec![prev_hash.0], // Extract from BlockHash struct
             timestamp: 1000 * block_height as u64,
         };
         dag_store.put(dag_hash, dag_block);
@@ -299,22 +327,38 @@ fn shadow_testnet_bootstrap() {
                 serde_json::to_vec(&post_root).unwrap(),
                 None,
             );
-            assert!(snapshot.is_valid(u64::MAX), "snapshot block {} should be valid", block_height);
+            assert!(
+                snapshot.is_valid(u64::MAX),
+                "snapshot block {} should be valid",
+                block_height
+            );
         }
 
         prev_hash = BlockHash([block_height as u8; 32]);
     }
 
     // Verify testnet state.
-    assert_eq!(mutable_store.len(), 3, "should have 3 blocks stored");
-    assert!(metrics.block_duration_ms.count() >= 3, "should record 3 block executions");
-    assert!(metrics.address_count.get() >= 1.0, "address count should be tracked");
+    assert_eq!(mutable_store.len(), Ok(3), "should have 3 blocks stored");
+    assert!(
+        metrics.block_duration_ms.count() >= 3,
+        "should record 3 block executions"
+    );
+    assert!(
+        metrics.address_count.get() >= 1.0,
+        "address count should be tracked"
+    );
 
     // Export metrics as Prometheus text.
     let metrics_obj = Metrics::new();
     metrics_obj.block_height.set(3.0);
     metrics_obj.blocks_committed.add(3);
     let prometheus_text = metrics_obj.to_prometheus_text();
-    assert!(prometheus_text.contains("gsxdb_block_height"), "prometheus export should contain block_height");
-    assert!(prometheus_text.contains("gsxdb_blocks_committed"), "prometheus export should contain blocks_committed");
+    assert!(
+        prometheus_text.contains("gsxdb_block_height"),
+        "prometheus export should contain block_height"
+    );
+    assert!(
+        prometheus_text.contains("gsxdb_blocks_committed"),
+        "prometheus export should contain blocks_committed"
+    );
 }

@@ -147,7 +147,13 @@ fn fixture_parent_chain_link_rejection() {
 
     // First anchor
     let anchor0 = {
-        let mac = solidity_mac(chain_id, 0, &Commitment([1u8; 32]).0, &GENESIS_PARENT.0, &key);
+        let mac = solidity_mac(
+            chain_id,
+            0,
+            &Commitment([1u8; 32]).0,
+            &GENESIS_PARENT.0,
+            &key,
+        );
         Anchor {
             chain_id: ChainId(chain_id),
             height: 0,
@@ -158,21 +164,20 @@ fn fixture_parent_chain_link_rejection() {
     };
 
     // Correct parent of second anchor
-    let correct_parent =
-        AnchorHash(solidity_hash(chain_id, 0, &[1u8; 32], &GENESIS_PARENT.0, &anchor0.mac));
+    let correct_parent = AnchorHash(solidity_hash(
+        chain_id,
+        0,
+        &[1u8; 32],
+        &GENESIS_PARENT.0,
+        &anchor0.mac,
+    ));
 
     // Wrong parent (e.g., zero)
     let wrong_parent = AnchorHash([0u8; 32]);
 
     // Second anchor with wrong parent
     let anchor1_bad = {
-        let mac = solidity_mac(
-            chain_id,
-            1,
-            &Commitment([2u8; 32]).0,
-            &wrong_parent.0,
-            &key,
-        );
+        let mac = solidity_mac(chain_id, 1, &Commitment([2u8; 32]).0, &wrong_parent.0, &key);
         Anchor {
             chain_id: ChainId(chain_id),
             height: 1,
@@ -211,7 +216,13 @@ fn fixture_non_monotonic_height_rejection() {
 
     // Anchor at height 5
     let _anchor_h5 = {
-        let mac = solidity_mac(chain_id, 5, &Commitment([10u8; 32]).0, &GENESIS_PARENT.0, &key);
+        let mac = solidity_mac(
+            chain_id,
+            5,
+            &Commitment([10u8; 32]).0,
+            &GENESIS_PARENT.0,
+            &key,
+        );
         Anchor {
             chain_id: ChainId(chain_id),
             height: 5,
