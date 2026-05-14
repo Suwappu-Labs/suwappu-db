@@ -9,7 +9,12 @@ all-features = true
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
-ignore = []
+ignore = [
+    # rustls-pemfile is unmaintained; pulled transitively via ureq -> rustls.
+    # No vulnerability — just maintenance status. Removing requires a ureq
+    # upgrade beyond what gsxdb-bridge currently pins.
+    "RUSTSEC-2025-0134",
+]
 
 [licenses]
 # Permissive OSS licenses we accept across the dependency tree.
@@ -26,6 +31,8 @@ allow = [
     "CC0-1.0",
     "Zlib",
     "Unlicense",
+    # webpki-roots (Mozilla CA bundle) — permissive data-license, not OSS code.
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.93
 exceptions = []
@@ -33,6 +40,9 @@ exceptions = []
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# Workspace-internal crates declare each other via `version = "*"` + `path = "..."`.
+# That's fine for unpublished crates; only path-less wildcards are real risks.
+allow-wildcard-paths = true
 highlight = "all"
 # No banned crates by default. If a future incident calls for one, add it
 # here with a `reason` and a link to the IQ that drove the decision.
