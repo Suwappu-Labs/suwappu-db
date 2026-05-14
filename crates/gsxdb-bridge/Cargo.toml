@@ -3,6 +3,7 @@ name = "gsxdb-bridge"
 description = "The only legitimate path from data lane (gsxdb-lane) to authoritative state (gsxdb-state). Validates intents and applies state changes."
 version.workspace = true
 edition.workspace = true
+publish.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
