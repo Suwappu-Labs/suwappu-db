@@ -25,7 +25,8 @@ mod parity_test;
 
 pub use credential::{
     eth_signed_message_hash, verify_credential, verify_ecdsa, AnchorAuthCredential,
-    CredentialVerifyError, EcdsaVerifyError, EthAddress, ExpectedVerifier, ECDSA_SIG_LEN,
+    CredentialVerifyError, EcdsaVerifyError, EthAddress, ExpectedVerifier, Sp1PublicValues,
+    ECDSA_SIG_LEN,
 };
 
 #[cfg(feature = "production-pqc")]

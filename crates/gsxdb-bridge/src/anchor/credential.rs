@@ -41,6 +41,44 @@ use pqcrypto_traits::sign::{
 /// Length of a recoverable secp256k1 signature: r (32) || s (32) || v (1).
 pub const ECDSA_SIG_LEN: usize = 65;
 
+/// Public values committed to by an Sp1ZkProof guest program over a
+/// single-block replay.
+///
+/// The guest body wraps [`crate::recovery::replay`]:
+///
+/// ```text
+/// input:  (prev_state_root, block)
+/// output: (prev_state_root, new_state_root, block_hash)
+/// ```
+///
+/// The `block_hash` is committed alongside the roots so the verifier
+/// can bind the proof to a specific block, not just to any block that
+/// happens to produce the claimed new root.
+///
+/// Encoding is fixed-byte (3 × 32 = 96 bytes) so the eventual zk
+/// circuit can commit to it without ABI machinery.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Sp1PublicValues {
+    /// State root the block consumed.
+    pub prev_state_root: [u8; 32],
+    /// State root the block produced.
+    pub new_state_root: [u8; 32],
+    /// Hash of the block whose replay was proven.
+    pub block_hash: [u8; 32],
+}
+
+impl Sp1PublicValues {
+    /// Canonical 96-byte encoding the zkVM commits to.
+    #[must_use]
+    pub fn to_bytes(&self) -> [u8; 96] {
+        let mut out = [0u8; 96];
+        out[0..32].copy_from_slice(&self.prev_state_root);
+        out[32..64].copy_from_slice(&self.new_state_root);
+        out[64..96].copy_from_slice(&self.block_hash);
+        out
+    }
+}
+
 /// Sidecar credential carrying real signature bytes alongside an
 /// [`Anchor`]. Variants are 1:1 with
 /// [`AuthScheme`](super::types::AuthScheme).
@@ -50,10 +88,31 @@ pub enum AnchorAuthCredential {
     /// sidecar bytes needed. This variant exists so dispatch is
     /// total over all schemes.
     Blake3Mac,
-    /// Reserved for `Sp1ZkProof` (Track 1.3). Payload schema is TBD.
+    /// `Sp1ZkProof` validity-proof bundle. The guest program (replay
+    /// of a single block) commits to [`Sp1PublicValues`] and produces
+    /// the opaque proof bytes. The verifier (pending Track 1.3 Step 2)
+    /// will check that:
+    ///   1. `vkey_hash` matches the registered guest-program hash;
+    ///   2. the proof verifies under `vkey_hash` and `public_values`;
+    ///   3. `public_values` agrees with the anchor's stated transition
+    ///      and the chain's last accepted state root.
+    ///
+    /// Today the wire shape is fixed but cryptographic verification
+    /// is not wired (zkVM toolchain choice is open).
     Sp1ZkProof {
-        /// Opaque zk-proof bytes; schema decided when the verifier lands.
-        proof: Vec<u8>,
+        /// Hash of the verifying-key for the zk program that produced
+        /// `proof`. Pinning the vkey hash binds the proof to a specific
+        /// compiled guest binary; mismatch is unconditional rejection.
+        vkey_hash: [u8; 32],
+        /// The values the guest program committed to. Carried in the
+        /// clear so the verifier can cross-check them against the
+        /// anchor's claimed transition before doing the heavy proof
+        /// check.
+        public_values: Sp1PublicValues,
+        /// Opaque proof bytes produced by the zkVM. Variable length;
+        /// schema is owned by the prover crate (sp1-sdk / risc0 / noir
+        /// — pending Track 1.3 Step 2 decision).
+        proof_bytes: Vec<u8>,
     },
     /// 65-byte recoverable ECDSA signature (r || s || v) over the
     /// EIP-191-prefixed `abi.encode(anchor)` digest. Matches what
@@ -233,6 +292,24 @@ pub enum ExpectedVerifier<'a> {
         /// ML-DSA-65 half: raw public key bytes (FIPS 204 encoding).
         mldsa_public_key: &'a [u8],
     },
+    /// Sp1 (or other zkVM) validity-proof: the verifier checks that
+    /// (a) the proof was produced by the program whose verifying-key
+    /// hashes to `vkey_hash`, and (b) the committed public values
+    /// describe the transition the anchor claims.
+    Sp1ZkProof {
+        /// Hash of the registered guest-program verifying key. The
+        /// credential's `vkey_hash` field must match this exactly.
+        vkey_hash: [u8; 32],
+        /// Expected `prev_state_root` — typically the previously
+        /// accepted anchor's `state_root` for this chain.
+        expected_prev_state_root: [u8; 32],
+        /// Expected `new_state_root` — equal to the anchor's
+        /// `state_root` field.
+        expected_new_state_root: [u8; 32],
+        /// Expected `block_hash` — the hash of the block whose replay
+        /// the proof attests to.
+        expected_block_hash: [u8; 32],
+    },
 }
 
 /// Reasons [`verify_credential`] can fail. Distinct from the per-scheme
@@ -254,6 +331,13 @@ pub enum CredentialVerifyError {
     /// ML-DSA-65 half failed. Only emitted with `production-pqc`.
     #[cfg(feature = "production-pqc")]
     MlDsaFailed(MlDsaVerifyError),
+    /// Sp1 credential's `vkey_hash` did not match the registered
+    /// verifying-key hash. Emitted before the proof-verify step.
+    Sp1VkeyMismatch,
+    /// Sp1 credential's `public_values` did not agree with the
+    /// expected transition for this anchor. Emitted before the
+    /// proof-verify step.
+    Sp1PublicValuesMismatch,
 }
 
 /// Top-level verifier: dispatches on `anchor.auth_scheme` and runs the
@@ -304,9 +388,45 @@ pub fn verify_credential(
             signer,
             mldsa_public_key,
         ),
-        (AuthScheme::Sp1ZkProof, _, _) => {
-            Err(CredentialVerifyError::UnsupportedScheme(AuthScheme::Sp1ZkProof))
+        (
+            AuthScheme::Sp1ZkProof,
+            AnchorAuthCredential::Sp1ZkProof {
+                vkey_hash,
+                public_values,
+                proof_bytes,
+            },
+            ExpectedVerifier::Sp1ZkProof {
+                vkey_hash: expected_vkey,
+                expected_prev_state_root,
+                expected_new_state_root,
+                expected_block_hash,
+            },
+        ) => {
+            // Cheap structural pre-checks the future cryptographic
+            // verifier would also do — surfaced here so callers can
+            // tell vkey-mismatch from public-values-mismatch from
+            // proof-failure.
+            if vkey_hash != expected_vkey {
+                return Err(CredentialVerifyError::Sp1VkeyMismatch);
+            }
+            if &public_values.prev_state_root != expected_prev_state_root
+                || &public_values.new_state_root != expected_new_state_root
+                || &public_values.block_hash != expected_block_hash
+            {
+                return Err(CredentialVerifyError::Sp1PublicValuesMismatch);
+            }
+            // Cryptographic proof verification is not wired yet —
+            // pending Track 1.3 Step 2 (zkVM toolchain decision +
+            // sp1-sdk / risc0 / noir integration). Until then, the
+            // arm is conservative: structurally valid bundles are
+            // STILL rejected as unsupported so no caller mistakes
+            // pre-check success for full verification.
+            let _ = proof_bytes;
+            Err(CredentialVerifyError::UnsupportedScheme(
+                AuthScheme::Sp1ZkProof,
+            ))
         }
+        (AuthScheme::Sp1ZkProof, _, _) => Err(CredentialVerifyError::SchemeMismatch),
         _ => Err(CredentialVerifyError::SchemeMismatch),
     }
 }
@@ -562,18 +682,106 @@ mod tests {
         .expect("ecdsa path verifies via dispatch");
     }
 
+    fn sp1_credential(
+        vkey_hash: [u8; 32],
+        prev: [u8; 32],
+        new: [u8; 32],
+        block_hash: [u8; 32],
+        proof_bytes: Vec<u8>,
+    ) -> AnchorAuthCredential {
+        AnchorAuthCredential::Sp1ZkProof {
+            vkey_hash,
+            public_values: Sp1PublicValues {
+                prev_state_root: prev,
+                new_state_root: new,
+                block_hash,
+            },
+            proof_bytes,
+        }
+    }
+
+    fn sp1_expected(
+        vkey_hash: [u8; 32],
+        prev: [u8; 32],
+        new: [u8; 32],
+        block_hash: [u8; 32],
+    ) -> ExpectedVerifier<'static> {
+        ExpectedVerifier::Sp1ZkProof {
+            vkey_hash,
+            expected_prev_state_root: prev,
+            expected_new_state_root: new,
+            expected_block_hash: block_hash,
+        }
+    }
+
     #[test]
-    fn verify_credential_sp1_returns_unsupported() {
+    fn sp1_public_values_encoding_is_96_bytes() {
+        let pv = Sp1PublicValues {
+            prev_state_root: [0xaa; 32],
+            new_state_root: [0xbb; 32],
+            block_hash: [0xcc; 32],
+        };
+        let bytes = pv.to_bytes();
+        assert_eq!(bytes.len(), 96);
+        assert_eq!(&bytes[0..32], &[0xaa; 32]);
+        assert_eq!(&bytes[32..64], &[0xbb; 32]);
+        assert_eq!(&bytes[64..96], &[0xcc; 32]);
+    }
+
+    #[test]
+    fn verify_credential_sp1_scheme_mismatch_when_credential_is_blake3() {
         let mut anchor = sample_anchor();
         anchor.auth_scheme = AuthScheme::Sp1ZkProof;
+        // Caller passes an ECDSA expected-verifier — that's a hard
+        // scheme mismatch regardless of the credential's value match.
+        let result = verify_credential(
+            &anchor,
+            &AnchorAuthCredential::Blake3Mac,
+            &ExpectedVerifier::EcdsaSecp256k1 {
+                signer: EthAddress([0; 20]),
+            },
+        );
+        assert_eq!(result, Err(CredentialVerifyError::SchemeMismatch));
+    }
+
+    #[test]
+    fn verify_credential_sp1_rejects_vkey_mismatch() {
+        let mut anchor = sample_anchor();
+        anchor.auth_scheme = AuthScheme::Sp1ZkProof;
+        let cred = sp1_credential([1; 32], [2; 32], [3; 32], [4; 32], vec![0xab; 16]);
+        // Expected vkey differs:
+        let expected = sp1_expected([9; 32], [2; 32], [3; 32], [4; 32]);
         assert_eq!(
-            verify_credential(
-                &anchor,
-                &AnchorAuthCredential::Sp1ZkProof { proof: vec![] },
-                &ExpectedVerifier::EcdsaSecp256k1 {
-                    signer: EthAddress([0; 20])
-                },
-            ),
+            verify_credential(&anchor, &cred, &expected),
+            Err(CredentialVerifyError::Sp1VkeyMismatch)
+        );
+    }
+
+    #[test]
+    fn verify_credential_sp1_rejects_public_values_mismatch() {
+        let mut anchor = sample_anchor();
+        anchor.auth_scheme = AuthScheme::Sp1ZkProof;
+        let cred = sp1_credential([1; 32], [2; 32], [3; 32], [4; 32], vec![0xab; 16]);
+        // Same vkey, different new_state_root:
+        let expected = sp1_expected([1; 32], [2; 32], [0xff; 32], [4; 32]);
+        assert_eq!(
+            verify_credential(&anchor, &cred, &expected),
+            Err(CredentialVerifyError::Sp1PublicValuesMismatch)
+        );
+    }
+
+    #[test]
+    fn verify_credential_sp1_returns_unsupported_when_prechecks_pass() {
+        // Structurally valid: vkey matches, public values match. The
+        // arm STILL rejects with UnsupportedScheme because the proof
+        // verifier isn't wired. This is the load-bearing guarantee:
+        // pre-check success is never confused for full verification.
+        let mut anchor = sample_anchor();
+        anchor.auth_scheme = AuthScheme::Sp1ZkProof;
+        let cred = sp1_credential([1; 32], [2; 32], [3; 32], [4; 32], vec![0xab; 16]);
+        let expected = sp1_expected([1; 32], [2; 32], [3; 32], [4; 32]);
+        assert_eq!(
+            verify_credential(&anchor, &cred, &expected),
             Err(CredentialVerifyError::UnsupportedScheme(
                 AuthScheme::Sp1ZkProof
             ))
