@@ -14,6 +14,7 @@
 //! Solidity `LTPAnchorRegistry` and ECDSA/EdDSA signatures are launch-
 //! readiness items.
 
+pub mod credential;
 pub mod dispatcher;
 pub mod l1_reader;
 pub mod log;
@@ -22,6 +23,10 @@ pub mod types;
 #[cfg(test)]
 mod parity_test;
 
+pub use credential::{
+    eth_signed_message_hash, verify_ecdsa, AnchorAuthCredential, EcdsaVerifyError, EthAddress,
+    ECDSA_SIG_LEN,
+};
 pub use dispatcher::{AnchorDispatcher, ParityResult};
 pub use l1_reader::{L1AnchorReader, MockL1AnchorReader, RpcL1AnchorReader};
 pub use log::{AnchorLog, AppendError};
