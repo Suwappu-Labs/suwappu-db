@@ -27,6 +27,9 @@ pub use credential::{
     eth_signed_message_hash, verify_credential, verify_ecdsa, AnchorAuthCredential,
     CredentialVerifyError, EcdsaVerifyError, EthAddress, ExpectedVerifier, ECDSA_SIG_LEN,
 };
+
+#[cfg(feature = "production-pqc")]
+pub use credential::{verify_mldsa65, MlDsaVerifyError};
 pub use dispatcher::{AnchorDispatcher, ParityResult};
 pub use l1_reader::{L1AnchorReader, MockL1AnchorReader, RpcL1AnchorReader};
 pub use log::{AnchorLog, AppendError};
