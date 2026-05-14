@@ -3,6 +3,7 @@ name = "gsxdb-state"
 description = "Authoritative state lane — owns balances, anchors, and cross-VM projections. Mutated only via gsxdb-bridge."
 version.workspace = true
 edition.workspace = true
+publish.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
