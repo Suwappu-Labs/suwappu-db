@@ -31,6 +31,13 @@ use gsxdb_state::Commitment;
 use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
 use sha3::{Digest, Keccak256};
 
+#[cfg(feature = "production-pqc")]
+use pqcrypto_mldsa::mldsa65;
+#[cfg(feature = "production-pqc")]
+use pqcrypto_traits::sign::{
+    DetachedSignature as _, PublicKey as _, SecretKey as _, VerificationError,
+};
+
 /// Length of a recoverable secp256k1 signature: r (32) || s (32) || v (1).
 pub const ECDSA_SIG_LEN: usize = 65;
 
@@ -148,6 +155,42 @@ pub fn eth_signed_message_hash(anchor: &Anchor) -> [u8; 32] {
     let mut out = [0u8; 32];
     out.copy_from_slice(&h.finalize());
     out
+}
+
+/// Reasons an ML-DSA-65 verification can fail.
+#[cfg(feature = "production-pqc")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MlDsaVerifyError {
+    /// Signature bytes did not parse as an ML-DSA-65 detached signature.
+    MalformedSignature,
+    /// Signature parsed but did not verify under the supplied public key.
+    InvalidSignature,
+}
+
+/// Verify an ML-DSA-65 detached signature over the same EIP-191 anchor
+/// payload that ECDSA signs. Using a shared payload lets the AND-gate
+/// composer (Step D) call both verifiers without recomputing.
+///
+/// # Errors
+///
+/// Returns [`MlDsaVerifyError`] when the signature is malformed or
+/// does not verify under `public_key`.
+#[cfg(feature = "production-pqc")]
+pub fn verify_mldsa65(
+    anchor: &Anchor,
+    signature_bytes: &[u8],
+    public_key_bytes: &[u8],
+) -> Result<(), MlDsaVerifyError> {
+    let sig = mldsa65::DetachedSignature::from_bytes(signature_bytes)
+        .map_err(|_| MlDsaVerifyError::MalformedSignature)?;
+    let pk = mldsa65::PublicKey::from_bytes(public_key_bytes)
+        .map_err(|_| MlDsaVerifyError::MalformedSignature)?;
+    let payload = eth_signed_message_hash(anchor);
+    match mldsa65::verify_detached_signature(&sig, &payload, &pk) {
+        Ok(()) => Ok(()),
+        Err(VerificationError::InvalidSignature) => Err(MlDsaVerifyError::InvalidSignature),
+        Err(_) => Err(MlDsaVerifyError::MalformedSignature),
+    }
 }
 
 /// Verify an ECDSA secp256k1 signature against the EIP-191 anchor
@@ -307,6 +350,78 @@ mod tests {
     fn eth_signed_message_hash_is_deterministic() {
         let a = sample_anchor();
         assert_eq!(eth_signed_message_hash(&a), eth_signed_message_hash(&a));
+    }
+
+    #[cfg(feature = "production-pqc")]
+    mod mldsa {
+        use super::super::*;
+        use super::sample_anchor;
+        use pqcrypto_mldsa::mldsa65;
+        use pqcrypto_traits::sign::DetachedSignature as _;
+        use pqcrypto_traits::sign::PublicKey as _;
+
+        fn sign_anchor_mldsa(
+            sk: &mldsa65::SecretKey,
+            anchor: &Anchor,
+        ) -> mldsa65::DetachedSignature {
+            let payload = eth_signed_message_hash(anchor);
+            mldsa65::detached_sign(&payload, sk)
+        }
+
+        #[test]
+        fn mldsa_roundtrip_verifies() {
+            let (pk, sk) = mldsa65::keypair();
+            let anchor = sample_anchor();
+            let sig = sign_anchor_mldsa(&sk, &anchor);
+
+            verify_mldsa65(&anchor, sig.as_bytes(), pk.as_bytes())
+                .expect("roundtrip verifies");
+        }
+
+        #[test]
+        fn mldsa_rejects_tampered_payload() {
+            let (pk, sk) = mldsa65::keypair();
+            let original = sample_anchor();
+            let sig = sign_anchor_mldsa(&sk, &original);
+
+            let mut tampered = original;
+            tampered.state_root = gsxdb_state::Commitment([0xff; 32]);
+            assert_eq!(
+                verify_mldsa65(&tampered, sig.as_bytes(), pk.as_bytes()),
+                Err(MlDsaVerifyError::InvalidSignature)
+            );
+        }
+
+        #[test]
+        fn mldsa_rejects_wrong_public_key() {
+            let (_pk_real, sk) = mldsa65::keypair();
+            let (pk_other, _sk_other) = mldsa65::keypair();
+            let anchor = sample_anchor();
+            let sig = sign_anchor_mldsa(&sk, &anchor);
+
+            assert_eq!(
+                verify_mldsa65(&anchor, sig.as_bytes(), pk_other.as_bytes()),
+                Err(MlDsaVerifyError::InvalidSignature)
+            );
+        }
+
+        #[test]
+        fn mldsa_rejects_garbage_signature() {
+            // Whether pqcrypto-mldsa fails at parse time
+            // (MalformedSignature) or only at verify time
+            // (InvalidSignature) is an implementation detail of the
+            // upstream crate; the load-bearing property is that the
+            // garbage input is rejected.
+            let (pk, _sk) = mldsa65::keypair();
+            let anchor = sample_anchor();
+            let bad_sig = [0u8; 16];
+
+            assert!(matches!(
+                verify_mldsa65(&anchor, &bad_sig, pk.as_bytes()),
+                Err(MlDsaVerifyError::MalformedSignature)
+                    | Err(MlDsaVerifyError::InvalidSignature)
+            ));
+        }
     }
 
     #[test]
