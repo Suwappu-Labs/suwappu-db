@@ -1,0 +1,82 @@
+name: Property-Test Stress (1M cases)
+
+# Track 2.1 stress run: a small subset of load-bearing invariants
+# at PROPTEST_CASES=1_000_000 to surface rare collisions that the
+# normal 10k pre-merge gate can't reach.
+#
+# Runs:
+#   - weekly via cron (Sunday 06:00 UTC)
+#   - on demand via workflow_dispatch
+#
+# Not gated on a branch — both main and feature branches can be
+# manually stressed when a particular property is in question.
+
+on:
+  schedule:
+    - cron: "0 6 * * 0"
+  workflow_dispatch:
+    inputs:
+      cases:
+        description: "Override PROPTEST_CASES (default 1_000_000)"
+        required: false
+        default: "1000000"
+
+env:
+  RUST_BACKTRACE: 1
+
+jobs:
+  stress-state-tree:
+    name: state_tree determinism + proofs (1M)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.78
+      - uses: Swatinem/rust-cache@v2
+      - name: state_tree property suite
+        run: cargo test --release -p gsxdb-state --test state_tree
+        env:
+          PROPTEST_CASES: ${{ inputs.cases || '1000000' }}
+
+  stress-cross-parity:
+    name: cross_chain_parity_holds (1M)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.78
+      - uses: Swatinem/rust-cache@v2
+      - name: cross_parity property suite
+        run: cargo test --release -p gsxdb-bridge --test cross_parity
+        env:
+          PROPTEST_CASES: ${{ inputs.cases || '1000000' }}
+
+  stress-recovery:
+    name: recover_matches_live_state (1M)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.78
+      - uses: Swatinem/rust-cache@v2
+      - name: recovery property suite
+        run: cargo test --release -p gsxdb-bridge --test recovery
+        env:
+          PROPTEST_CASES: ${{ inputs.cases || '1000000' }}
+
+  stress-cross-vm-parity:
+    name: dual_vm_parity Proposition 1 (1M)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.78
+      - uses: Swatinem/rust-cache@v2
+      - name: cross_vm_parity property suite
+        run: cargo test --release -p gsxdb-bridge --test cross_vm_parity
+        env:
+          PROPTEST_CASES: ${{ inputs.cases || '1000000' }}

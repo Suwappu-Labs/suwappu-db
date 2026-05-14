@@ -30,7 +30,9 @@ jobs:
   property-tests:
     name: Property Tests (10k iterations)
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    # Track 2.1: 10k cases is the load-bearing claim for every invariant
+    # in this repo; running it post-merge only lets a regression land on
+    # main before anyone notices. Now runs on every PR and push.
     steps:
       - uses: actions/checkout@v4
 
@@ -41,9 +43,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Run property tests
-        run: cargo test --workspace
+        run: cargo test --workspace --release
         env:
-          PROPTEST_CASES: 10000  # Comprehensive testing on main
+          PROPTEST_CASES: 10000
+
+      - name: Run property tests (production-pqc feature)
+        run: cargo test --workspace --release --features gsxdb-bridge/production-pqc
+        env:
+          PROPTEST_CASES: 10000
 
   check-lane:
     name: Lane Separation Check
