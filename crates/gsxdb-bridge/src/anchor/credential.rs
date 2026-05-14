@@ -26,7 +26,7 @@
 //! Solidity `Anchor` struct intentionally omits the Rust `auth_scheme`
 //! discriminant — the payload binds only the on-chain fields.
 
-use super::types::{Anchor, AnchorHash, ChainId};
+use super::types::{Anchor, AnchorHash, AuthScheme, ChainId};
 use gsxdb_state::Commitment;
 use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
 use sha3::{Digest, Keccak256};
@@ -206,6 +206,153 @@ pub fn verify_mldsa65(
 ///
 /// Returns [`EcdsaVerifyError`] when the sig is malformed, recovery
 /// fails, or the recovered address is not the expected signer.
+/// Per-scheme verifier inputs supplied by the caller of
+/// [`verify_credential`].
+///
+/// Variants must match the [`AuthScheme`] of the anchor being verified
+/// and the variant of [`AnchorAuthCredential`] carrying the sig bytes.
+/// Mismatch surfaces as [`CredentialVerifyError::SchemeMismatch`].
+#[derive(Debug, Clone, Copy)]
+pub enum ExpectedVerifier<'a> {
+    /// Symmetric BLAKE3 keyed-MAC. The `key` is the same per-chain key
+    /// the dispatcher uses for `Anchor::new`.
+    Blake3Mac {
+        /// Per-chain symmetric authenticator key.
+        key: &'a [u8; 32],
+    },
+    /// secp256k1 approved signer (recovered Ethereum address).
+    EcdsaSecp256k1 {
+        /// Address authorized to sign anchors for this chain.
+        signer: EthAddress,
+    },
+    /// Hybrid: an approved ECDSA signer AND an ML-DSA-65 public key.
+    /// Both must verify for the anchor to be accepted.
+    MlDsa65Hybrid {
+        /// ECDSA half: approved Ethereum signer.
+        signer: EthAddress,
+        /// ML-DSA-65 half: raw public key bytes (FIPS 204 encoding).
+        mldsa_public_key: &'a [u8],
+    },
+}
+
+/// Reasons [`verify_credential`] can fail. Distinct from the per-scheme
+/// `*VerifyError` types so the AND-gate caller can see which half of a
+/// hybrid failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CredentialVerifyError {
+    /// `anchor.auth_scheme`, the credential variant, and the
+    /// `ExpectedVerifier` variant did not all agree.
+    SchemeMismatch,
+    /// The scheme has no verifier wired in this build (e.g.
+    /// `MlDsa65Hybrid` without the `production-pqc` feature, or
+    /// `Sp1ZkProof` until Track 1.3 lands).
+    UnsupportedScheme(AuthScheme),
+    /// `Blake3Mac` MAC did not verify under the supplied key.
+    Blake3MacInvalid,
+    /// ECDSA half failed (also raised for the ECDSA-only scheme).
+    EcdsaFailed(EcdsaVerifyError),
+    /// ML-DSA-65 half failed. Only emitted with `production-pqc`.
+    #[cfg(feature = "production-pqc")]
+    MlDsaFailed(MlDsaVerifyError),
+}
+
+/// Top-level verifier: dispatches on `anchor.auth_scheme` and runs the
+/// per-scheme check. For `MlDsa65Hybrid` this is the AND-gate — both
+/// ECDSA and ML-DSA-65 must verify, with the *same* underlying payload.
+///
+/// # Errors
+///
+/// Returns [`CredentialVerifyError`] with the specific failure reason.
+/// For hybrid schemes, the first failing component short-circuits the
+/// other so the caller knows exactly which half rejected.
+pub fn verify_credential(
+    anchor: &Anchor,
+    credential: &AnchorAuthCredential,
+    expected: &ExpectedVerifier<'_>,
+) -> Result<(), CredentialVerifyError> {
+    match (anchor.auth_scheme, credential, expected) {
+        (
+            AuthScheme::Blake3Mac,
+            AnchorAuthCredential::Blake3Mac,
+            ExpectedVerifier::Blake3Mac { key },
+        ) => {
+            if anchor.verify_mac(key) {
+                Ok(())
+            } else {
+                Err(CredentialVerifyError::Blake3MacInvalid)
+            }
+        }
+        (
+            AuthScheme::EcdsaSecp256k1,
+            AnchorAuthCredential::EcdsaSecp256k1 { signature },
+            ExpectedVerifier::EcdsaSecp256k1 { signer },
+        ) => verify_ecdsa(anchor, signature, signer).map_err(CredentialVerifyError::EcdsaFailed),
+        (
+            AuthScheme::MlDsa65Hybrid,
+            AnchorAuthCredential::MlDsa65Hybrid {
+                ecdsa_signature,
+                mldsa_signature,
+            },
+            ExpectedVerifier::MlDsa65Hybrid {
+                signer,
+                mldsa_public_key,
+            },
+        ) => verify_hybrid(
+            anchor,
+            ecdsa_signature,
+            mldsa_signature,
+            signer,
+            mldsa_public_key,
+        ),
+        (AuthScheme::Sp1ZkProof, _, _) => {
+            Err(CredentialVerifyError::UnsupportedScheme(AuthScheme::Sp1ZkProof))
+        }
+        _ => Err(CredentialVerifyError::SchemeMismatch),
+    }
+}
+
+/// AND-gate composer for the `MlDsa65Hybrid` scheme. Verifies the
+/// ECDSA half first (cheaper) then the ML-DSA-65 half. Either failure
+/// rejects the anchor.
+#[cfg(feature = "production-pqc")]
+fn verify_hybrid(
+    anchor: &Anchor,
+    ecdsa_signature: &[u8; ECDSA_SIG_LEN],
+    mldsa_signature: &[u8],
+    signer: &EthAddress,
+    mldsa_public_key: &[u8],
+) -> Result<(), CredentialVerifyError> {
+    verify_ecdsa(anchor, ecdsa_signature, signer).map_err(CredentialVerifyError::EcdsaFailed)?;
+    verify_mldsa65(anchor, mldsa_signature, mldsa_public_key)
+        .map_err(CredentialVerifyError::MlDsaFailed)?;
+    Ok(())
+}
+
+/// Stub used when the `production-pqc` feature is off — surfaces
+/// `UnsupportedScheme` rather than silently ignoring the hybrid claim.
+#[cfg(not(feature = "production-pqc"))]
+#[allow(clippy::needless_pass_by_value)]
+fn verify_hybrid(
+    _anchor: &Anchor,
+    _ecdsa_signature: &[u8; ECDSA_SIG_LEN],
+    _mldsa_signature: &[u8],
+    _signer: &EthAddress,
+    _mldsa_public_key: &[u8],
+) -> Result<(), CredentialVerifyError> {
+    Err(CredentialVerifyError::UnsupportedScheme(
+        AuthScheme::MlDsa65Hybrid,
+    ))
+}
+
+/// Verify an ECDSA secp256k1 signature against the EIP-191 anchor
+/// payload and check the recovered Ethereum address matches
+/// `expected_signer`. Mirrors `LTPAnchorRegistry.recoverSigner` +
+/// `isApprovedSigner[signer]`.
+///
+/// # Errors
+///
+/// Returns [`EcdsaVerifyError`] when the signature is malformed,
+/// recovery fails, or the recovered address is not the expected signer.
 pub fn verify_ecdsa(
     anchor: &Anchor,
     signature: &[u8; ECDSA_SIG_LEN],
@@ -344,6 +491,223 @@ mod tests {
             verify_ecdsa(&anchor, &sig, &signer),
             Err(EcdsaVerifyError::MalformedSignature)
         );
+    }
+
+    fn blake3_anchor(key: &[u8; 32]) -> Anchor {
+        Anchor::new(
+            ChainId(1),
+            7,
+            Commitment([0x11; 32]),
+            GENESIS_PARENT,
+            key,
+        )
+    }
+
+    #[test]
+    fn verify_credential_blake3_roundtrip() {
+        let key = [9u8; 32];
+        let anchor = blake3_anchor(&key);
+        verify_credential(
+            &anchor,
+            &AnchorAuthCredential::Blake3Mac,
+            &ExpectedVerifier::Blake3Mac { key: &key },
+        )
+        .expect("blake3 path verifies");
+    }
+
+    #[test]
+    fn verify_credential_blake3_rejects_bad_key() {
+        let key = [9u8; 32];
+        let anchor = blake3_anchor(&key);
+        let wrong = [0u8; 32];
+        assert_eq!(
+            verify_credential(
+                &anchor,
+                &AnchorAuthCredential::Blake3Mac,
+                &ExpectedVerifier::Blake3Mac { key: &wrong },
+            ),
+            Err(CredentialVerifyError::Blake3MacInvalid)
+        );
+    }
+
+    #[test]
+    fn verify_credential_scheme_mismatch() {
+        let key = [9u8; 32];
+        let anchor = blake3_anchor(&key);
+        // Anchor declares Blake3Mac but caller supplies an ECDSA credential.
+        assert_eq!(
+            verify_credential(
+                &anchor,
+                &AnchorAuthCredential::EcdsaSecp256k1 {
+                    signature: [0u8; ECDSA_SIG_LEN]
+                },
+                &ExpectedVerifier::Blake3Mac { key: &key },
+            ),
+            Err(CredentialVerifyError::SchemeMismatch)
+        );
+    }
+
+    #[test]
+    fn verify_credential_ecdsa_via_dispatch() {
+        let sk = SigningKey::random(&mut OsRng);
+        let signer = EthAddress::from_verifying_key(sk.verifying_key());
+        let anchor = sample_anchor(); // already AuthScheme::EcdsaSecp256k1
+        let sig = sign_anchor(&sk, &anchor);
+
+        verify_credential(
+            &anchor,
+            &AnchorAuthCredential::EcdsaSecp256k1 { signature: sig },
+            &ExpectedVerifier::EcdsaSecp256k1 { signer },
+        )
+        .expect("ecdsa path verifies via dispatch");
+    }
+
+    #[test]
+    fn verify_credential_sp1_returns_unsupported() {
+        let mut anchor = sample_anchor();
+        anchor.auth_scheme = AuthScheme::Sp1ZkProof;
+        assert_eq!(
+            verify_credential(
+                &anchor,
+                &AnchorAuthCredential::Sp1ZkProof { proof: vec![] },
+                &ExpectedVerifier::EcdsaSecp256k1 {
+                    signer: EthAddress([0; 20])
+                },
+            ),
+            Err(CredentialVerifyError::UnsupportedScheme(
+                AuthScheme::Sp1ZkProof
+            ))
+        );
+    }
+
+    #[cfg(not(feature = "production-pqc"))]
+    #[test]
+    fn verify_credential_hybrid_returns_unsupported_without_feature() {
+        let mut anchor = sample_anchor();
+        anchor.auth_scheme = AuthScheme::MlDsa65Hybrid;
+        let cred = AnchorAuthCredential::MlDsa65Hybrid {
+            ecdsa_signature: [0u8; ECDSA_SIG_LEN],
+            mldsa_signature: vec![],
+        };
+        let expected = ExpectedVerifier::MlDsa65Hybrid {
+            signer: EthAddress([0; 20]),
+            mldsa_public_key: &[],
+        };
+        assert_eq!(
+            verify_credential(&anchor, &cred, &expected),
+            Err(CredentialVerifyError::UnsupportedScheme(
+                AuthScheme::MlDsa65Hybrid
+            ))
+        );
+    }
+
+    #[cfg(feature = "production-pqc")]
+    mod hybrid {
+        use super::super::*;
+        use super::{sample_anchor, sign_anchor};
+        use k256::ecdsa::SigningKey;
+        use pqcrypto_mldsa::mldsa65;
+        use pqcrypto_traits::sign::{DetachedSignature as _, PublicKey as _};
+        use rand::rngs::OsRng;
+
+        fn setup() -> (
+            Anchor,
+            EthAddress,
+            [u8; ECDSA_SIG_LEN],
+            Vec<u8>,   // pq sig
+            Vec<u8>,   // pq pubkey
+            EthAddress,  // wrong_signer
+            Vec<u8>,   // wrong_pq_pubkey
+        ) {
+            let sk = SigningKey::random(&mut OsRng);
+            let signer = EthAddress::from_verifying_key(sk.verifying_key());
+            let mut anchor = sample_anchor();
+            anchor.auth_scheme = AuthScheme::MlDsa65Hybrid;
+            let ecdsa_sig = sign_anchor(&sk, &anchor);
+
+            let (pq_pk, pq_sk) = mldsa65::keypair();
+            let payload = eth_signed_message_hash(&anchor);
+            let pq_sig = mldsa65::detached_sign(&payload, &pq_sk);
+
+            let (other_pk, _) = mldsa65::keypair();
+
+            (
+                anchor,
+                signer,
+                ecdsa_sig,
+                pq_sig.as_bytes().to_vec(),
+                pq_pk.as_bytes().to_vec(),
+                EthAddress([0xee; 20]),
+                other_pk.as_bytes().to_vec(),
+            )
+        }
+
+        #[test]
+        fn hybrid_and_gate_accepts_when_both_verify() {
+            let (anchor, signer, ecdsa_sig, pq_sig, pq_pk, _, _) = setup();
+            let cred = AnchorAuthCredential::MlDsa65Hybrid {
+                ecdsa_signature: ecdsa_sig,
+                mldsa_signature: pq_sig,
+            };
+            let expected = ExpectedVerifier::MlDsa65Hybrid {
+                signer,
+                mldsa_public_key: &pq_pk,
+            };
+            verify_credential(&anchor, &cred, &expected).expect("both halves verify");
+        }
+
+        #[test]
+        fn hybrid_and_gate_rejects_when_ecdsa_fails() {
+            let (anchor, _, ecdsa_sig, pq_sig, pq_pk, wrong_signer, _) = setup();
+            let cred = AnchorAuthCredential::MlDsa65Hybrid {
+                ecdsa_signature: ecdsa_sig,
+                mldsa_signature: pq_sig,
+            };
+            let expected = ExpectedVerifier::MlDsa65Hybrid {
+                signer: wrong_signer,
+                mldsa_public_key: &pq_pk,
+            };
+            assert!(matches!(
+                verify_credential(&anchor, &cred, &expected),
+                Err(CredentialVerifyError::EcdsaFailed(_))
+            ));
+        }
+
+        #[test]
+        fn hybrid_and_gate_rejects_when_mldsa_fails() {
+            let (anchor, signer, ecdsa_sig, pq_sig, _, _, wrong_pq_pk) = setup();
+            let cred = AnchorAuthCredential::MlDsa65Hybrid {
+                ecdsa_signature: ecdsa_sig,
+                mldsa_signature: pq_sig,
+            };
+            let expected = ExpectedVerifier::MlDsa65Hybrid {
+                signer,
+                mldsa_public_key: &wrong_pq_pk,
+            };
+            assert!(matches!(
+                verify_credential(&anchor, &cred, &expected),
+                Err(CredentialVerifyError::MlDsaFailed(_))
+            ));
+        }
+
+        #[test]
+        fn hybrid_and_gate_short_circuits_on_ecdsa_failure() {
+            // Use deliberately invalid pq_sig: if ECDSA short-circuits
+            // first, we should get EcdsaFailed, not MlDsaFailed.
+            let (anchor, _, ecdsa_sig, _, pq_pk, wrong_signer, _) = setup();
+            let cred = AnchorAuthCredential::MlDsa65Hybrid {
+                ecdsa_signature: ecdsa_sig,
+                mldsa_signature: vec![0u8; 16], // garbage
+            };
+            let expected = ExpectedVerifier::MlDsa65Hybrid {
+                signer: wrong_signer,
+                mldsa_public_key: &pq_pk,
+            };
+            assert!(matches!(
+                verify_credential(&anchor, &cred, &expected),
+                Err(CredentialVerifyError::EcdsaFailed(_))
+            ));
+        }
     }
 
     #[test]
