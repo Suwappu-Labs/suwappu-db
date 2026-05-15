@@ -120,6 +120,18 @@ pub enum RejectReason {
     /// deploys require a `ModuleStore`, which only the bundle executor
     /// holds. Lift the deploy into a block and use the bundle executor.
     DeployModuleRequiresModuleStore,
+    /// A bundle step was a `MoveCall` or `DeployModule` but the bundle
+    /// executor was invoked through `execute` (without a Move runtime).
+    /// Use `BundleExecutor::execute_with_move_runtime` for bundles
+    /// containing Move-VM-bound steps.
+    MoveRuntimeRequired,
+    /// A `MoveCall` step's executor returned an error (typed via
+    /// `MoveExecutionError`). The textual form is in the variant.
+    MoveCallFailed(String),
+    /// A `DeployModule` step's `ModuleStore::put` rejected the deploy
+    /// (already-exists or backend failure). The textual form is in
+    /// the variant.
+    ModuleDeployFailed(String),
 }
 
 /// Wraps a mutable [`State`] reference and offers the only validated path to

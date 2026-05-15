@@ -140,6 +140,11 @@ proptest! {
                     let c = tx.to_canonical();
                     gsxdb_bridge::Intent::Transfer { from: c.from, to: c.to, amount: c.amount }
                 }
+                // S9.4: MoveCall + DeployModule never appear in the
+                // proptest's generated bundles (the strategy emits only
+                // Evm/Move transfer steps). Skip them at the type
+                // level so the match is exhaustive.
+                BundleStep::MoveCall(_) | BundleStep::DeployModule { .. } => continue,
             };
             let mut bridge = gsxdb_bridge::Bridge::new(&mut probe);
             if bridge.submit(intent).is_err() {
