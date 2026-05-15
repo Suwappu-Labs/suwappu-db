@@ -1,20 +1,45 @@
 //! Bundle data types.
 
 use crate::TxOutcome;
-use gsxdb_state::{EvmTx, MoveTx};
+use gsxdb_state::{EvmTx, Identifier, MoveAddress, MoveCall, MoveTx};
 
-/// One step within a bundle. Either a VM-shape transaction.
+/// One step within a bundle.
 ///
-/// Both flavours decode to the same canonical `Intent` via the existing
-/// `to_canonical` helpers in `gsxdb-state::vm::tx`. The bundle layer
-/// preserves the VM tag so reports and tracing can attribute side
-/// effects to the originating VM.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// `Evm` + `Move` flavours decode to the same canonical `Intent` via
+/// the existing `to_canonical` helpers in `gsxdb-state::vm::tx`. The
+/// bundle layer preserves the VM tag so reports and tracing can
+/// attribute side effects to the originating VM.
+///
+/// S9.4 adds two real-Move-VM variants:
+/// - `MoveCall` invokes the `MoveExecutor` with a real entry function.
+/// - `DeployModule` writes bytecode to the `ModuleStore` (deferred-
+///   commit so bundle revert un-deploys).
+///
+/// Both new variants only execute under
+/// [`crate::bundle::BundleExecutor::execute_with_move_runtime`], which
+/// takes a Move executor + module store. The legacy `execute` path
+/// continues to handle Evm/Move transfer steps unchanged.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BundleStep {
-    /// EVM-shape transaction step.
+    /// EVM-shape transfer step.
     Evm(EvmTx),
-    /// Move-shape transaction step.
+    /// Move-shape transfer step.
     Move(MoveTx),
+    /// Real Move entry-function invocation. Routed through
+    /// [`gsxdb_state::MoveExecutor`]; resource writes apply to substrate
+    /// at bundle commit.
+    MoveCall(MoveCall),
+    /// Deploy a Move module into the bundle's `ModuleStore`. Deferred-
+    /// commit: the deploy lands only when the whole bundle commits. On
+    /// revert, queued deploys are discarded — the store is unchanged.
+    DeployModule {
+        /// Account hosting the module.
+        account: MoveAddress,
+        /// Module name (Move identifier).
+        name: Identifier,
+        /// Opaque BCS-encoded bytecode.
+        bytes: Vec<u8>,
+    },
 }
 
 /// A flat, ordered sequence of steps that commit atomically.
@@ -132,13 +157,13 @@ mod tests {
                 amount: 10,
             }));
         assert_eq!(b.len(), 2);
-        match b.steps[0] {
+        match &b.steps[0] {
             BundleStep::Evm(_) => {}
-            BundleStep::Move(_) => panic!("step 0 should be Evm"),
+            other => panic!("step 0 should be Evm, got {other:?}"),
         }
-        match b.steps[1] {
-            BundleStep::Evm(_) => panic!("step 1 should be Move"),
+        match &b.steps[1] {
             BundleStep::Move(_) => {}
+            other => panic!("step 1 should be Move, got {other:?}"),
         }
     }
 

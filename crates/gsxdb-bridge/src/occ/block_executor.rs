@@ -472,6 +472,11 @@ fn execute_call(
         let (from, to, amount) = match step {
             BundleStep::Evm(tx) => (tx.from, tx.to, tx.value),
             BundleStep::Move(tx) => (tx.signer, tx.recipient, tx.amount),
+            // S9.4: MoveCall + DeployModule require the bundle
+            // executor's Move-runtime path; they don't flow through
+            // the OCC speculative-execute loop. Skip — they're a
+            // no-op for OCC's read/write tracking.
+            BundleStep::MoveCall(_) | BundleStep::DeployModule { .. } => continue,
         };
 
         let (from_slot, from_src) = local_or_mv(from, &local);
