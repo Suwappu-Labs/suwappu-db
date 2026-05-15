@@ -25,11 +25,31 @@ hex = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# --- S9.5b: aptos-core Move VM crates (production-move-executor) ---
+#
+# Pinned to `aptos-node-v1.44.9-hotfix` — current mainnet stable.
+# Not on crates.io; only available from aptos-labs/aptos-core git.
+# See `docs/spec/move-execution.md` for the dep-subset rationale.
+move-binary-format = { git = "https://github.com/aptos-labs/aptos-core", tag = "aptos-node-v1.44.9-hotfix", optional = true }
+move-bytecode-verifier = { git = "https://github.com/aptos-labs/aptos-core", tag = "aptos-node-v1.44.9-hotfix", optional = true }
+move-core-types = { git = "https://github.com/aptos-labs/aptos-core", tag = "aptos-node-v1.44.9-hotfix", optional = true }
+move-vm-runtime = { git = "https://github.com/aptos-labs/aptos-core", tag = "aptos-node-v1.44.9-hotfix", optional = true }
+move-vm-types = { git = "https://github.com/aptos-labs/aptos-core", tag = "aptos-node-v1.44.9-hotfix", optional = true }
+
 [features]
 # Move VM execution strategy.
 # Default (none): mock executor for Phase 1.
-# production-move-executor: real Aptos move-vm-runtime (S9+).
-production-move-executor = []
+# production-move-executor: real Aptos move-vm-runtime (S9.5b+).
+# Pulls move-binary-format / move-bytecode-verifier / move-vm-runtime
+# / move-vm-types / move-core-types from aptos-labs/aptos-core
+# (tag aptos-node-v1.44.9-hotfix).
+production-move-executor = [
+    "dep:move-binary-format",
+    "dep:move-bytecode-verifier",
+    "dep:move-core-types",
+    "dep:move-vm-runtime",
+    "dep:move-vm-types",
+]
 
 # Commitment scheme strategy.
 # Default (none): hash-based (BLAKE3) for Phase 1.
