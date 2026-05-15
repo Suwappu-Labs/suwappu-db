@@ -6,6 +6,16 @@ one surface. Specs evolve with the code; when an [IQ](../iq/)
 decision changes semantics, the IQ's "Propagation checklist"
 includes updating the relevant spec doc.
 
+## Visuals
+
+Presentation-ready GSX visuals are available in the DAG repo for context:
+
+- [GSX Visual Index](../../../gsx-dag/docs/visuals/index.html)
+- [GSX Ecosystem Atlas](../../../gsx-dag/docs/visuals/gsx-ecosystem-atlas.html)
+- [GSX DAG presentation](../../../gsx-dag/docs/visuals/gsx-dag.html)
+- [GSX DB presentation](../../../gsx-dag/docs/visuals/gsx-db.html)
+- [LTP presentation](../../../gsx-dag/docs/visuals/ltp.html)
+
 ## Index
 
 | Sprint | File | Surface | Exit-gate test |

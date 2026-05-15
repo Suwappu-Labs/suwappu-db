@@ -1,5 +1,15 @@
 # Paper additions — GSX-DB as the state substrate
 
+## Visuals
+
+Presentation-ready GSX visuals are available in the DAG repo for context:
+
+- [GSX Visual Index](../../../gsx-dag/docs/visuals/index.html)
+- [GSX Ecosystem Atlas](../../../gsx-dag/docs/visuals/gsx-ecosystem-atlas.html)
+- [GSX DAG presentation](../../../gsx-dag/docs/visuals/gsx-dag.html)
+- [GSX DB presentation](../../../gsx-dag/docs/visuals/gsx-db.html)
+- [LTP presentation](../../../gsx-dag/docs/visuals/ltp.html)
+
 This directory holds proposed insertions to the two academic papers
 to integrate **GSX-DB** as the named implementation of the execution
 substrate described abstractly in those papers.
