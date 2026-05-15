@@ -6,7 +6,7 @@
 use crate::Address;
 
 /// Move/Aptos-shaped address (32 bytes).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MoveAddress(pub [u8; 32]);
 
 impl MoveAddress {

@@ -128,9 +128,25 @@ S3.5 into a launch-readiness item.
 
 ### Propagation checklist
 
-- [x] `crates/gsxdb-state/src/vm/executor.rs` — trait + Mock impl
-- [x] `production-move-executor` feature gate
-- [ ] `aptos_vm::AptosVM` wiring behind the feature
+- [x] `crates/gsxdb-state/src/vm/executor.rs` — placeholder trait + Mock impl
+- [x] `production-move-executor` feature gate (empty — pulls no deps yet)
+- [ ] **Trait redesign** — current trait `(addr, BalanceSlot) → ExecutionOutcome` is a passthrough; not invoked anywhere. Replace with `(MoveCall, &dyn ModuleStore, &mut MoveSessionState) → MoveOutcome`. See `docs/spec/move-execution.md`.
+- [ ] `ModuleStore` trait + in-memory + redb-backed impls
+- [ ] `Intent::DeployModule` + `Intent::Call` Move-arm wiring through `BundleExecutor`
+- [ ] `aptos_vm::AptosVM` (actually: `move-vm-runtime` subset) wired behind the feature
+- [ ] Canonical gsx-db `Coin<T>` Move module bundled
 - [ ] Re-run dual-projection 10k proptest with real bytecode
-- [x] `docs/spec/move-execution.md`
-- [x] IQ-4 + IQ-5 follow-ups
+- [x] `docs/spec/move-execution.md` ✅ — S9.1 (this PR)
+- [x] IQ-4 (address shape) resolved in spec — `Address` enum with canonical projection
+- [x] IQ-5 (nonce semantics) resolved in spec — per-account `AccountNonce { evm, move_seq }`
+
+### S9 sub-pass breakdown
+
+| Sub-pass | What | Status |
+|---|---|---|
+| S9.1 | Design doc (`docs/spec/move-execution.md`) + IQ-3 update | ✅ this PR |
+| S9.2 | New trait surface in `gsxdb-state::vm` + new `MockMoveExecutor` | pending |
+| S9.3 | `ModuleStore` (in-memory + redb) + `Intent::DeployModule` | pending |
+| S9.4 | `BundleExecutor` wiring for `Intent::Call` Move arm | pending |
+| S9.5 | `AptosMoveExecutor` impl using `move-vm-runtime` + canonical `Coin<T>` module | pending |
+| S9.6 | 10k cross-VM parity gate with real Aptos backend | pending |
