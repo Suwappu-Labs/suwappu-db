@@ -31,20 +31,24 @@ use move_core_types::{
     metadata::Metadata,
     value::MoveTypeLayout,
 };
+use move_vm_runtime::{RuntimeEnvironment, WithRuntimeEnvironment};
 use move_vm_types::{code::ModuleBytesStorage, resolver::ResourceResolver};
 
 use crate::vm::executor::{Identifier, ModuleId, ModuleStore, MoveBalanceView};
 use crate::MoveAddress;
 
-/// Adapter: `&dyn ModuleStore` → `move_vm_types::code::ModuleBytesStorage`.
+/// Adapter: `&dyn ModuleStore` → `move_vm_types::code::ModuleBytesStorage`
+/// (plus `move_vm_runtime::WithRuntimeEnvironment` — required by
+/// `AsUnsyncModuleStorage`).
 ///
 /// The Aptos `UnsyncModuleStorage` expects raw bytes keyed by
 /// `(AccountAddress, IdentStr)`. Our `ModuleStore` uses gsx-db's
-/// `(MoveAddress, Identifier)`. The conversion is byte-for-byte
-/// — `MoveAddress(pub [u8; 32])` is wire-compatible with
-/// `AccountAddress` (Aptos uses 32-byte addresses).
+/// `(MoveAddress, Identifier)`. The conversion is byte-for-byte —
+/// `MoveAddress(pub [u8; 32])` is wire-compatible with `AccountAddress`
+/// (Aptos uses 32-byte addresses).
 pub(crate) struct GsxdbModuleBytes<'a> {
     pub store: &'a dyn ModuleStore,
+    pub env: RuntimeEnvironment,
 }
 
 impl<'a> ModuleBytesStorage for GsxdbModuleBytes<'a> {
@@ -71,6 +75,12 @@ impl<'a> ModuleBytesStorage for GsxdbModuleBytes<'a> {
         };
 
         Ok(self.store.get(&id).map(|cm| Bytes::from(cm.bytes)))
+    }
+}
+
+impl<'a> WithRuntimeEnvironment for GsxdbModuleBytes<'a> {
+    fn runtime_environment(&self) -> &RuntimeEnvironment {
+        &self.env
     }
 }
 
@@ -131,7 +141,10 @@ mod tests {
     #[test]
     fn module_bytes_adapter_returns_none_for_missing_module() {
         let store = InMemoryModuleStore::new();
-        let adapter = GsxdbModuleBytes { store: &store };
+        let adapter = GsxdbModuleBytes {
+            store: &store,
+            env: RuntimeEnvironment::new(std::iter::empty()),
+        };
 
         let addr = AccountAddress::new([1u8; 32]);
         let name = move_core_types::identifier::Identifier::new("missing").unwrap();
@@ -155,7 +168,10 @@ mod tests {
             )
             .unwrap();
 
-        let adapter = GsxdbModuleBytes { store: &store };
+        let adapter = GsxdbModuleBytes {
+            store: &store,
+            env: RuntimeEnvironment::new(std::iter::empty()),
+        };
         let addr = AccountAddress::new([7u8; 32]);
         let name = move_core_types::identifier::Identifier::new("payments").unwrap();
         let result = adapter.fetch_module_bytes(&addr, &name).unwrap();
