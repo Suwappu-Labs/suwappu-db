@@ -226,11 +226,13 @@ contract LTPAnchorRegistry {
             v := byte(0, mload(add(signature, 0x60)))
         }
 
-        if (v < 27) {
-            v += 27;
-        }
-
         require(v == 27 || v == 28, "LTPAnchorRegistry: Invalid signature");
+
+        // Reject high-s signatures (EIP-2 malleability). secp256k1n/2:
+        require(
+            uint256(s) <= 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0,
+            "LTPAnchorRegistry: Invalid signature"
+        );
 
         address recovered = ecrecover(messageHash, v, r, s);
         require(recovered != address(0), "LTPAnchorRegistry: Invalid signature");

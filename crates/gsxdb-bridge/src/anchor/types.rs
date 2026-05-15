@@ -11,18 +11,32 @@ pub struct ChainId(pub u32);
 
 /// Authentication scheme carried by an anchor.
 ///
-/// Phase-1 uses keyed BLAKE3 MACs. Launch-readiness can upgrade this
-/// to signature schemes (including post-quantum variants) while
-/// preserving the anchor data model.
+/// Phase-1 uses keyed BLAKE3 MACs. The launch surface (S11) is the
+/// `LTPAnchorRegistry.sol` contract, which accepts a hybrid
+/// ECDSA secp256k1 + ML-DSA-65 signature per
+/// [IQ-7](../../../docs/iq/IQ-7-anchor-parity.md) §"Authentication".
+/// Either component breaking does not compromise the other.
+///
+/// New variants are additive — the wire encoding via `#[repr(u8)]`
+/// is fixed by discriminant order, so existing variants must keep
+/// their position.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AuthScheme {
-    /// Keyed BLAKE3 MAC (phase-1 default).
-    Blake3Mac,
-    /// Proof verified through an SP1-compatible zk circuit.
-    Sp1ZkProof,
-    /// Post-quantum signature binding anchor fields.
-    PostQuantumSig,
+    /// Keyed BLAKE3 MAC (phase-1 substrate).
+    Blake3Mac = 0,
+    /// Proof verified through an SP1-compatible zk circuit. Reserved
+    /// for the validity-proof path (Track 1.3); no verifier wired yet.
+    Sp1ZkProof = 1,
+    /// ECDSA over secp256k1. The launch-L1 path: signatures recovered
+    /// against the registry's authorized signer per `LTPAnchorRegistry.sol`.
+    /// No verifier wired yet — pending S11 ECDSA dispatch (Track 1.2 Step B).
+    EcdsaSecp256k1 = 2,
+    /// Hybrid ECDSA secp256k1 + ML-DSA-65. The post-quantum surface:
+    /// both signatures must verify (AND gate) for the anchor to be
+    /// accepted. No verifier wired yet — pending S11 hybrid dispatch
+    /// (Track 1.2 Steps C–D).
+    MlDsa65Hybrid = 3,
 }
 
 /// Detailed anchor-auth verification result for scheme dispatch.
@@ -138,9 +152,9 @@ impl Anchor {
                     Err(AuthVerifyError::InvalidAuthenticator)
                 }
             }
-            AuthScheme::Sp1ZkProof | AuthScheme::PostQuantumSig => {
-                Err(AuthVerifyError::UnsupportedScheme(self.auth_scheme))
-            }
+            AuthScheme::Sp1ZkProof
+            | AuthScheme::EcdsaSecp256k1
+            | AuthScheme::MlDsa65Hybrid => Err(AuthVerifyError::UnsupportedScheme(self.auth_scheme)),
         }
     }
 
@@ -244,11 +258,22 @@ mod tests {
     #[test]
     fn verify_auth_rejects_non_mac_modes_for_now() {
         let mut a = Anchor::new(ChainId(1), 0, root(1), GENESIS_PARENT, &key());
-        a.auth_scheme = AuthScheme::Sp1ZkProof;
-        assert!(!a.verify_auth(&key()));
-
-        a.auth_scheme = AuthScheme::PostQuantumSig;
-        assert!(!a.verify_auth(&key()));
+        for scheme in [
+            AuthScheme::Sp1ZkProof,
+            AuthScheme::EcdsaSecp256k1,
+            AuthScheme::MlDsa65Hybrid,
+        ] {
+            a.auth_scheme = scheme;
+            assert!(
+                !a.verify_auth(&key()),
+                "scheme {scheme:?} must reject until S11 verifier lands"
+            );
+            assert_eq!(
+                a.verify_auth_result(&key()),
+                Err(AuthVerifyError::UnsupportedScheme(scheme)),
+                "scheme {scheme:?} must return UnsupportedScheme",
+            );
+        }
     }
 
     #[test]
@@ -259,6 +284,17 @@ mod tests {
             a.verify_auth_result(&key()),
             Err(AuthVerifyError::UnsupportedScheme(AuthScheme::Sp1ZkProof))
         );
+    }
+
+    #[test]
+    fn auth_scheme_discriminants_are_stable() {
+        // Wire encoding for AuthScheme is fixed by discriminant order;
+        // changing these silently would break LTPAnchorRegistry parity.
+        // See docs/iq/IQ-7-anchor-parity.md.
+        assert_eq!(AuthScheme::Blake3Mac as u8, 0);
+        assert_eq!(AuthScheme::Sp1ZkProof as u8, 1);
+        assert_eq!(AuthScheme::EcdsaSecp256k1 as u8, 2);
+        assert_eq!(AuthScheme::MlDsa65Hybrid as u8, 3);
     }
 
     #[test]
