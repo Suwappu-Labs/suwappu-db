@@ -81,6 +81,27 @@ pub enum Intent {
         /// revm parses ABI.
         calldata: Vec<u8>,
     },
+    /// Deploy a Move module to the substrate's [`ModuleStore`]. S9.3.
+    ///
+    /// The module is keyed by `(account, name)`; re-deploys are rejected
+    /// (`ModuleStoreError::AlreadyExists`). Upgrades are a separate
+    /// surface — deferred per `docs/spec/move-execution.md` open
+    /// question on Aptos `compatible` upgrade policy.
+    ///
+    /// `bytes` is opaque BCS-encoded Move bytecode. Verifier runs at
+    /// deploy time in S9.5 (currently passthrough; the verifier needs
+    /// `move-bytecode-verifier`). The lane carries any byte sequence;
+    /// the bundle executor + verifier reject malformed bytecode.
+    DeployModule {
+        /// Originating Move account (32-byte). Must match the
+        /// `address` field of the deployed module's `ModuleId`.
+        account: gsxdb_state::MoveAddress,
+        /// Module name. Validated as a Move [`Identifier`] before
+        /// reaching the lane.
+        name: gsxdb_state::Identifier,
+        /// Opaque BCS-encoded bytecode.
+        bytes: Vec<u8>,
+    },
 }
 
 /// Reasons an intent can be rejected during validation.
@@ -95,6 +116,10 @@ pub enum RejectReason {
     /// `ContractRegistry`, which only the block executor holds. Lift the
     /// call into a block and use [`crate::BlockExecutor`].
     CallRequiresRegistry,
+    /// `Bridge::submit` was called with `Intent::DeployModule`. Module
+    /// deploys require a `ModuleStore`, which only the bundle executor
+    /// holds. Lift the deploy into a block and use the bundle executor.
+    DeployModuleRequiresModuleStore,
 }
 
 /// Wraps a mutable [`State`] reference and offers the only validated path to
@@ -135,6 +160,9 @@ impl<'s> Bridge<'s> {
     pub fn submit(&mut self, intent: Intent) -> Result<(), RejectReason> {
         match intent {
             Intent::Call { .. } => Err(RejectReason::CallRequiresRegistry),
+            Intent::DeployModule { .. } => {
+                Err(RejectReason::DeployModuleRequiresModuleStore)
+            }
             Intent::Transfer { from, to, amount } => {
                 let from_balance = self.state.balance_of(&from).0;
 
@@ -267,5 +295,28 @@ mod tests {
         assert_eq!(result, Err(RejectReason::InsufficientBalance));
         assert_eq!(bridge.balance_of(&alice), Balance(5));
         assert_eq!(bridge.balance_of(&bob), Balance(0));
+    }
+
+    #[test]
+    fn deploy_module_routes_to_bundle_executor() {
+        // S9.3: Bridge::submit cannot deploy modules — that needs a
+        // ModuleStore, which only the bundle executor owns. Until
+        // S9.4 wires the bundle executor, surface this as a typed
+        // rejection so callers learn to use the bundle path.
+        let alice = Address([1; 20]);
+        let mut state = seeded_state(alice, 100);
+
+        let mut bridge = Bridge::new(&mut state);
+        let mut account_bytes = [0u8; 32];
+        account_bytes[12..32].copy_from_slice(&alice.0);
+        let result = bridge.submit(Intent::DeployModule {
+            account: gsxdb_state::MoveAddress(account_bytes),
+            name: gsxdb_state::Identifier::new("hello_module").unwrap(),
+            bytes: vec![0xCA, 0xFE, 0xBA, 0xBE],
+        });
+
+        assert_eq!(result, Err(RejectReason::DeployModuleRequiresModuleStore));
+        // No state mutation.
+        assert_eq!(bridge.balance_of(&alice), Balance(100));
     }
 }

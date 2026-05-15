@@ -182,6 +182,58 @@ pub trait ModuleStore: Send + Sync + std::fmt::Debug {
     fn contains(&self, id: &ModuleId) -> bool;
 }
 
+/// In-memory [`ModuleStore`] — `BTreeMap<ModuleId, CompiledModule>`.
+///
+/// Phase-1 + tests. A redb-backed `RedbModuleStore` lands alongside
+/// `AptosMoveExecutor` in S9.5 once the bytecode-bytes-on-disk format
+/// is settled (it'll mirror `RedbBlockStore`'s versioned encoding).
+#[derive(Debug, Clone, Default)]
+pub struct InMemoryModuleStore {
+    modules: std::collections::BTreeMap<ModuleId, CompiledModule>,
+}
+
+impl InMemoryModuleStore {
+    /// New empty store.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Number of deployed modules.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.modules.len()
+    }
+
+    /// `true` iff no modules deployed.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.modules.is_empty()
+    }
+}
+
+impl ModuleStore for InMemoryModuleStore {
+    fn get(&self, id: &ModuleId) -> Option<CompiledModule> {
+        self.modules.get(id).cloned()
+    }
+
+    fn put(
+        &mut self,
+        id: ModuleId,
+        module: CompiledModule,
+    ) -> Result<(), ModuleStoreError> {
+        if self.modules.contains_key(&id) {
+            return Err(ModuleStoreError::AlreadyExists(id));
+        }
+        self.modules.insert(id, module);
+        Ok(())
+    }
+
+    fn contains(&self, id: &ModuleId) -> bool {
+        self.modules.contains_key(id)
+    }
+}
+
 /// Reasons [`ModuleStore::put`] fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModuleStoreError {
@@ -456,26 +508,11 @@ mod tests {
         }
     }
 
-    /// Empty `ModuleStore` for tests where the executor doesn't need
-    /// bytecode. Mock executor never reads from `modules`; this is a
-    /// no-op stand-in.
-    #[derive(Debug, Default)]
-    struct EmptyModuleStore;
-
-    impl ModuleStore for EmptyModuleStore {
-        fn get(&self, _id: &ModuleId) -> Option<CompiledModule> {
-            None
-        }
-        fn put(
-            &mut self,
-            _id: ModuleId,
-            _module: CompiledModule,
-        ) -> Result<(), ModuleStoreError> {
-            Ok(())
-        }
-        fn contains(&self, _id: &ModuleId) -> bool {
-            false
-        }
+    // Empty store stand-in for executor tests — Mock never reads from
+    // `modules`. We use the real `InMemoryModuleStore::new()` here so
+    // the tests double as smoke tests for the impl.
+    fn empty_store() -> InMemoryModuleStore {
+        InMemoryModuleStore::new()
     }
 
     fn move_addr(byte: u8) -> MoveAddress {
@@ -531,6 +568,60 @@ mod tests {
     }
 
     #[test]
+    fn module_store_round_trips_get_put_contains() {
+        let mut store = InMemoryModuleStore::new();
+        let id = coin_module();
+        let module = CompiledModule {
+            bytes: vec![0xCA, 0xFE, 0xBA, 0xBE, 1, 2, 3],
+        };
+        assert!(!store.contains(&id));
+        assert!(store.get(&id).is_none());
+        assert!(store.is_empty());
+        assert_eq!(store.len(), 0);
+
+        store.put(id.clone(), module.clone()).expect("first put");
+        assert!(store.contains(&id));
+        assert_eq!(store.get(&id), Some(module.clone()));
+        assert!(!store.is_empty());
+        assert_eq!(store.len(), 1);
+
+        // Re-deploy rejected.
+        let err = store.put(id.clone(), module).expect_err("re-deploy");
+        assert!(matches!(err, ModuleStoreError::AlreadyExists(_)));
+        assert_eq!(store.len(), 1);
+    }
+
+    #[test]
+    fn module_store_distinguishes_by_address_and_name() {
+        let mut store = InMemoryModuleStore::new();
+        let id_a = ModuleId {
+            address: move_addr(1),
+            name: Identifier::new("a").unwrap(),
+        };
+        let id_b = ModuleId {
+            address: move_addr(1),
+            name: Identifier::new("b").unwrap(),
+        };
+        let id_c = ModuleId {
+            address: move_addr(2),
+            name: Identifier::new("a").unwrap(),
+        };
+        store
+            .put(id_a.clone(), CompiledModule { bytes: vec![1] })
+            .unwrap();
+        store
+            .put(id_b.clone(), CompiledModule { bytes: vec![2] })
+            .unwrap();
+        store
+            .put(id_c.clone(), CompiledModule { bytes: vec![3] })
+            .unwrap();
+        assert_eq!(store.len(), 3);
+        assert_eq!(store.get(&id_a).unwrap().bytes, vec![1]);
+        assert_eq!(store.get(&id_b).unwrap().bytes, vec![2]);
+        assert_eq!(store.get(&id_c).unwrap().bytes, vec![3]);
+    }
+
+    #[test]
     fn mock_transfer_succeeds_with_matching_writes() {
         let alice = move_addr(1);
         let bob = move_addr(2);
@@ -540,7 +631,7 @@ mod tests {
 
         let mut state = MoveSessionState::new(&view);
         let outcome = MockMoveExecutor
-            .execute(&transfer_call(alice, bob, 250), &EmptyModuleStore, &mut state)
+            .execute(&transfer_call(alice, bob, 250), &empty_store(), &mut state)
             .expect("transfer should succeed");
 
         assert_eq!(outcome.resource_writes.len(), 2);
@@ -565,7 +656,7 @@ mod tests {
 
         let mut state = MoveSessionState::new(&view);
         let err = MockMoveExecutor
-            .execute(&transfer_call(alice, bob, 500), &EmptyModuleStore, &mut state)
+            .execute(&transfer_call(alice, bob, 500), &empty_store(), &mut state)
             .expect_err("should abort");
 
         assert!(matches!(
@@ -595,7 +686,7 @@ mod tests {
         };
 
         let outcome = MockMoveExecutor
-            .execute(&call, &EmptyModuleStore, &mut state)
+            .execute(&call, &empty_store(), &mut state)
             .expect("unknown module should return empty outcome");
         assert!(outcome.resource_writes.is_empty());
         assert!(outcome.return_values.is_empty());
@@ -616,7 +707,7 @@ mod tests {
         };
 
         let err = MockMoveExecutor
-            .execute(&call, &EmptyModuleStore, &mut state)
+            .execute(&call, &empty_store(), &mut state)
             .expect_err("wrong arg count should reject");
         assert!(matches!(err, MoveExecutionError::InvalidArguments(_)));
     }
@@ -635,7 +726,7 @@ mod tests {
         };
 
         let err = MockMoveExecutor
-            .execute(&call, &EmptyModuleStore, &mut state)
+            .execute(&call, &empty_store(), &mut state)
             .expect_err("malformed address should reject");
         assert!(matches!(err, MoveExecutionError::InvalidArguments(_)));
     }

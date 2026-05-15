@@ -30,10 +30,10 @@ pub use store::{BalanceStore, InMemoryBalanceStore};
 pub use tree::{Commitment, Proof, ProofStep, StateTree};
 pub use vm::{
     AbortLocation, CanonicalTransfer, CompiledModule, EvmProjector, EvmTx, EvmView, Identifier,
-    IdentifierError, MockMoveExecutor, ModuleId, ModuleStore, ModuleStoreError, MoveBalanceView,
-    MoveCall, MoveEvent, MoveExecutionError, MoveExecutor, MoveOutcome, MoveProjector,
-    MoveSessionState, MoveTx, MoveView, ResourceWrite, StructTag, TypeTag,
-    ABORT_INSUFFICIENT_BALANCE, CANONICAL_COIN_ADDRESS,
+    IdentifierError, InMemoryModuleStore, MockMoveExecutor, ModuleId, ModuleStore,
+    ModuleStoreError, MoveBalanceView, MoveCall, MoveEvent, MoveExecutionError, MoveExecutor,
+    MoveOutcome, MoveProjector, MoveSessionState, MoveTx, MoveView, ResourceWrite, StructTag,
+    TypeTag, ABORT_INSUFFICIENT_BALANCE, CANONICAL_COIN_ADDRESS,
 };
 
 /// 20-byte EVM-shaped address. Move addresses are projected onto this layout.
