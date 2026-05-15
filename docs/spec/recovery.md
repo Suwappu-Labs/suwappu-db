@@ -42,8 +42,9 @@ pub trait BlockStore {
 }
 ```
 
-Append-only. Phase-1 ships `InMemoryBlockStore`; S8.5 adds
-`RedbBlockStore` (per IQ-8).
+Append-only. Phase-1 ships `InMemoryBlockStore`; S8.5 added
+`RedbBlockStore` (per IQ-8) — landed in PR #2 with crash-recovery
++ corrupt-payload + write-txn-isolation tests.
 
 `BlockStoreError` carries backend failures. `replay` maps those errors
 to `RecoveryError::Storage` so recovery can fail explicitly on I/O
