@@ -160,6 +160,20 @@ impl Anchor {
 
     /// Hash of this anchor. Used as the `parent` field of the next
     /// anchor on the same chain.
+    ///
+    /// Field set matches `LTPAnchorRegistry.hashAnchor` exactly (chainId,
+    /// height, stateRoot, parent, mac) so chain linkage stays consistent
+    /// between sides when both maintain anchor logs. The hash primitive
+    /// differs (BLAKE3 here vs keccak256 on-chain) because each side
+    /// maintains its own per-chain linkage — see
+    /// `docs/iq/IQ-7-anchor-parity.md` for the parity model.
+    ///
+    /// `auth_scheme` is intentionally NOT folded into the digest: the
+    /// Solidity struct doesn't carry it, and adding it would force any
+    /// non-Blake3Mac anchor to produce a Rust-side parent hash that
+    /// no on-chain mirror could reproduce. Parity-checker flagged this
+    /// in PR #4 (IQ-7 hybrid auth) review as load-bearing once
+    /// `AuthScheme` gained variants beyond `Blake3Mac`.
     #[must_use]
     pub fn hash(&self) -> AnchorHash {
         let mut h = Hasher::new();
@@ -169,7 +183,6 @@ impl Anchor {
         h.update(&self.state_root.0);
         h.update(&self.parent.0);
         h.update(&self.mac);
-        h.update(&[self.auth_scheme as u8]);
         let mut out = [0u8; 32];
         out.copy_from_slice(h.finalize().as_bytes());
         AnchorHash(out)

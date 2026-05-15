@@ -1,7 +1,10 @@
 //! Multi-chain anchor dispatcher + cross-chain parity check.
 
+use super::credential::{
+    verify_credential, AnchorAuthCredential, CredentialVerifyError, ExpectedVerifier,
+};
 use super::log::{AnchorLog, AppendError};
-use super::types::{Anchor, ChainId, GENESIS_PARENT};
+use super::types::{Anchor, AuthScheme, ChainId, GENESIS_PARENT};
 use gsxdb_state::Commitment;
 use std::collections::BTreeMap;
 
@@ -158,9 +161,12 @@ impl AnchorDispatcher {
                 None => missing.push(*chain_id),
                 Some(anchor) => {
                     let key = self.keys.get(chain_id).expect("registered keys match logs");
-                    if !anchor.verify_auth(key) {
-                        // Tampered after-the-fact — treat as divergent
-                        // but record explicitly so callers can see why.
+                    if !Self::verify_anchor_credential(anchor, key) {
+                        // Tampered after-the-fact OR a non-Blake3Mac
+                        // scheme without per-chain verifier config (S11
+                        // adds the credential storage + verifier registry).
+                        // Either way, treat as divergent and record so
+                        // callers can see why.
                         tampered.push(*chain_id);
                     }
                     roots.push((*chain_id, anchor.state_root));
@@ -200,6 +206,40 @@ impl AnchorDispatcher {
             ParityResult::Disagreed {
                 divergent: Vec::new(),
                 missing: Vec::new(),
+            }
+        }
+    }
+
+    /// Route an anchor's authenticator through the unified
+    /// [`verify_credential`] dispatch.
+    ///
+    /// Phase-1 (today): `Blake3Mac` is the only scheme stored in
+    /// [`AnchorLog`], so the credential is the anchor's own `mac` field
+    /// and the verifier config is the registered per-chain key.
+    ///
+    /// S11 (Track 1.2 Step E): `register` will accept a
+    /// `VerifierConfig` enum carrying ECDSA / hybrid / Sp1 expected
+    /// values, the log will store `(Anchor, AnchorAuthCredential)`
+    /// pairs, and this helper will dispatch each scheme through
+    /// `verify_credential` with the right `ExpectedVerifier`. Until
+    /// then non-`Blake3Mac` anchors are rejected as
+    /// `UnsupportedScheme` — preferable to silently treating them as
+    /// authentic.
+    fn verify_anchor_credential(anchor: &Anchor, key: &[u8; 32]) -> bool {
+        match anchor.auth_scheme {
+            AuthScheme::Blake3Mac => matches!(
+                verify_credential(
+                    anchor,
+                    &AnchorAuthCredential::Blake3Mac,
+                    &ExpectedVerifier::Blake3Mac { key },
+                ),
+                Ok(())
+            ),
+            AuthScheme::Sp1ZkProof | AuthScheme::EcdsaSecp256k1 | AuthScheme::MlDsa65Hybrid => {
+                // No credential storage for non-MAC schemes yet.
+                // S11 lands this surface; until then reject explicitly.
+                let _ = CredentialVerifyError::UnsupportedScheme(anchor.auth_scheme);
+                false
             }
         }
     }
@@ -301,6 +341,66 @@ mod tests {
             }
             other @ ParityResult::Agreed { .. } => panic!("expected Disagreed, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn parity_disagreed_when_anchor_scheme_swapped_without_credential() {
+        // S11 wiring is not yet in place: a non-Blake3Mac anchor in the
+        // log can't be verified through `verify_credential` (no per-chain
+        // verifier config + no credential storage yet). Such anchors
+        // surface as tampered, not as silently authentic.
+        let mut d = three_chain_dispatcher();
+        d.dispatch(0, root(1)).unwrap();
+
+        let forged = Anchor {
+            chain_id: ChainId(2),
+            height: 0,
+            state_root: root(1),
+            parent: GENESIS_PARENT,
+            mac: [0; 32],
+            auth_scheme: crate::anchor::types::AuthScheme::EcdsaSecp256k1,
+        };
+        d.__log_mut_for_tests(ChainId(2))
+            .unwrap()
+            .__tamper_for_tests(0, forged);
+
+        match d.parity_check(0) {
+            ParityResult::Disagreed { .. } => {}
+            other @ ParityResult::Agreed { .. } => {
+                panic!("non-Blake3Mac scheme must not silently pass parity, got {other:?}")
+            }
+        }
+    }
+
+    #[test]
+    fn anchor_hash_field_set_matches_solidity() {
+        // Sanity check that Anchor::hash includes ONLY the fields
+        // Solidity hashAnchor includes (chainId, height, stateRoot,
+        // parent, mac) — NOT auth_scheme. Changing auth_scheme on an
+        // otherwise-identical anchor MUST NOT change the hash.
+        let base = Anchor {
+            chain_id: ChainId(7),
+            height: 42,
+            state_root: Commitment([0xAB; 32]),
+            parent: GENESIS_PARENT,
+            mac: [0x11; 32],
+            auth_scheme: crate::anchor::types::AuthScheme::Blake3Mac,
+        };
+        let twin_ecdsa = Anchor {
+            auth_scheme: crate::anchor::types::AuthScheme::EcdsaSecp256k1,
+            ..base.clone()
+        };
+        let twin_hybrid = Anchor {
+            auth_scheme: crate::anchor::types::AuthScheme::MlDsa65Hybrid,
+            ..base.clone()
+        };
+        let twin_sp1 = Anchor {
+            auth_scheme: crate::anchor::types::AuthScheme::Sp1ZkProof,
+            ..base.clone()
+        };
+        assert_eq!(base.hash(), twin_ecdsa.hash());
+        assert_eq!(base.hash(), twin_hybrid.hash());
+        assert_eq!(base.hash(), twin_sp1.hash());
     }
 
     #[test]
