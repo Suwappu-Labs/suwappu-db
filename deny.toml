@@ -18,6 +18,16 @@ ignore = [
     # (pqcrypto / ml-dsa derive macros). No vulnerability — proc-macro
     # used at build time only. Upstream replacements are still WIP.
     "RUSTSEC-2024-0436",
+    # derivative crate unmaintained; pulled transitively via Aptos
+    # move-vm-types. No vulnerability — derive-macro used at build time
+    # only. Aptos has discussed migrating to derive_more / derive-where
+    # but no release yet. Will drop once Aptos migrates upstream.
+    "RUSTSEC-2024-0388",
+    # fxhash unmaintained; pulled transitively via Aptos move-vm-runtime.
+    # No vulnerability — fast non-cryptographic hash used in the
+    # interpreter's hot path. Aptos can swap to rustc-hash but hasn't.
+    # Will drop once Aptos migrates upstream.
+    "RUSTSEC-2025-0057",
 ]
 
 [licenses]
@@ -59,4 +69,13 @@ skip-tree = []
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = []
+allow-git = [
+    # S9.5b: aptos-core Move VM crates. Not usefully published on
+    # crates.io (only move-core-types = "0.0.3" from 2021).
+    # Pinned by tag in gsxdb-state's Cargo.toml.
+    "https://github.com/aptos-labs/aptos-core",
+    # S9.5b: aptos-labs/bcs is a transitive dep of move-core-types.
+    # Aptos's fork of zefchain/bcs pinned to a specific rev. Pulled
+    # implicitly via aptos-core; we list it explicitly for cargo-deny.
+    "https://github.com/aptos-labs/bcs.git",
+]
