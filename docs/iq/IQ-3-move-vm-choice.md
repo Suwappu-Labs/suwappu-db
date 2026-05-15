@@ -144,9 +144,20 @@ S3.5 into a launch-readiness item.
 
 | Sub-pass | What | Status |
 |---|---|---|
-| S9.1 | Design doc (`docs/spec/move-execution.md`) + IQ-3 update | ✅ this PR |
-| S9.2 | New trait surface in `gsxdb-state::vm` + new `MockMoveExecutor` | pending |
-| S9.3 | `ModuleStore` (in-memory + redb) + `Intent::DeployModule` | pending |
-| S9.4 | `BundleExecutor` wiring for `Intent::Call` Move arm | pending |
-| S9.5 | `AptosMoveExecutor` impl using `move-vm-runtime` + canonical `Coin<T>` module | pending |
-| S9.6 | 10k cross-VM parity gate with real Aptos backend | pending |
+| S9.1 | Design doc (`docs/spec/move-execution.md`) + IQ-3 update | ✅ landed |
+| S9.2 | New trait surface in `gsxdb-state::vm` + new `MockMoveExecutor` | ✅ landed |
+| S9.3 | `InMemoryModuleStore` + `Intent::DeployModule` wire format | ✅ landed |
+| S9.4 | `BundleExecutor::execute_with_move_runtime` (MoveCall + DeployModule with deferred-commit) | ✅ landed |
+| S9.5a | `AptosMoveExecutor` scaffold + dep-choice docs | ✅ landed |
+| S9.5b | Pull `aptos-core` git deps, cargo-deny update (2 advisory ignores + 2 git sources, no license issues) | ✅ landed |
+| S9.5c | Real `CompiledModule::deserialize` + `verify_module` in `AptosMoveExecutor` | ✅ landed |
+| S9.5d | Session-layer design doc (`docs/spec/move-vm-session-layer.md`); inventories the ~60 trait methods + 4 open questions | ✅ landed |
+| S9.5e | **Build** the session layer (`Loader` + `ModuleStorage` + `MoveVmDataCache` + `GasMeter`) | pending — multi-session per design doc |
+| S9.5f | Compile + bundle canonical gsx-db `Coin<T>` Move module | pending |
+| S9.6 | Flip `production-move-executor` ON by default + 10k cross-VM parity gate with real bytecode | pending |
+
+S9.5 had to split deeper than expected. The Aptos `MoveVM` at tag
+`aptos-node-v1.44.9-hotfix` is stateless and requires the caller to
+provide ~60 methods worth of session machinery normally supplied by
+`aptos-vm` (which we deliberately don't pull). See
+`docs/spec/move-vm-session-layer.md` for the inventory + plan.
