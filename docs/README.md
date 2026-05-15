@@ -8,6 +8,18 @@ Kirkley; 2026).
 > plain-language overview of what this is, why it exists, and how
 > it fits together. ~10 minutes.
 
+## Visuals
+
+Presentation-ready diagrams and source formats live in the GSX DAG repo:
+
+- [GSX Visual Index](../../gsx-dag/docs/visuals/index.html)
+- [GSX Ecosystem Atlas](../../gsx-dag/docs/visuals/gsx-ecosystem-atlas.html)
+- [GSX DAG presentation](../../gsx-dag/docs/visuals/gsx-dag.html)
+- [GSX DB presentation](../../gsx-dag/docs/visuals/gsx-db.html)
+- [LTP presentation](../../gsx-dag/docs/visuals/ltp.html)
+- Mermaid sources: [GSX DAG](../../gsx-dag/docs/visuals/mermaid/gsx-dag.md), [GSX DB](../../gsx-dag/docs/visuals/mermaid/gsx-db.md), [LTP](../../gsx-dag/docs/visuals/mermaid/ltp.md)
+- Excalidraw sources: [GSX DAG](../../gsx-dag/docs/visuals/excalidraw/gsx-dag.excalidraw), [GSX DB](../../gsx-dag/docs/visuals/excalidraw/gsx-db.excalidraw), [LTP](../../gsx-dag/docs/visuals/excalidraw/ltp.excalidraw)
+
 ## Where do I start?
 
 ```mermaid
