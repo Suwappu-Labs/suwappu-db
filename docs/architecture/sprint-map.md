@@ -75,19 +75,29 @@ The next delivery sequence is intentionally linear to reduce integration risk.
 Each sprint has explicit implementation steps, verification steps, and a hard
 exit gate.
 
-### S8.5 — RedbBlockStore + replay persistence hardening (IQ-8)
+### S8.5 — RedbBlockStore + replay persistence hardening (IQ-8) ✅ CLOSED
 
-1. Add `RedbBlockStore` under `gsxdb-bridge::recovery::store` behind the existing
-   `BlockStore` trait so no caller API changes are required.
-2. Implement append + get + iter semantics with deterministic ordering by height.
-3. Persist block metadata (`height`, `hash`, `parent`, `root`, tx digest list) and
-   verify round-trip encoding/decoding stability.
-4. Integrate replay path with the persistent store and run restart simulation tests
-   (execute → drop process → reopen → replay).
-5. Add fault-injection tests for partial writes and corrupted records; verify typed
-   `RecoveryError` paths and no silent acceptance.
-6. Exit gate: 10k-case `recover_matches_live_state` still green with the redb store
-   enabled, plus restart-specific property checks.
+Landed in PR #2 (`Merge PR #2: redb-backed BlockStore + LTPAnchorRegistry + replay hardening`).
+
+Delivered:
+1. `RedbBlockStore` under `gsxdb-bridge::recovery::store` behind the existing
+   `BlockStore` trait — no caller API changes.
+2. Append + get_by_hash + get_by_height + latest + iter_from with deterministic
+   height ordering. Tables: `blocks_by_hash` (`[u8;32] -> &[u8]`) and
+   `height_to_hash` (`u64 -> [u8;32]`).
+3. Block metadata persisted: `height`, `parent`, `state_root`, full intent list.
+   Versioned encoding (`BLOCK_ENCODING_VERSION = 1`); unknown versions and
+   truncated payloads reject without panic.
+4. Replay path verified across restart simulations (execute → drop → reopen →
+   verify identical state).
+5. Fault-injection tests: `redb_corrupt_payload_is_rejected_without_panic` and
+   `redb_aborted_write_txn_leaves_no_partial_state` cover the typed-error path
+   and write-txn isolation.
+
+Exit gate met: 12 redb-specific tests + 7 replay tests + 5 in-memory tests all
+green in `cargo test -p gsxdb-bridge --lib recovery`. The pre-existing 10k-case
+`recover_matches_live_state` invariant continues to hold with the persistent
+backend.
 
 ### S9 — Real Move VM + address-shape + nonce semantics (IQ-3/4/5)
 
