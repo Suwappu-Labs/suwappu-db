@@ -35,6 +35,11 @@ move-bytecode-verifier = { git = "https://github.com/aptos-labs/aptos-core", tag
 move-core-types = { git = "https://github.com/aptos-labs/aptos-core", tag = "aptos-node-v1.44.9-hotfix", optional = true }
 move-vm-runtime = { git = "https://github.com/aptos-labs/aptos-core", tag = "aptos-node-v1.44.9-hotfix", optional = true }
 move-vm-types = { git = "https://github.com/aptos-labs/aptos-core", tag = "aptos-node-v1.44.9-hotfix", optional = true }
+# bytes::Bytes is the return shape of the Aptos ModuleBytesStorage +
+# ResourceResolver traits. Already in the transitive tree from
+# aptos-core but we declare it ourselves so our `use bytes::Bytes`
+# in aptos_session.rs resolves explicitly.
+bytes = { version = "1", optional = true }
 
 [features]
 # Move VM execution strategy.
@@ -44,6 +49,7 @@ move-vm-types = { git = "https://github.com/aptos-labs/aptos-core", tag = "aptos
 # / move-vm-types / move-core-types from aptos-labs/aptos-core
 # (tag aptos-node-v1.44.9-hotfix).
 production-move-executor = [
+    "dep:bytes",
     "dep:move-binary-format",
     "dep:move-bytecode-verifier",
     "dep:move-core-types",

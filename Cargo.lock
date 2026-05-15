@@ -904,6 +904,7 @@ name = "gsxdb-state"
 version = "0.0.1"
 dependencies = [
  "blake3",
+ "bytes",
  "hex",
  "move-binary-format",
  "move-bytecode-verifier",
