@@ -29,6 +29,7 @@ Presentation-ready GSX visuals are available in the DAG repo for context:
 | S7 | [anchor-log.md](anchor-log.md) | multi-chain anchor log + parity | `cross_chain_parity_holds` |
 | S8 + S8.5 | [recovery.md](recovery.md) | block store + deterministic replay | `recover_matches_live_state` |
 | S9 | [move-execution.md](move-execution.md) | real Move VM (Aptos `move-vm-runtime`) + `ModuleStore` + `Intent::DeployModule` + address shape (IQ-4) + nonce semantics (IQ-5) | `interleaved_evm_move_preserves_invariant` w/ `production-move-executor` |
+| S9.5d | [move-vm-session-layer.md](move-vm-session-layer.md) | session-layer design — ~60 trait methods needed to bridge `MoveBalanceView` to Aptos's stateless VM (`Loader`, `ModuleStorage`, `MoveVmDataCache`, `GasMeter`, native fn table) | session-layer impl + 10k parity gate (deferred multi-session) |
 
 ## Cross-reference flow
 
