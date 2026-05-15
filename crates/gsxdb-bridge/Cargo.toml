@@ -29,10 +29,25 @@ reqwest = { version = "0.11", features = ["json"] }
 serde_json = "1"
 # Hex encoding/decoding for eth_call data and responses.
 hex = "0.4"
+# Keccak256 for Solidity-parity payloads (LTPAnchorRegistry, S11).
+sha3 = "0.10"
+# secp256k1 ECDSA + recovery for AuthScheme::EcdsaSecp256k1 (IQ-7 launch path).
+k256 = { version = "0.13", features = ["ecdsa", "arithmetic"] }
+# ML-DSA-65 (FIPS 204) for AuthScheme::MlDsa65Hybrid (IQ-7 PQ surface).
+# Optional — pulled in only with `--features production-pqc` because the
+# C-based pqclean backend is heavy and has cross-compile gotchas under musl.
+pqcrypto-mldsa = { version = "0.1", default-features = false, optional = true }
+pqcrypto-traits = { version = "0.3", optional = true }
+
+[features]
+# Enables the ML-DSA-65 verifier path for AuthScheme::MlDsa65Hybrid.
+# Off by default to keep CI fast and avoid the pqclean C build until
+# the hybrid AND-gate dispatch (Step D) is ready.
+production-pqc = ["dep:pqcrypto-mldsa", "dep:pqcrypto-traits"]
 
 [dev-dependencies]
 proptest = "1"
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt"] }
-# Keccak256 for Solidity parity testing (Phase 1 placeholder MAC)
-sha3 = "0.10"
+# rand for ECDSA signing key generation in roundtrip tests.
+rand = "0.8"
