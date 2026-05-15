@@ -28,11 +28,12 @@ pub use nonce_semantics::{AccountNonce, EvmNonce, MoveSequenceNumber};
 pub use redb_store::RedbBalanceStore;
 pub use store::{BalanceStore, InMemoryBalanceStore};
 pub use tree::{Commitment, Proof, ProofStep, StateTree};
-#[cfg(feature = "production-move-executor")]
-pub use vm::AptosMoveExecutor;
 pub use vm::{
-    CanonicalTransfer, EvmProjector, EvmTx, EvmView, ExecutionOutcome, MockMoveExecutor,
-    MoveExecutor, MoveProjector, MoveTx, MoveView,
+    AbortLocation, CanonicalTransfer, CompiledModule, EvmProjector, EvmTx, EvmView, Identifier,
+    IdentifierError, MockMoveExecutor, ModuleId, ModuleStore, ModuleStoreError, MoveBalanceView,
+    MoveCall, MoveEvent, MoveExecutionError, MoveExecutor, MoveOutcome, MoveProjector,
+    MoveSessionState, MoveTx, MoveView, ResourceWrite, StructTag, TypeTag,
+    ABORT_INSUFFICIENT_BALANCE, CANONICAL_COIN_ADDRESS,
 };
 
 /// 20-byte EVM-shaped address. Move addresses are projected onto this layout.

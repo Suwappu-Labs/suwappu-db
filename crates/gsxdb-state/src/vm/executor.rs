@@ -1,147 +1,642 @@
-//! Move VM execution framework.
+//! Move VM execution framework — call-site trait + types.
 //!
 //! GSX-DB delegates Move bytecode execution to an abstract executor trait.
-//! This allows:
+//! S9 expands this from a passthrough placeholder into a real call-site
+//! that accepts bytecode + entry function + arguments + a module store.
 //!
-//! - **Mock mode** (development/testing): Simple in-memory state machine
-//!   without real bytecode execution. Default for Phase 1.
-//! - **Production mode** (S9+): Real Aptos move-vm-runtime executing Move bytecode
-//!   compiled to canonical Aptos bytecode format.
+//! See `docs/spec/move-execution.md` for the full design rationale.
 //!
-//! ## Feature Gates
+//! ## Feature gates
 //!
-//! - `(none)` or `mock-move-executor` — uses [`MockMoveExecutor`]
-//! - `production-move-executor` — uses [`AptosMoveExecutor`] (requires aptos-core)
+//! - `(none)` or `mock-move-executor` — uses [`MockMoveExecutor`]. Simulates
+//!   the canonical `Coin<T>` `transfer` entry point so cross-VM parity
+//!   tests can stay green while the trait shape changes (S9.2 → S9.4).
+//! - `production-move-executor` — uses `AptosMoveExecutor` (lands in S9.5;
+//!   wraps `move-vm-runtime` and bundles a canonical `Coin<T>` module).
 //!
-//! The executor is invoked at transaction commit time by the bridge's
-//! `MoveProjector` to validate that a transition respects Move invariants.
+//! ## Invocation site
+//!
+//! The Move executor is invoked from `gsxdb-bridge::bundle::BundleExecutor`
+//! when an `Intent::Call` targets a Move module (S9.4). Each bundle gets
+//! one [`MoveSessionState`]; resource writes are buffered and applied to
+//! the substrate at bundle commit through the lane-separation gate.
 
-use crate::{AccountNonce, BalanceSlot, MoveAddress, MoveCoinValue};
+use crate::{AccountNonce, MoveAddress, MoveCoinValue};
 
-/// Result of Move bytecode execution against an account's resources.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExecutionOutcome {
-    /// Execution succeeded, producing the new coin value and sequence number.
-    Success {
-        /// The account's coin balance after execution.
-        coin_value: MoveCoinValue,
-        /// The account's sequence number after execution.
-        sequence: AccountNonce,
-    },
-    /// Execution failed (out of gas, abort, invalid bytecode, etc).
-    Failure,
+/// Move identifier (function or module name). Bytes match Move's
+/// identifier rules: ASCII, starts with letter or underscore, contains
+/// only `[A-Za-z0-9_]`. Validated at construction.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Identifier(String);
+
+/// Reasons [`Identifier::new`] rejects a string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IdentifierError {
+    /// Empty string.
+    Empty,
+    /// Contains a byte outside the Move identifier alphabet.
+    InvalidByte(u8),
+    /// First byte is not a letter or underscore.
+    InvalidLeadingByte(u8),
 }
 
-/// Trait for executing Move bytecode.
-///
-/// Implementations are responsible for:
-/// - Loading the compiled Move module(s) for the account
-/// - Executing the target function in the Move VM
-/// - Extracting the resulting coin value and sequence number
-/// - Handling errors gracefully
-pub trait MoveExecutor: std::fmt::Debug {
-    /// Execute Move bytecode for the account at `addr` with the given initial state.
+impl Identifier {
+    /// Validate and construct.
     ///
-    /// Returns the resulting coin value and nonce, or `ExecutionOutcome::Failure` if
-    /// the execution failed or the account's resources could not be accessed.
-    fn execute(&self, addr: &MoveAddress, initial: BalanceSlot) -> ExecutionOutcome;
+    /// # Errors
+    ///
+    /// Returns [`IdentifierError`] if `s` is empty, starts with a digit, or
+    /// contains a byte outside `[A-Za-z0-9_]`.
+    pub fn new(s: impl Into<String>) -> Result<Self, IdentifierError> {
+        let s = s.into();
+        let bytes = s.as_bytes();
+        if bytes.is_empty() {
+            return Err(IdentifierError::Empty);
+        }
+        let first = bytes[0];
+        if !(first.is_ascii_alphabetic() || first == b'_') {
+            return Err(IdentifierError::InvalidLeadingByte(first));
+        }
+        for &b in &bytes[1..] {
+            if !(b.is_ascii_alphanumeric() || b == b'_') {
+                return Err(IdentifierError::InvalidByte(b));
+            }
+        }
+        Ok(Self(s))
+    }
+
+    /// Borrow the underlying string.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
-/// Mock Move executor for development and testing.
+/// Module identifier: address + module name.
 ///
-/// Implements the simplest possible semantics: reads the input coin value
-/// and sequence number directly, with no bytecode execution. This is sufficient
-/// for Phase 1 (S1–S8) and for property tests that don't require bytecode semantics.
-///
-/// The mock executor is deterministic and never fails.
-#[derive(Debug, Clone, Copy)]
-pub struct MockMoveExecutor;
+/// Maps to Move's `<address>::<module>`. S9.5 maps directly onto
+/// `move_core_types::language_storage::ModuleId`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ModuleId {
+    /// Account hosting the module.
+    pub address: MoveAddress,
+    /// Module name within that account.
+    pub name: Identifier,
+}
 
-impl MoveExecutor for MockMoveExecutor {
-    fn execute(&self, _addr: &MoveAddress, initial: BalanceSlot) -> ExecutionOutcome {
-        ExecutionOutcome::Success {
-            coin_value: initial.move_coin_value(),
-            sequence: initial.nonce(),
+/// Move type tag for type-parameter binding and resource keys.
+///
+/// Phase-1 covers the primitive types, vectors, and user structs that
+/// the canonical `Coin<T>` module needs. S9.5 maps directly onto
+/// `move_core_types::language_storage::TypeTag`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TypeTag {
+    /// `bool`.
+    Bool,
+    /// `u8`.
+    U8,
+    /// `u16`.
+    U16,
+    /// `u32`.
+    U32,
+    /// `u64`.
+    U64,
+    /// `u128`.
+    U128,
+    /// `u256`.
+    U256,
+    /// `address`.
+    Address,
+    /// `signer`.
+    Signer,
+    /// `vector<T>`.
+    Vector(Box<TypeTag>),
+    /// User-defined struct.
+    Struct(StructTag),
+}
+
+/// User-defined struct tag.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StructTag {
+    /// Defining module's account.
+    pub address: MoveAddress,
+    /// Defining module's name.
+    pub module: Identifier,
+    /// Struct name.
+    pub name: Identifier,
+    /// Type-parameter bindings.
+    pub type_params: Vec<TypeTag>,
+}
+
+/// One Move VM entry-function invocation. Built by `BundleExecutor`
+/// from an `Intent::Call` whose target is a Move module.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MoveCall {
+    /// Caller address (signer). Cross-VM intents from EVM use the
+    /// canonical EVM→Move projection (left-zero-pad to 32 bytes).
+    pub caller: MoveAddress,
+    /// Module being invoked.
+    pub module: ModuleId,
+    /// Entry function within the module.
+    pub function: Identifier,
+    /// Type-argument bindings for generic functions (e.g. the `T` in
+    /// `Coin<T>::transfer<T>`).
+    pub type_arguments: Vec<TypeTag>,
+    /// BCS-encoded arguments. Verifier matches them against the
+    /// function signature before invocation.
+    pub arguments: Vec<Vec<u8>>,
+}
+
+/// Compiled Move module bytes. Phase-1 stores these as opaque bytes;
+/// S9.5 deserializes via `move-binary-format::CompiledModule`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompiledModule {
+    /// Canonical Move bytecode (BCS-encoded).
+    pub bytes: Vec<u8>,
+}
+
+/// Module storage backend. Owned by `BundleExecutor`; populated by
+/// `Intent::DeployModule` and read by [`MoveExecutor::execute`].
+///
+/// S9.3 lands the in-memory + redb-backed implementations.
+pub trait ModuleStore: Send + Sync + std::fmt::Debug {
+    /// Look up a module by id. Returns an owned copy so the caller can
+    /// pass the bytes into the verifier / runtime without holding the
+    /// store lock across an interpreter call.
+    fn get(&self, id: &ModuleId) -> Option<CompiledModule>;
+
+    /// Deploy a module. Returns [`ModuleStoreError::AlreadyExists`] if
+    /// `id` is already populated — upgrades require a separate path
+    /// (deferred per `docs/spec/move-execution.md` open question).
+    ///
+    /// # Errors
+    ///
+    /// Storage-backend failures surface as [`ModuleStoreError::Backend`].
+    fn put(
+        &mut self,
+        id: ModuleId,
+        module: CompiledModule,
+    ) -> Result<(), ModuleStoreError>;
+
+    /// `true` iff `id` has a module.
+    fn contains(&self, id: &ModuleId) -> bool;
+}
+
+/// Reasons [`ModuleStore::put`] fails.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModuleStoreError {
+    /// Re-deploy at an existing id.
+    AlreadyExists(ModuleId),
+    /// Underlying storage backend error.
+    Backend(String),
+}
+
+/// Read-only view over the substrate's balance store, scoped to Move
+/// resources. Move executor reads `Coin<T>` resources through this so
+/// it doesn't see redb / RocksDB directly — preserves lane separation.
+pub trait MoveBalanceView: Send + Sync + std::fmt::Debug {
+    /// Current coin value at `addr`.
+    fn coin_value(&self, addr: &MoveAddress) -> MoveCoinValue;
+
+    /// Current sequence number (Move-side) at `addr`.
+    fn nonce(&self, addr: &MoveAddress) -> AccountNonce;
+}
+
+/// Per-bundle Move session. Threaded into [`MoveExecutor::execute`]
+/// for the duration of one `Intent::Call`. Reads route through
+/// `balance_view`; writes accumulate in `buffered_writes` and are
+/// applied to the substrate at bundle commit through the
+/// lane-separation gate.
+#[derive(Debug)]
+pub struct MoveSessionState<'a> {
+    /// Read-side view into the substrate.
+    pub balance_view: &'a dyn MoveBalanceView,
+    /// Resource writes produced by Move execution. Apply at bundle commit.
+    pub buffered_writes: Vec<ResourceWrite>,
+    /// Move-emitted events produced this bundle. Surfaced through the
+    /// telemetry layer; not part of canonical state.
+    pub events: Vec<MoveEvent>,
+}
+
+impl<'a> MoveSessionState<'a> {
+    /// New empty session over `balance_view`.
+    pub fn new(balance_view: &'a dyn MoveBalanceView) -> Self {
+        Self {
+            balance_view,
+            buffered_writes: Vec::new(),
+            events: Vec::new(),
         }
     }
 }
 
-/// Production Move executor using Aptos move-vm-runtime.
-///
-/// This executor is only available behind the `production-move-executor` feature.
-/// It loads and executes real Aptos Move bytecode, validating all Move invariants.
-#[cfg(feature = "production-move-executor")]
-#[derive(Debug)]
-pub struct AptosMoveExecutor {
-    // TODO(S9): Wire in aptos-core dependency.
-    // Will hold:
-    // - Module cache loaded from the block's Move artifact archive
-    // - Reference to the runtime (lazy-initialized on first use)
-    _phantom: std::marker::PhantomData<()>,
+/// A buffered resource write produced by Move execution. Applied to
+/// the substrate at bundle commit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResourceWrite {
+    /// Address whose `Coin<T>` resource is being updated.
+    pub addr: MoveAddress,
+    /// New coin value.
+    pub coin_value: MoveCoinValue,
+    /// New nonce.
+    pub nonce: AccountNonce,
 }
 
-#[cfg(feature = "production-move-executor")]
-impl MoveExecutor for AptosMoveExecutor {
-    fn execute(&self, _addr: &MoveAddress, _initial: BalanceSlot) -> ExecutionOutcome {
-        // TODO(S9): Implement real Aptos move-vm-runtime execution.
-        // This is a placeholder that always succeeds with the input state.
-        // At S9 close, this will:
-        // 1. Load the Move module for addr from the module store
-        // 2. Construct a Move interpreter session
-        // 3. Execute the canonical entry point (e.g., `AptosCoin::coin_value`)
-        // 4. Extract the resulting coin value and sequence number
-        // 5. Handle execution errors (abort, out of gas) and return Failure
-        ExecutionOutcome::Failure
+/// Move-emitted event. Phase-1 captures type + opaque payload; S9.5
+/// can swap for `move-binary-format` event types.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MoveEvent {
+    /// Event type (typically a struct tag).
+    pub type_tag: TypeTag,
+    /// BCS-encoded event payload.
+    pub data: Vec<u8>,
+}
+
+/// Result of one successful [`MoveExecutor::execute`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MoveOutcome {
+    /// BCS-encoded return values from the entry function.
+    pub return_values: Vec<Vec<u8>>,
+    /// Events emitted during the call.
+    pub events: Vec<MoveEvent>,
+    /// Resource writes accumulated during the call.
+    pub resource_writes: Vec<ResourceWrite>,
+}
+
+/// Reasons [`MoveExecutor::execute`] fails.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MoveExecutionError {
+    /// Module referenced by [`MoveCall::module`] is not deployed.
+    ModuleNotFound(ModuleId),
+    /// `move-bytecode-verifier` rejected the module. Carries the
+    /// verifier-reported reason for diagnostics.
+    BytecodeVerificationFailed(String),
+    /// Move abort during interpretation. `code` is the user-defined
+    /// abort code; `location` is the call site.
+    Abort {
+        /// User-defined abort code (Move convention: `error::*` helpers).
+        code: u64,
+        /// Where the abort happened.
+        location: AbortLocation,
+    },
+    /// Execution ran past the gas budget (currently `u64::MAX`; S12).
+    OutOfGas,
+    /// Arguments didn't match the entry function's signature.
+    InvalidArguments(String),
+    /// Module referenced a dependency that isn't deployed.
+    LinkerError(String),
+}
+
+/// Location of a Move abort. Maps to
+/// `move_binary_format::errors::AbortLocation`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AbortLocation {
+    /// Module that raised the abort (`None` for `<script>` calls).
+    pub module: Option<ModuleId>,
+    /// Index into the module's function table.
+    pub function_index: u16,
+    /// Bytecode offset within that function.
+    pub instruction_index: u16,
+}
+
+/// Move bytecode executor.
+///
+/// Phase-1 ships [`MockMoveExecutor`], which simulates the canonical
+/// `Coin<T>` `transfer` entry point so cross-VM parity tests can stay
+/// green while the trait shape changes (S9.2 → S9.4). S9.5 swaps in
+/// `AptosMoveExecutor` backed by `move-vm-runtime`.
+pub trait MoveExecutor: Send + Sync + std::fmt::Debug {
+    /// Execute one entry function in the Move VM.
+    ///
+    /// # Errors
+    ///
+    /// See [`MoveExecutionError`].
+    fn execute(
+        &self,
+        call: &MoveCall,
+        modules: &dyn ModuleStore,
+        state: &mut MoveSessionState<'_>,
+    ) -> Result<MoveOutcome, MoveExecutionError>;
+}
+
+/// Mock Move executor for development + testing.
+///
+/// Simulates a canonical `Coin<T>` `transfer(to: address, amount: u64)`
+/// entry point by reading the caller's and recipient's balances from
+/// the session's `balance_view`, producing matched [`ResourceWrite`]s,
+/// and returning empty `return_values`. Every other entry function
+/// returns an empty [`MoveOutcome`] (no writes, no events) — sufficient
+/// for the S9.2–S9.4 wiring to compile + cross-VM parity tests to pass
+/// without a real Move backend.
+///
+/// This is deterministic. The bytecode is never parsed; the entry
+/// function's name + argument layout are matched directly.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MockMoveExecutor;
+
+/// Address of the canonical gsx-db `Coin<T>` module (`0x1::coin`).
+/// Matches Aptos's `0x1::coin` location.
+pub const CANONICAL_COIN_ADDRESS: MoveAddress = MoveAddress([
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    1,
+]);
+
+impl MoveExecutor for MockMoveExecutor {
+    fn execute(
+        &self,
+        call: &MoveCall,
+        _modules: &dyn ModuleStore,
+        state: &mut MoveSessionState<'_>,
+    ) -> Result<MoveOutcome, MoveExecutionError> {
+        // Only the canonical 0x1::coin::transfer entry is simulated;
+        // every other call returns an empty outcome (no state change).
+        let is_canonical_coin = call.module.address == CANONICAL_COIN_ADDRESS
+            && call.module.name.as_str() == "coin";
+        let is_transfer = call.function.as_str() == "transfer";
+        if !(is_canonical_coin && is_transfer) {
+            return Ok(MoveOutcome {
+                return_values: Vec::new(),
+                events: Vec::new(),
+                resource_writes: Vec::new(),
+            });
+        }
+
+        // transfer(to: address, amount: u64)
+        if call.arguments.len() != 2 {
+            return Err(MoveExecutionError::InvalidArguments(format!(
+                "0x1::coin::transfer expects 2 arguments, got {}",
+                call.arguments.len()
+            )));
+        }
+        let to_bytes: &[u8; 32] = call.arguments[0].as_slice().try_into().map_err(|_| {
+            MoveExecutionError::InvalidArguments(
+                "0x1::coin::transfer: arg 0 must be 32-byte address".into(),
+            )
+        })?;
+        let to_addr = MoveAddress(*to_bytes);
+        let amount_bytes: &[u8; 8] = call.arguments[1].as_slice().try_into().map_err(|_| {
+            MoveExecutionError::InvalidArguments(
+                "0x1::coin::transfer: arg 1 must be u64 (8 bytes LE)".into(),
+            )
+        })?;
+        let amount = u64::from_le_bytes(*amount_bytes);
+
+        let caller_balance = state.balance_view.coin_value(&call.caller).to_u128();
+        if u128::from(amount) > caller_balance {
+            return Err(MoveExecutionError::Abort {
+                code: ABORT_INSUFFICIENT_BALANCE,
+                location: AbortLocation {
+                    module: Some(call.module.clone()),
+                    function_index: 0,
+                    instruction_index: 0,
+                },
+            });
+        }
+
+        let caller_new = caller_balance - u128::from(amount);
+        let recipient_new = state.balance_view.coin_value(&to_addr).to_u128() + u128::from(amount);
+        let caller_nonce = state.balance_view.nonce(&call.caller).next();
+        let recipient_nonce = state.balance_view.nonce(&to_addr);
+
+        state.buffered_writes.push(ResourceWrite {
+            addr: call.caller,
+            coin_value: MoveCoinValue::from_u128(caller_new),
+            nonce: caller_nonce,
+        });
+        state.buffered_writes.push(ResourceWrite {
+            addr: to_addr,
+            coin_value: MoveCoinValue::from_u128(recipient_new),
+            nonce: recipient_nonce,
+        });
+
+        Ok(MoveOutcome {
+            return_values: Vec::new(),
+            events: Vec::new(),
+            resource_writes: state.buffered_writes.clone(),
+        })
     }
 }
+
+/// Standard Move abort code for "insufficient balance" — chosen to match
+/// Aptos's `aptos_framework::coin::EINSUFFICIENT_BALANCE` so the abort
+/// is wire-comparable when the real backend lands in S9.5.
+pub const ABORT_INSUFFICIENT_BALANCE: u64 = 0x10006;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::BalanceSlot;
+    use std::collections::HashMap;
 
-    #[test]
-    fn mock_executor_preserves_state() {
-        let executor = MockMoveExecutor;
-        let addr = MoveAddress::from_hex(
-            "0x0000000000000000000000000000000000000000000000000000000000000001",
-        )
-        .unwrap();
-        let slot = BalanceSlot::with_nonce(100, AccountNonce::new(42));
+    /// In-memory `MoveBalanceView` for tests.
+    #[derive(Debug, Default)]
+    struct InMemoryView {
+        balances: HashMap<MoveAddress, BalanceSlot>,
+    }
 
-        let outcome = executor.execute(&addr, slot);
+    impl InMemoryView {
+        fn set(&mut self, addr: MoveAddress, slot: BalanceSlot) {
+            self.balances.insert(addr, slot);
+        }
+    }
 
-        match outcome {
-            ExecutionOutcome::Success {
-                coin_value,
-                sequence,
-            } => {
-                assert_eq!(coin_value.to_u128(), 100);
-                assert_eq!(sequence.value, 42);
-            }
-            ExecutionOutcome::Failure => panic!("mock executor should never fail"),
+    impl MoveBalanceView for InMemoryView {
+        fn coin_value(&self, addr: &MoveAddress) -> MoveCoinValue {
+            self.balances
+                .get(addr)
+                .copied()
+                .unwrap_or_else(|| BalanceSlot::new(0))
+                .move_coin_value()
+        }
+        fn nonce(&self, addr: &MoveAddress) -> AccountNonce {
+            self.balances
+                .get(addr)
+                .copied()
+                .unwrap_or_else(|| BalanceSlot::new(0))
+                .nonce()
+        }
+    }
+
+    /// Empty `ModuleStore` for tests where the executor doesn't need
+    /// bytecode. Mock executor never reads from `modules`; this is a
+    /// no-op stand-in.
+    #[derive(Debug, Default)]
+    struct EmptyModuleStore;
+
+    impl ModuleStore for EmptyModuleStore {
+        fn get(&self, _id: &ModuleId) -> Option<CompiledModule> {
+            None
+        }
+        fn put(
+            &mut self,
+            _id: ModuleId,
+            _module: CompiledModule,
+        ) -> Result<(), ModuleStoreError> {
+            Ok(())
+        }
+        fn contains(&self, _id: &ModuleId) -> bool {
+            false
+        }
+    }
+
+    fn move_addr(byte: u8) -> MoveAddress {
+        let mut bytes = [0u8; 32];
+        bytes[31] = byte;
+        MoveAddress(bytes)
+    }
+
+    fn coin_module() -> ModuleId {
+        ModuleId {
+            address: CANONICAL_COIN_ADDRESS,
+            name: Identifier::new("coin").unwrap(),
+        }
+    }
+
+    fn transfer_call(from: MoveAddress, to: MoveAddress, amount: u64) -> MoveCall {
+        MoveCall {
+            caller: from,
+            module: coin_module(),
+            function: Identifier::new("transfer").unwrap(),
+            type_arguments: Vec::new(),
+            arguments: vec![to.0.to_vec(), amount.to_le_bytes().to_vec()],
         }
     }
 
     #[test]
-    fn mock_executor_handles_zero_nonce() {
-        let executor = MockMoveExecutor;
-        let addr = MoveAddress::from_hex(
-            "0x0000000000000000000000000000000000000000000000000000000000000002",
-        )
-        .unwrap();
-        let slot = BalanceSlot::new(999);
+    fn identifier_rejects_empty() {
+        assert_eq!(
+            Identifier::new(""),
+            Err(IdentifierError::Empty)
+        );
+    }
 
-        let outcome = executor.execute(&addr, slot);
+    #[test]
+    fn identifier_rejects_leading_digit() {
+        assert!(matches!(
+            Identifier::new("1foo"),
+            Err(IdentifierError::InvalidLeadingByte(b'1'))
+        ));
+    }
 
-        match outcome {
-            ExecutionOutcome::Success {
-                coin_value,
-                sequence,
-            } => {
-                assert_eq!(coin_value.to_u128(), 999);
-                assert_eq!(sequence.value, 0);
+    #[test]
+    fn identifier_accepts_underscore_leading() {
+        assert!(Identifier::new("_coin").is_ok());
+    }
+
+    #[test]
+    fn identifier_rejects_special_chars() {
+        assert!(matches!(
+            Identifier::new("co-in"),
+            Err(IdentifierError::InvalidByte(b'-'))
+        ));
+    }
+
+    #[test]
+    fn mock_transfer_succeeds_with_matching_writes() {
+        let alice = move_addr(1);
+        let bob = move_addr(2);
+        let mut view = InMemoryView::default();
+        view.set(alice, BalanceSlot::new(1000));
+        view.set(bob, BalanceSlot::new(500));
+
+        let mut state = MoveSessionState::new(&view);
+        let outcome = MockMoveExecutor
+            .execute(&transfer_call(alice, bob, 250), &EmptyModuleStore, &mut state)
+            .expect("transfer should succeed");
+
+        assert_eq!(outcome.resource_writes.len(), 2);
+
+        let alice_write = &outcome.resource_writes[0];
+        assert_eq!(alice_write.addr, alice);
+        assert_eq!(alice_write.coin_value.to_u128(), 750);
+        assert_eq!(alice_write.nonce.value, 1);
+
+        let bob_write = &outcome.resource_writes[1];
+        assert_eq!(bob_write.addr, bob);
+        assert_eq!(bob_write.coin_value.to_u128(), 750);
+        assert_eq!(bob_write.nonce.value, 0);
+    }
+
+    #[test]
+    fn mock_transfer_aborts_on_insufficient_balance() {
+        let alice = move_addr(1);
+        let bob = move_addr(2);
+        let mut view = InMemoryView::default();
+        view.set(alice, BalanceSlot::new(100));
+
+        let mut state = MoveSessionState::new(&view);
+        let err = MockMoveExecutor
+            .execute(&transfer_call(alice, bob, 500), &EmptyModuleStore, &mut state)
+            .expect_err("should abort");
+
+        assert!(matches!(
+            err,
+            MoveExecutionError::Abort {
+                code: ABORT_INSUFFICIENT_BALANCE,
+                ..
             }
-            ExecutionOutcome::Failure => panic!("mock executor should never fail"),
-        }
+        ));
+        assert!(state.buffered_writes.is_empty());
+    }
+
+    #[test]
+    fn mock_returns_empty_for_unknown_module() {
+        let alice = move_addr(1);
+        let view = InMemoryView::default();
+        let mut state = MoveSessionState::new(&view);
+        let call = MoveCall {
+            caller: alice,
+            module: ModuleId {
+                address: move_addr(99),
+                name: Identifier::new("not_coin").unwrap(),
+            },
+            function: Identifier::new("transfer").unwrap(),
+            type_arguments: Vec::new(),
+            arguments: vec![alice.0.to_vec(), 10u64.to_le_bytes().to_vec()],
+        };
+
+        let outcome = MockMoveExecutor
+            .execute(&call, &EmptyModuleStore, &mut state)
+            .expect("unknown module should return empty outcome");
+        assert!(outcome.resource_writes.is_empty());
+        assert!(outcome.return_values.is_empty());
+        assert!(outcome.events.is_empty());
+    }
+
+    #[test]
+    fn mock_rejects_wrong_arg_count() {
+        let alice = move_addr(1);
+        let view = InMemoryView::default();
+        let mut state = MoveSessionState::new(&view);
+        let call = MoveCall {
+            caller: alice,
+            module: coin_module(),
+            function: Identifier::new("transfer").unwrap(),
+            type_arguments: Vec::new(),
+            arguments: vec![alice.0.to_vec()], // missing amount
+        };
+
+        let err = MockMoveExecutor
+            .execute(&call, &EmptyModuleStore, &mut state)
+            .expect_err("wrong arg count should reject");
+        assert!(matches!(err, MoveExecutionError::InvalidArguments(_)));
+    }
+
+    #[test]
+    fn mock_rejects_malformed_address_arg() {
+        let alice = move_addr(1);
+        let view = InMemoryView::default();
+        let mut state = MoveSessionState::new(&view);
+        let call = MoveCall {
+            caller: alice,
+            module: coin_module(),
+            function: Identifier::new("transfer").unwrap(),
+            type_arguments: Vec::new(),
+            arguments: vec![vec![1, 2, 3], 10u64.to_le_bytes().to_vec()],
+        };
+
+        let err = MockMoveExecutor
+            .execute(&call, &EmptyModuleStore, &mut state)
+            .expect_err("malformed address should reject");
+        assert!(matches!(err, MoveExecutionError::InvalidArguments(_)));
     }
 }

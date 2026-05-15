@@ -3,16 +3,21 @@
 //! The dual-VM design's promise is that an EVM-shaped transaction and a
 //! Move-shaped transaction expressing the same logical operation produce
 //! identical canonical state. This module holds the typed entry points
-//! (`tx`) and the read paths (`projector`) that operationalise that
-//! promise. The execution paths live in `gsxdb-bridge::vm` because they
+//! (`tx`), the read paths (`projector`), and the Move executor call-site
+//! (`executor`). Execution paths live in `gsxdb-bridge::vm` because they
 //! mutate state through the `BridgeToken` capability gate.
+//!
+//! See `docs/spec/move-execution.md` for the S9 execution model.
 
 pub mod executor;
 pub mod projector;
 pub mod tx;
 
-#[cfg(feature = "production-move-executor")]
-pub use executor::AptosMoveExecutor;
-pub use executor::{ExecutionOutcome, MockMoveExecutor, MoveExecutor};
+pub use executor::{
+    AbortLocation, CompiledModule, Identifier, IdentifierError, MockMoveExecutor, ModuleId,
+    ModuleStore, ModuleStoreError, MoveBalanceView, MoveCall, MoveEvent, MoveExecutionError,
+    MoveExecutor, MoveOutcome, MoveSessionState, ResourceWrite, StructTag, TypeTag,
+    ABORT_INSUFFICIENT_BALANCE, CANONICAL_COIN_ADDRESS,
+};
 pub use projector::{EvmProjector, EvmView, MoveProjector, MoveView};
 pub use tx::{CanonicalTransfer, EvmTx, MoveTx};

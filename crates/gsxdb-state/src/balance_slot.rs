@@ -36,6 +36,13 @@ impl MoveCoinValue {
     pub fn to_u128(self) -> u128 {
         self.0
     }
+
+    /// Construct from a raw `u128`. Inverse of [`Self::to_u128`].
+    /// Used by S9 Move executors to surface buffered coin writes.
+    #[must_use]
+    pub fn from_u128(value: u128) -> Self {
+        Self(value)
+    }
 }
 
 /// Errors that arise when mutating a balance slot.
