@@ -532,25 +532,42 @@ impl MoveExecutor for AptosMoveExecutor {
         modules: &dyn ModuleStore,
         _state: &mut MoveSessionState<'_>,
     ) -> Result<MoveOutcome, MoveExecutionError> {
-        // S9.5a: scaffolding only. We do the cheap structural check —
-        // module-not-found — so the executor behaves correctly for the
-        // "module isn't deployed" case even before S9.5b wires the VM.
-        // Everything else returns UnsupportedScheme so production-on
-        // builds fail closed rather than silently no-op.
-        if !modules.contains(&call.module) {
-            return Err(MoveExecutionError::ModuleNotFound(call.module.clone()));
-        }
-        // S9.5b wires this arm to:
-        //   1. CompiledModule::deserialize(modules.get(&call.module)?.bytes)
-        //   2. bytecode-verifier verify(&compiled_module)
-        //   3. MoveVM::new_session(state_view).execute_entry_function(
-        //          call.module, call.function, type_args, args, gas
-        //      )
-        //   4. Translate the resulting MoveTypeLayout::Resource writes
-        //      into our ResourceWrite { addr, coin_value, nonce }
-        Err(MoveExecutionError::InvalidArguments(
-            "AptosMoveExecutor execution path not wired yet (S9.5b)".into(),
-        ))
+        use move_binary_format::file_format::CompiledModule;
+
+        // 1. Module-not-found check.
+        let cm = modules
+            .get(&call.module)
+            .ok_or_else(|| MoveExecutionError::ModuleNotFound(call.module.clone()))?;
+
+        // 2. Deserialize Move bytecode (move-binary-format).
+        let compiled = CompiledModule::deserialize(&cm.bytes).map_err(|e| {
+            MoveExecutionError::BytecodeVerificationFailed(format!("deserialize: {e:?}"))
+        })?;
+
+        // 3. Run the bytecode verifier (move-bytecode-verifier).
+        move_bytecode_verifier::verifier::verify_module(&compiled).map_err(|e| {
+            MoveExecutionError::BytecodeVerificationFailed(format!("verify: {e:?}"))
+        })?;
+
+        // 4. Interpreter session not yet wired (S9.5d).
+        //
+        // The MoveVM at aptos-node-v1.44.9-hotfix is stateless and expects
+        // the caller to provide a fully-loaded function plus a `Loader`,
+        // `MoveVmDataCache`, `GasMeter`, `TypeDepthChecker`,
+        // `TraversalContext`, and `NativeContextExtensions`. That's the
+        // session layer normally provided by aptos-vm (which we
+        // deliberately don't pull). Building gsx-db's own minimal
+        // session layer is S9.5d — a separate engagement.
+        //
+        // Until then the executor: (a) validates bytecode (this PR's
+        // contribution), (b) reports a clear "execution-not-wired"
+        // surface so production-on builds fail closed rather than
+        // silently no-op.
+        Err(MoveExecutionError::InvalidArguments(format!(
+            "AptosMoveExecutor: module {:?}::{} bytecode validated, but interpreter session not yet wired (S9.5d)",
+            call.module.address,
+            call.module.name.as_str()
+        )))
     }
 }
 
@@ -808,10 +825,11 @@ mod tests {
 
     #[cfg(feature = "production-move-executor")]
     #[test]
-    fn aptos_executor_with_deployed_module_returns_unwired_error() {
-        // S9.5a: with the module deployed, the executor reports the
-        // not-yet-wired execution path explicitly rather than silently
-        // succeeding with no state change.
+    fn aptos_executor_rejects_malformed_bytecode() {
+        // S9.5c: bytecode-format verification is wired. Random bytes
+        // fail CompiledModule::deserialize and surface as
+        // BytecodeVerificationFailed before the executor ever attempts
+        // execution.
         let alice = move_addr(1);
         let view = InMemoryView::default();
         let mut state = MoveSessionState::new(&view);
@@ -820,15 +838,20 @@ mod tests {
             .put(
                 coin_module(),
                 CompiledModule {
-                    bytes: vec![0xCA, 0xFE, 0xBA, 0xBE],
+                    bytes: vec![0xCA, 0xFE, 0xBA, 0xBE, 0xDE, 0xAD, 0xBE, 0xEF],
                 },
             )
             .unwrap();
         let executor = AptosMoveExecutor;
         let err = executor
             .execute(&transfer_call(alice, move_addr(2), 1), &modules, &mut state)
-            .expect_err("execution path not wired yet");
-        assert!(matches!(err, MoveExecutionError::InvalidArguments(_)));
+            .expect_err("malformed bytecode rejected");
+        match err {
+            MoveExecutionError::BytecodeVerificationFailed(msg) => {
+                assert!(msg.contains("deserialize"), "msg was {msg}");
+            }
+            other => panic!("expected BytecodeVerificationFailed, got {other:?}"),
+        }
     }
 
     #[test]
