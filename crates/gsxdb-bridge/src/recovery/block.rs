@@ -99,6 +99,21 @@ fn encode_intent(h: &mut Hasher, intent: &Intent) {
             h.update(&len.to_be_bytes());
             h.update(calldata);
         }
+        Intent::DeployModule {
+            account,
+            name,
+            bytes,
+        } => {
+            h.update(&[2u8]); // tag: DeployModule (S9.3)
+            h.update(&account.0);
+            let name_bytes = name.as_str().as_bytes();
+            let name_len = u32::try_from(name_bytes.len()).unwrap_or(u32::MAX);
+            h.update(&name_len.to_be_bytes());
+            h.update(name_bytes);
+            let bytes_len = u32::try_from(bytes.len()).unwrap_or(u32::MAX);
+            h.update(&bytes_len.to_be_bytes());
+            h.update(bytes);
+        }
     }
 }
 

@@ -321,6 +321,28 @@ fn encode_intent(intent: &Intent, out: &mut Vec<u8>) {
             );
             out.extend_from_slice(calldata);
         }
+        Intent::DeployModule {
+            account,
+            name,
+            bytes,
+        } => {
+            // tag 2: DeployModule (S9.3)
+            out.push(2);
+            out.extend_from_slice(&account.0);
+            let name_bytes = name.as_str().as_bytes();
+            out.extend_from_slice(
+                &u32::try_from(name_bytes.len())
+                    .unwrap_or(u32::MAX)
+                    .to_be_bytes(),
+            );
+            out.extend_from_slice(name_bytes);
+            out.extend_from_slice(
+                &u32::try_from(bytes.len())
+                    .unwrap_or(u32::MAX)
+                    .to_be_bytes(),
+            );
+            out.extend_from_slice(bytes);
+        }
     }
 }
 
@@ -342,6 +364,21 @@ fn decode_intent(cur: &mut Cursor<'_>) -> Option<Intent> {
                 target,
                 value,
                 calldata,
+            })
+        }
+        2 => {
+            // tag 2: DeployModule (S9.3)
+            let account = gsxdb_state::MoveAddress(cur.arr32()?);
+            let name_len = cur.u32()? as usize;
+            let name_bytes = cur.bytes(name_len)?.to_vec();
+            let name_str = std::str::from_utf8(&name_bytes).ok()?;
+            let name = gsxdb_state::Identifier::new(name_str).ok()?;
+            let bytes_len = cur.u32()? as usize;
+            let bytes = cur.bytes(bytes_len)?.to_vec();
+            Some(Intent::DeployModule {
+                account,
+                name,
+                bytes,
             })
         }
         _ => None,
@@ -468,6 +505,41 @@ mod tests {
 
         let from_5 = s.iter_from(5).unwrap();
         assert!(from_5.is_empty());
+    }
+
+    #[test]
+    fn deploy_module_intent_encode_decode_round_trip() {
+        // S9.3: DeployModule round-trips through the block-store
+        // encoded format (tag 2 + 32B account + name + bytes).
+        let account = gsxdb_state::MoveAddress([7; 32]);
+        let name = gsxdb_state::Identifier::new("payments").unwrap();
+        let bytes = vec![0xCA, 0xFE, 0xBA, 0xBE, 0x12, 0x34];
+        let intent = Intent::DeployModule {
+            account,
+            name: name.clone(),
+            bytes: bytes.clone(),
+        };
+
+        // Encode into a block; round-trip through the persistent store.
+        let blk = Block {
+            height: 0,
+            parent: GENESIS_PARENT,
+            state_root: Commitment([0; 32]),
+            intents: vec![intent.clone()],
+        };
+        let tmp = TempDir::new().expect("tempdir");
+        let path = tmp.path().join("blocks.redb");
+        let mut s = RedbBlockStore::open(&path).expect("open");
+        s.put(blk.clone()).expect("put");
+        let recovered = s
+            .get_by_height(0)
+            .expect("get")
+            .expect("present")
+            .intents
+            .into_iter()
+            .next()
+            .expect("intent present");
+        assert_eq!(recovered, intent);
     }
 
     #[test]

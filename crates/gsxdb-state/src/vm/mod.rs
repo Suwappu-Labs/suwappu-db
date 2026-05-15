@@ -14,10 +14,10 @@ pub mod projector;
 pub mod tx;
 
 pub use executor::{
-    AbortLocation, CompiledModule, Identifier, IdentifierError, MockMoveExecutor, ModuleId,
-    ModuleStore, ModuleStoreError, MoveBalanceView, MoveCall, MoveEvent, MoveExecutionError,
-    MoveExecutor, MoveOutcome, MoveSessionState, ResourceWrite, StructTag, TypeTag,
-    ABORT_INSUFFICIENT_BALANCE, CANONICAL_COIN_ADDRESS,
+    AbortLocation, CompiledModule, Identifier, IdentifierError, InMemoryModuleStore,
+    MockMoveExecutor, ModuleId, ModuleStore, ModuleStoreError, MoveBalanceView, MoveCall,
+    MoveEvent, MoveExecutionError, MoveExecutor, MoveOutcome, MoveSessionState, ResourceWrite,
+    StructTag, TypeTag, ABORT_INSUFFICIENT_BALANCE, CANONICAL_COIN_ADDRESS,
 };
 pub use projector::{EvmProjector, EvmView, MoveProjector, MoveView};
 pub use tx::{CanonicalTransfer, EvmTx, MoveTx};

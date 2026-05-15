@@ -318,6 +318,20 @@ fn execute_one(
             value,
             calldata,
         } => execute_call(caller, target, value, &calldata, idx, state, mv, registry),
+        Intent::DeployModule { .. } => {
+            // S9.3: DeployModule needs a ModuleStore that lives outside
+            // OCC's MvStore. S9.4 wires the bundle executor with both.
+            // Until then, route DeployModule intents into a no-op Txn
+            // that records empty read/write sets — preserves block-
+            // executor determinism without leaking module-store state
+            // into OCC's parallel scheduling.
+            Txn {
+                idx,
+                read_set: Vec::new(),
+                write_set: Vec::new(),
+                rejected: None,
+            }
+        }
         Intent::Transfer { from, to, amount } => {
             let mut read_set = Vec::new();
             let mut write_set = Vec::new();
