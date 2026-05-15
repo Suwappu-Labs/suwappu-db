@@ -17,7 +17,7 @@ Presentation-ready diagrams and source formats live in the GSX DAG repo:
 - [GSX DAG presentation](../../gsx-dag/docs/visuals/gsx-dag.html)
 - [GSX DB presentation](../../gsx-dag/docs/visuals/gsx-db.html)
 - [LTP presentation](../../gsx-dag/docs/visuals/ltp.html)
-- Mermaid sources: [GSX DAG](../../gsx-dag/docs/visuals/mermaid/gsx-dag.md), [GSX DB](../../gsx-dag/docs/visuals/mermaid/gsx-db.md), [LTP](../../gsx-dag/docs/visuals/mermaid/ltp.md)
+- Mermaid sources: [GSX DAG](../../gsx-dag/docs/visuals/mermaid/gsx-dag.md), [GSX DB](../../gsx-dag/docs/visuals/mermaid/gsx-db.md), [LTP](../../gsx-dag/docs/visuals/mermaid/ltp.md), [IQ-7 hybrid auth](../../gsx-dag/docs/visuals/mermaid/iq7-hybrid-auth.md)
 - Excalidraw sources: [GSX DAG](../../gsx-dag/docs/visuals/excalidraw/gsx-dag.excalidraw), [GSX DB](../../gsx-dag/docs/visuals/excalidraw/gsx-db.excalidraw), [LTP](../../gsx-dag/docs/visuals/excalidraw/ltp.excalidraw)
 
 ## Where do I start?
