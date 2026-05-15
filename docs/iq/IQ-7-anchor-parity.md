@@ -95,11 +95,14 @@ component breaking does not compromise the other.
 ### Rust integration surface
 
 ```rust
-// gsxdb-bridge::anchor::types
+// gsxdb-bridge::anchor::types — landed in PR #4
+#[repr(u8)]
 pub enum AuthScheme {
-    Blake3Mac,         // phase-1 substrate
-    EcdsaSecp256k1,    // launch L1 path
-    MlDsa65Hybrid,     // post-quantum surface
+    Blake3Mac      = 0, // phase-1 substrate
+    Sp1ZkProof     = 1, // validity-proof bundle (wire shape only;
+                        // crypto verify deferred to Track 1.3 Step 2)
+    EcdsaSecp256k1 = 2, // launch L1 path
+    MlDsa65Hybrid  = 3, // ECDSA + ML-DSA-65 AND-gate
 }
 
 pub struct Anchor {
@@ -112,15 +115,46 @@ pub struct Anchor {
 }
 ```
 
-The verifier dispatches on `auth_scheme`:
+The verifier dispatches on `auth_scheme`. Full diagram of the landed
+`verify_credential` AND-gate, parity-critical invariants, and the
+discriminant table:
+
+→ [IQ-7 hybrid auth — visual](../../../gsx-dag/docs/visuals/mermaid/iq7-hybrid-auth.md)
 
 ```mermaid
 flowchart LR
     A[Anchor] --> Switch{auth_scheme}
     Switch -->|Blake3Mac| B[BLAKE3 keyed verify]
-    Switch -->|EcdsaSecp256k1| E[secp256k1 recover]
-    Switch -->|MlDsa65Hybrid| M[ML-DSA-65 + ECDSA verify]
+    Switch -->|Sp1ZkProof| Z["pre-check (vkey, public_values)<br/>→ UnsupportedScheme (verify deferred)"]
+    Switch -->|EcdsaSecp256k1| E[EIP-191 + ecrecover]
+    Switch -->|MlDsa65Hybrid| M[ECDSA ∧ ML-DSA-65]
 ```
+
+### What landed in PR #4
+
+- `AuthScheme` discriminants pinned `#[repr(u8)]` (asserted by
+  `auth_scheme_discriminants_are_stable`).
+- `AnchorAuthCredential` envelope + `verify_credential` AND-gate
+  dispatch.
+- ECDSA verifier: byte-exact `abi.encode(anchor)` + EIP-191 +
+  `recover_from_prehash`; rejects high-s (EIP-2) and v ∉ {27, 28}.
+  Mirrored on the Solidity side.
+- ML-DSA-65 verifier behind the `production-pqc` cargo feature
+  (`pqcrypto-mldsa`, PQClean FIPS 204 reference).
+- Hybrid AND-gate: either-half failure produces distinct
+  `EcdsaFailed` / `MlDsaFailed` errors.
+- `Sp1ZkProof` wire shape + structural pre-check; full crypto
+  verify deferred (Track 1.3 Step 2).
+
+### Knowingly deferred to S11
+
+- Wiring `verify_credential` into `AnchorDispatcher::parity_check`
+  (currently still calls `verify_auth(key)`).
+- Per-chain verifier-config registration.
+- `Anchor::hash` includes `auth_scheme as u8` in the BLAKE3 chain;
+  Solidity `hashAnchor` does not. Needs a paired ABI fix at the
+  swap point.
+- 36-pair conformance matrix coverage for the new variants.
 
 ### Parity check semantics
 
