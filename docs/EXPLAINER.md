@@ -203,30 +203,8 @@ commitments stay secure even when quantum computers arrive.
 
 ## What's actually built right now
 
-```mermaid
-gantt
-    title GSX-DB delivery
-    dateFormat YYYY-MM-DD
-    axisFormat %b
-    section Phase 1
-    S1 workspace + lane sep    :done, 2026-04-23, 7d
-    S2 BalanceSlot + storage   :done, 2026-05-01, 7d
-    S3 dual-VM views           :done, 2026-05-08, 7d
-    S4 parallel execution      :done, 2026-05-15, 7d
-    S5 cross-VM bundles        :done, 2026-05-22, 7d
-    S6 state tree              :done, 2026-05-29, 7d
-    S7 cross-chain anchors     :done, 2026-06-05, 7d
-    S8 block log + recovery    :done, 2026-06-12, 7d
-    section Launch readiness
-    S8.5 durable block store   :done, 2026-06-19, 5d
-    S9 real Move VM            :active, 2026-06-24, 14d
-    S10 real Verkle math       :active, 2026-07-08, 21d
-    S11 real Solidity contract :active, 2026-07-29, 14d
-    S12 snapshots + telemetry  :2026-08-12, 21d
-    section Then
-    Audit + freeze              :crit, after S12, 30d
-    Mainnet                     :milestone, after audit, 0d
-```
+The canonical sprint Gantt (with absorbed test counts and exit gates)
+lives in [architecture/sprint-timeline.md](architecture/sprint-timeline.md).
 
 - **8 phase-1 sprints**: closed. The substrate works.
 - **270 tests pass**, 10,000 random inputs per rule.

@@ -160,7 +160,7 @@ crates/
 | `gsxdb-bridge` tests/recovery | 3 |
 | `gsxdb-bridge` tests/solidity_anchor_parity | 8 |
 | `gsxdb-lane` lib | 2 |
-| **Total** | **259** |
+| **Total** | **270+** (post-IQ-7 PR #4; 297 with default features, 309 with `production-pqc`) |
 
 ### What each S9–S12 milestone actually contains
 
@@ -168,7 +168,7 @@ crates/
 |---|---|---|
 | **S9** (real Move VM) | `MoveExecutor` trait + `MockMoveExecutor` impl. `production-move-executor` feature gate references `AptosMoveExecutor` — not implemented. | **Trait only. No real Move bytecode execution.** |
 | **S10** (real Verkle) | `tree/verkle.rs` with `GroupElement` newtype (32 bytes) behind `production-verkle` feature. No elliptic-curve arithmetic. | **Placeholder. BLAKE3 still in use.** |
-| **S11** (Solidity LTPAnchorRegistry + ECDSA) | `tests/solidity_anchor_parity.rs` defines Keccak256-MAC fixtures matching a hypothetical Solidity contract. `anchor/l1_reader.rs` has Mock + RPC backends. | **`LTPAnchorRegistry.sol` does not exist in any repo I audited.** Searched `contracts` — found `Bridge.sol` + `MyToken.sol` only. |
+| **S11** (Solidity LTPAnchorRegistry + ECDSA) | `contracts/src/LTPAnchorRegistry.sol` exists (`acceptAnchor`, `getAnchor`, `verifyMac`, `recoverAddress`). `tests/solidity_anchor_parity.rs` exercises Keccak-MAC parity. IQ-7 (PR #4) landed: `AuthScheme` discriminants pinned, `AnchorAuthCredential` envelope, ECDSA + ML-DSA-65 AND-gate via `verify_credential`, EIP-191 byte-exact Solidity parity, EIP-2 low-s rejection on both sides, `Sp1ZkProof` wire shape. | **Partial.** Hybrid auth verifier landed; `AnchorDispatcher::parity_check` still calls legacy `verify_auth(key)` — wiring + per-chain verifier registration + Sp1 crypto verify deferred to S11 Track 1.2/1.3. |
 | **S12** (DAG + snapshots + telemetry + shadow E2E) | `state/dag.rs` (multi-parent block store), `state/snapshot.rs` (export/import), `bridge/telemetry.rs` (timers), `tests/e2e_shadow_testnet.rs` | **All in-memory. "Shadow testnet" test does NOT connect to the live op-reth at 18.226.17.168.** |
 
 ### What DOES work end-to-end right now
