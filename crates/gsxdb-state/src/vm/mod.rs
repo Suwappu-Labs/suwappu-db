@@ -9,6 +9,8 @@
 //!
 //! See `docs/spec/move-execution.md` for the S9 execution model.
 
+#[cfg(feature = "production-move-executor")]
+pub mod aptos_session;
 pub mod executor;
 pub mod projector;
 pub mod tx;
