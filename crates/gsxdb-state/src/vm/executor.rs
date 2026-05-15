@@ -473,6 +473,87 @@ impl MoveExecutor for MockMoveExecutor {
 /// is wire-comparable when the real backend lands in S9.5.
 pub const ABORT_INSUFFICIENT_BALANCE: u64 = 0x10006;
 
+/// Production Move executor backed by Aptos `move-vm-runtime`.
+///
+/// **Scaffold only as of S9.5a.** The real `move-vm-runtime` integration
+/// is deferred to S9.5b — see the dep-choice notes below. With
+/// `production-move-executor` enabled the executor compiles + the trait
+/// is satisfied; execution returns `MoveExecutionError::UnsupportedScheme`
+/// equivalents until 5b lands the actual interpreter calls.
+///
+/// ## Why S9.5 splits into three sub-PRs
+///
+/// Aptos's Move VM crates (`move-binary-format`, `move-bytecode-verifier`,
+/// `move-vm-runtime`, `move-vm-types`, `move-core-types`, `aptos-move-stdlib`)
+/// are **not on crates.io** in usable form (only `move-core-types = "0.0.3"`,
+/// 2021-vintage). Pulling from `aptos-labs/aptos-core` git brings in 100+
+/// transitive crates, ~500 MB of target dir, multiple new licenses for
+/// cargo-deny, and a 10–30 min first build. That work doesn't fit into one
+/// session honestly, so S9.5 lands in three PRs:
+///
+/// - **S9.5a (this PR)** — scaffold + dep-choice docs. No `aptos-core`
+///   pull. Executor compiles + returns errors that say "not yet wired."
+/// - **S9.5b** — git deps + real `move-vm-runtime` integration. Resolves
+///   the cargo-deny advisory + license fallout in one go.
+/// - **S9.5c** — compile + bundle the canonical gsx-db `Coin<T>` Move
+///   module (mirrors `aptos_framework::coin` ABI minus the bits we
+///   don't use). Land production-move-executor ON by default.
+///
+/// ## Dep choices (S9.5b's job)
+///
+/// Target version: latest `aptos-release-v1.x` stable. Pin by tag, not
+/// branch (per the gsx-dag lane-auditor convention — `version = "*"` +
+/// git tag is the supported shape). Minimum subset:
+///
+/// - `move-core-types` — `ModuleId`, `Identifier`, `TypeTag`
+/// - `move-binary-format` — `CompiledModule::deserialize`
+/// - `move-bytecode-verifier` — runs at deploy + load time
+/// - `move-vm-runtime` — `MoveVM`, `Session`
+/// - `move-vm-types` — `Value`, types the runtime needs
+/// - `aptos-move-stdlib` — pinned subset of natives (`vector`,
+///   `option`, `signer`, `error`, `string` — NOT `chain_id`,
+///   `timestamp`, or anything I/O-dependent)
+///
+/// Explicitly NOT pulled (we have our own):
+///
+/// - `aptos-vm` — the full Aptos block executor
+/// - `aptos-state-view` — state access (we route through `MoveBalanceView`)
+/// - `aptos-gas-schedule` — gas metering (S12 scope)
+/// - `aptos-consensus`, `aptos-storage`, `aptos-network` — full node deps
+#[cfg(feature = "production-move-executor")]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AptosMoveExecutor;
+
+#[cfg(feature = "production-move-executor")]
+impl MoveExecutor for AptosMoveExecutor {
+    fn execute(
+        &self,
+        call: &MoveCall,
+        modules: &dyn ModuleStore,
+        _state: &mut MoveSessionState<'_>,
+    ) -> Result<MoveOutcome, MoveExecutionError> {
+        // S9.5a: scaffolding only. We do the cheap structural check —
+        // module-not-found — so the executor behaves correctly for the
+        // "module isn't deployed" case even before S9.5b wires the VM.
+        // Everything else returns UnsupportedScheme so production-on
+        // builds fail closed rather than silently no-op.
+        if !modules.contains(&call.module) {
+            return Err(MoveExecutionError::ModuleNotFound(call.module.clone()));
+        }
+        // S9.5b wires this arm to:
+        //   1. CompiledModule::deserialize(modules.get(&call.module)?.bytes)
+        //   2. bytecode-verifier verify(&compiled_module)
+        //   3. MoveVM::new_session(state_view).execute_entry_function(
+        //          call.module, call.function, type_args, args, gas
+        //      )
+        //   4. Translate the resulting MoveTypeLayout::Resource writes
+        //      into our ResourceWrite { addr, coin_value, nonce }
+        Err(MoveExecutionError::InvalidArguments(
+            "AptosMoveExecutor execution path not wired yet (S9.5b)".into(),
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -709,6 +790,44 @@ mod tests {
         let err = MockMoveExecutor
             .execute(&call, &empty_store(), &mut state)
             .expect_err("wrong arg count should reject");
+        assert!(matches!(err, MoveExecutionError::InvalidArguments(_)));
+    }
+
+    #[cfg(feature = "production-move-executor")]
+    #[test]
+    fn aptos_executor_rejects_unknown_module() {
+        let alice = move_addr(1);
+        let view = InMemoryView::default();
+        let mut state = MoveSessionState::new(&view);
+        let executor = AptosMoveExecutor;
+        let err = executor
+            .execute(&transfer_call(alice, move_addr(2), 1), &empty_store(), &mut state)
+            .expect_err("unknown module rejects");
+        assert!(matches!(err, MoveExecutionError::ModuleNotFound(_)));
+    }
+
+    #[cfg(feature = "production-move-executor")]
+    #[test]
+    fn aptos_executor_with_deployed_module_returns_unwired_error() {
+        // S9.5a: with the module deployed, the executor reports the
+        // not-yet-wired execution path explicitly rather than silently
+        // succeeding with no state change.
+        let alice = move_addr(1);
+        let view = InMemoryView::default();
+        let mut state = MoveSessionState::new(&view);
+        let mut modules = InMemoryModuleStore::new();
+        modules
+            .put(
+                coin_module(),
+                CompiledModule {
+                    bytes: vec![0xCA, 0xFE, 0xBA, 0xBE],
+                },
+            )
+            .unwrap();
+        let executor = AptosMoveExecutor;
+        let err = executor
+            .execute(&transfer_call(alice, move_addr(2), 1), &modules, &mut state)
+            .expect_err("execution path not wired yet");
         assert!(matches!(err, MoveExecutionError::InvalidArguments(_)));
     }
 

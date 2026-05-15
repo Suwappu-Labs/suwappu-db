@@ -19,5 +19,7 @@ pub use executor::{
     MoveEvent, MoveExecutionError, MoveExecutor, MoveOutcome, MoveSessionState, ResourceWrite,
     StructTag, TypeTag, ABORT_INSUFFICIENT_BALANCE, CANONICAL_COIN_ADDRESS,
 };
+#[cfg(feature = "production-move-executor")]
+pub use executor::AptosMoveExecutor;
 pub use projector::{EvmProjector, EvmView, MoveProjector, MoveView};
 pub use tx::{CanonicalTransfer, EvmTx, MoveTx};
