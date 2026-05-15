@@ -488,6 +488,10 @@ pub fn verify_ecdsa(
         RecoveryId::from_byte(recovery_byte).ok_or(EcdsaVerifyError::MalformedSignature)?;
     let sig = Signature::try_from(&signature[..64])
         .map_err(|_| EcdsaVerifyError::MalformedSignature)?;
+    // EIP-2 malleability: reject high-s. Mirrors Solidity LTPAnchorRegistry.
+    if sig.normalize_s().is_some() {
+        return Err(EcdsaVerifyError::MalformedSignature);
+    }
 
     let payload = eth_signed_message_hash(anchor);
     let vk = VerifyingKey::recover_from_prehash(&payload, &sig, recovery_id)
@@ -609,6 +613,31 @@ mod tests {
 
         assert_eq!(
             verify_ecdsa(&anchor, &sig, &signer),
+            Err(EcdsaVerifyError::MalformedSignature)
+        );
+    }
+
+    #[test]
+    fn ecdsa_rejects_high_s_malleable_signature() {
+        // EIP-2: a valid (r, s) signature has a malleable twin (r, n-s).
+        // Solidity's LTPAnchorRegistry rejects high-s; we mirror that.
+        let sk = SigningKey::random(&mut OsRng);
+        let signer = EthAddress::from_verifying_key(sk.verifying_key());
+
+        let anchor = sample_anchor();
+        let sig = sign_anchor(&sk, &anchor);
+
+        // Flip s -> n - s by negating the s scalar.
+        let low_s = Signature::try_from(&sig[..64]).expect("valid sig");
+        let s_neg = -*low_s.s();
+        let high_s = Signature::from_scalars(low_s.r().to_bytes(), s_neg.to_bytes())
+            .expect("non-zero scalars");
+        let mut malleable = [0u8; ECDSA_SIG_LEN];
+        malleable[..64].copy_from_slice(&high_s.to_bytes());
+        malleable[64] = sig[64];
+
+        assert_eq!(
+            verify_ecdsa(&anchor, &malleable, &signer),
             Err(EcdsaVerifyError::MalformedSignature)
         );
     }
