@@ -38,7 +38,10 @@ flowchart LR
 | [IQ-7](../iq/IQ-7-anchor-parity.md) | in-memory log + MAC | Solidity contract + ECDSA | `Anchor::compute_mac` + `AnchorLog::append` storage |
 | [IQ-8](../iq/IQ-8-recovery-store-inmemory-vs-redb.md) | `InMemoryBlockStore` | `RedbBlockStore` | `BlockStore` trait |
 
-## Decision graph — what unblocks what
+## Decision graph — what unblocks deployment
+
+This view is deployment-focused. For the Phase-1 → IQ cascade (different
+framing), see [iq/README.md#decision-flow](../iq/README.md#decision-flow).
 
 ```mermaid
 flowchart TB
