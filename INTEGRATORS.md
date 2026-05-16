@@ -1,9 +1,13 @@
 # Integrating with gsx-db
 
-This document is the single front door for downstream developers
-wiring gsx-db into their stack: wallet, indexer, custodial relayer,
-parallel implementation, or auditor. It pairs with the [README](./README.md)
-(orientation), [CHANGELOG](./CHANGELOG.md) (per-release deltas), and
+> **Coming from the [README](./README.md)?** You're in the right
+> place. This is the integrator front door — wallet, indexer,
+> custodial relayer, parallel verifier, or auditor — whoever is
+> wiring gsx-db into a downstream stack.
+
+It pairs with the [README](./README.md) (orientation),
+[CHANGELOG](./CHANGELOG.md) (per-release deltas),
+[ARCHITECTURE](./ARCHITECTURE.md) (one-page system overview), and
 [docs/spec/](./docs/spec/) (deep specs per subsystem).
 
 If you're contributing to gsx-db itself, see [CONTRIBUTING.md](./CONTRIBUTING.md).
