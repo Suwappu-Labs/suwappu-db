@@ -532,7 +532,7 @@ impl MoveExecutor for AptosMoveExecutor {
         modules: &dyn ModuleStore,
         state: &mut MoveSessionState<'_>,
     ) -> Result<MoveOutcome, MoveExecutionError> {
-        use crate::vm::aptos_session::{EmptyResourceResolver, GsxdbModuleBytes};
+        use crate::vm::aptos_session::{decode_coin_store, BalanceViewResolver, GsxdbModuleBytes};
         use move_binary_format::file_format::CompiledModule;
         use move_core_types::{
             account_address::AccountAddress,
@@ -564,18 +564,20 @@ impl MoveExecutor for AptosMoveExecutor {
             MoveExecutionError::BytecodeVerificationFailed(format!("verify: {e:?}"))
         })?;
 
-        // 4. Build the session (S9.5e adapters + Aptos-provided pieces).
+        // 4. Build the session (S9.5e adapters + S9.5f BalanceViewResolver
+        //    + Aptos-provided UnsyncModuleStorage / EagerLoader /
+        //    TransactionDataCache / MoveVmDataCacheAdapter / GasMeter /
+        //    TraversalContext / NativeContextExtensions).
         let bytes_storage = GsxdbModuleBytes {
             store: modules,
             env: RuntimeEnvironment::new(std::iter::empty()),
         };
         let module_storage = bytes_storage.as_unsync_module_storage();
         let loader = EagerLoader::new(&module_storage);
-        let resolver = EmptyResourceResolver {
-            _balance_view: state.balance_view,
+        let resolver = BalanceViewResolver {
+            balance_view: state.balance_view,
         };
         let mut data_cache = TransactionDataCache::empty();
-        let mut adapter = MoveVmDataCacheAdapter::new(&mut data_cache, &resolver, &loader);
         let mut gas = UnmeteredGasMeter;
         let traversal_storage = TraversalStorage::new();
         let mut traversal = TraversalContext::new(&traversal_storage);
@@ -601,42 +603,80 @@ impl MoveExecutor for AptosMoveExecutor {
                 &mut traversal,
                 &aptos_module_id,
                 &aptos_function_name,
-                &[], // type args — S9.5f converts gsx TypeTag list
+                &[], // type args — S9.5g converts gsx TypeTag list
             )
             .map_err(|e| MoveExecutionError::LinkerError(format!("load_function: {e:?}")))?;
 
         // 6. Execute. The Move VM's signature uses serialized BCS arg
-        //    bytes — call.arguments is already Vec<Vec<u8>>.
-        let _result = MoveVM::execute_loaded_function(
-            loaded,
-            call.arguments.clone(),
-            &mut adapter,
-            &mut gas,
-            &mut traversal,
-            &mut extensions,
-            &loader,
-        )
-        .map_err(|e| MoveExecutionError::Abort {
-            code: 0,
-            location: AbortLocation {
-                module: Some(call.module.clone()),
-                function_index: 0,
-                instruction_index: 0,
-            },
-        })?;
+        //    bytes — call.arguments is already Vec<Vec<u8>>. The adapter
+        //    holds &mut data_cache for the duration of this call; it
+        //    drops at the end of the inner block so the data_cache is
+        //    free for `into_effects` afterwards.
+        {
+            let mut adapter =
+                MoveVmDataCacheAdapter::new(&mut data_cache, &resolver, &loader);
+            MoveVM::execute_loaded_function(
+                loaded,
+                call.arguments.clone(),
+                &mut adapter,
+                &mut gas,
+                &mut traversal,
+                &mut extensions,
+                &loader,
+            )
+            .map_err(|_e| MoveExecutionError::Abort {
+                code: 0,
+                location: AbortLocation {
+                    module: Some(call.module.clone()),
+                    function_index: 0,
+                    instruction_index: 0,
+                },
+            })?;
+        }
 
-        // 7. Translate the result.
+        // 7. Extract `ResourceWrite`s from the data_cache.
         //
-        // S9.5f swaps EmptyResourceResolver for a real reader and
-        // extracts ResourceWrites from the data_cache here. Until
-        // then we return an empty MoveOutcome — any state change
-        // the VM tried to make against the empty resolver aborts at
-        // the move_from / borrow_global level, so the only way to
-        // reach this point is a side-effect-free function call.
+        // `into_effects` walks every modified resource and returns a
+        // `Changes<Bytes>` keyed by `(account, struct_tag)`. We filter
+        // for the canonical `0x1::coin::CoinStore` resource (our only
+        // recognised state-bearing type today), BCS-decode the 16-byte
+        // payload, and translate to `ResourceWrite`. Non-CoinStore
+        // resource writes are silently dropped — S9.5g+ extend the
+        // schema, but until then anything else is out of scope for the
+        // dual-projection invariant.
+        let changes = data_cache
+            .into_effects(&module_storage)
+            .map_err(|e| MoveExecutionError::LinkerError(format!("into_effects: {e:?}")))?;
+        let mut resource_writes = Vec::new();
+        for (aptos_addr, account_changes) in changes.accounts() {
+            let our_addr = MoveAddress(aptos_addr.into_bytes());
+            for (struct_tag, op) in account_changes.resources() {
+                let is_coin_store = struct_tag.address == AccountAddress::new([
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 1,
+                ]) && struct_tag.module.as_str() == "coin"
+                    && struct_tag.name.as_str() == "CoinStore";
+                if !is_coin_store {
+                    continue;
+                }
+                let bytes = match op.as_ref().ok() {
+                    Some(b) => b,
+                    None => continue, // Delete op — handled by callers via separate signal
+                };
+                if let Some((value, sequence)) = decode_coin_store(bytes) {
+                    resource_writes.push(ResourceWrite {
+                        addr: our_addr,
+                        coin_value: MoveCoinValue::from_u128(u128::from(value)),
+                        nonce: AccountNonce::new(sequence),
+                    });
+                }
+            }
+        }
+
         Ok(MoveOutcome {
             return_values: Vec::new(),
             events: Vec::new(),
-            resource_writes: Vec::new(),
+            resource_writes,
         })
     }
 }

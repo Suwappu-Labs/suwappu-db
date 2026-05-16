@@ -87,20 +87,9 @@ impl<'a> WithRuntimeEnvironment for GsxdbModuleBytes<'a> {
 /// First-cut [`ResourceResolver`] that reports "no resource" for every
 /// `(address, struct_tag)` query.
 ///
-/// The Aptos `MoveVmDataCacheAdapter` calls
-/// `get_resource_bytes_with_metadata_and_layout` whenever the running
-/// Move bytecode touches a resource not already in its cache. Returning
-/// `Ok((None, 0))` makes every such read look like a "resource does not
-/// exist" — Move bytecode that calls `move_from` / `borrow_global` on
-/// such a resource will abort cleanly.
-///
-/// S9.5f replaces this with a [`MoveBalanceView`]-backed resolver that
-/// recognizes the canonical `0x1::coin::CoinStore<T>` struct tag and
-/// returns its BCS-encoded form. Once that ships, real `transfer` calls
-/// flow through the VM.
+/// Kept for tests + bypass scenarios. Production path is
+/// [`BalanceViewResolver`].
 pub(crate) struct EmptyResourceResolver<'a> {
-    // Unused in this first cut but reserved so the resolver's API
-    // doesn't change between S9.5e and S9.5f.
     pub _balance_view: &'a dyn MoveBalanceView,
 }
 
@@ -112,8 +101,93 @@ impl<'a> ResourceResolver for EmptyResourceResolver<'a> {
         _metadata: &[Metadata],
         _layout: Option<&MoveTypeLayout>,
     ) -> PartialVMResult<(Option<Bytes>, usize)> {
-        // First cut: no resources. Real resolver lands in S9.5f.
         Ok((None, 0))
+    }
+}
+
+/// S9.5f: address of the canonical gsx-db Coin module. Mirrors the
+/// `CANONICAL_COIN_ADDRESS` constant exposed by `MockMoveExecutor` so
+/// real + mock executors agree on which `(account, module)` pair holds
+/// the canonical balance resource.
+const GSXDB_COIN_ADDRESS: AccountAddress = AccountAddress::new([
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    1,
+]);
+const GSXDB_COIN_MODULE_NAME: &str = "coin";
+const GSXDB_COIN_STRUCT_NAME: &str = "CoinStore";
+
+/// BCS layout of the canonical gsx-db `CoinStore` Move resource:
+///
+/// ```move
+/// module 0x1::coin {
+///     struct CoinStore has key {
+///         value: u64,      // u64 LE
+///         sequence: u64,   // u64 LE
+///     }
+/// }
+/// ```
+///
+/// 16 bytes total. The S9.5g Move source compiles to this layout.
+/// Deliberately simpler than Aptos's `aptos_framework::coin::CoinStore`
+/// (which adds `frozen: bool` + two `EventHandle`s) — gsx-db doesn't
+/// need on-chain Move event handles, the events surface via
+/// `MoveOutcome::events` separately.
+pub(crate) const COIN_STORE_BCS_LEN: usize = 16;
+
+#[inline]
+fn encode_coin_store(value: u64, sequence: u64) -> [u8; COIN_STORE_BCS_LEN] {
+    let mut out = [0u8; COIN_STORE_BCS_LEN];
+    out[0..8].copy_from_slice(&value.to_le_bytes());
+    out[8..16].copy_from_slice(&sequence.to_le_bytes());
+    out
+}
+
+#[inline]
+pub(crate) fn decode_coin_store(bytes: &[u8]) -> Option<(u64, u64)> {
+    if bytes.len() != COIN_STORE_BCS_LEN {
+        return None;
+    }
+    let value = u64::from_le_bytes(bytes[0..8].try_into().ok()?);
+    let sequence = u64::from_le_bytes(bytes[8..16].try_into().ok()?);
+    Some((value, sequence))
+}
+
+/// Returns `true` iff the struct tag identifies the canonical gsx-db
+/// `CoinStore` resource.
+fn is_canonical_coin_store(tag: &StructTag) -> bool {
+    tag.address == GSXDB_COIN_ADDRESS
+        && tag.module.as_str() == GSXDB_COIN_MODULE_NAME
+        && tag.name.as_str() == GSXDB_COIN_STRUCT_NAME
+}
+
+/// Production [`ResourceResolver`] for gsx-db. Recognises the canonical
+/// `0x1::coin::CoinStore` struct tag and builds its BCS-encoded form
+/// from a [`MoveBalanceView`]. All other struct tags return "no
+/// resource".
+///
+/// This is what `AptosMoveExecutor::execute` constructs per-bundle from
+/// the [`MoveSessionState::balance_view`].
+pub(crate) struct BalanceViewResolver<'a> {
+    pub balance_view: &'a dyn MoveBalanceView,
+}
+
+impl<'a> ResourceResolver for BalanceViewResolver<'a> {
+    fn get_resource_bytes_with_metadata_and_layout(
+        &self,
+        address: &AccountAddress,
+        struct_tag: &StructTag,
+        _metadata: &[Metadata],
+        _layout: Option<&MoveTypeLayout>,
+    ) -> PartialVMResult<(Option<Bytes>, usize)> {
+        if !is_canonical_coin_store(struct_tag) {
+            return Ok((None, 0));
+        }
+        let our_addr = MoveAddress(address.into_bytes());
+        let value = u64::try_from(self.balance_view.coin_value(&our_addr).to_u128())
+            .unwrap_or(u64::MAX);
+        let sequence = self.balance_view.nonce(&our_addr).value;
+        let encoded = encode_coin_store(value, sequence);
+        Ok((Some(Bytes::from(encoded.to_vec())), COIN_STORE_BCS_LEN))
     }
 }
 
@@ -202,5 +276,119 @@ mod tests {
             .unwrap();
         assert!(bytes.is_none());
         assert_eq!(size, 0);
+    }
+
+    #[test]
+    fn coin_store_encode_decode_round_trip() {
+        for (value, seq) in [(0u64, 0u64), (123, 456), (u64::MAX, u64::MAX - 1)] {
+            let encoded = encode_coin_store(value, seq);
+            let (v2, s2) = decode_coin_store(&encoded).expect("decode");
+            assert_eq!((v2, s2), (value, seq));
+        }
+        // 16 byte fixed length
+        assert_eq!(encode_coin_store(0, 0).len(), COIN_STORE_BCS_LEN);
+        // truncated decode rejects
+        assert!(decode_coin_store(&[0u8; 15]).is_none());
+        assert!(decode_coin_store(&[0u8; 17]).is_none());
+    }
+
+    /// `MoveBalanceView` that maps a few addresses to fixed values.
+    #[derive(Debug)]
+    struct FixedView<'a> {
+        balances: &'a [(MoveAddress, u128, u64)],
+    }
+
+    impl<'a> MoveBalanceView for FixedView<'a> {
+        fn coin_value(&self, addr: &MoveAddress) -> MoveCoinValue {
+            for (a, v, _) in self.balances {
+                if a == addr {
+                    return MoveCoinValue::from_u128(*v);
+                }
+            }
+            MoveCoinValue::from_u128(0)
+        }
+        fn nonce(&self, addr: &MoveAddress) -> AccountNonce {
+            for (a, _, n) in self.balances {
+                if a == addr {
+                    return AccountNonce::new(*n);
+                }
+            }
+            AccountNonce::new(0)
+        }
+    }
+
+    fn coin_store_tag() -> StructTag {
+        StructTag {
+            address: GSXDB_COIN_ADDRESS,
+            module: move_core_types::identifier::Identifier::new("coin").unwrap(),
+            name: move_core_types::identifier::Identifier::new("CoinStore").unwrap(),
+            type_args: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn balance_view_resolver_returns_canonical_coin_store_bytes() {
+        let alice = MoveAddress([1u8; 32]);
+        let view = FixedView {
+            balances: &[(alice, 1000u128, 7u64)],
+        };
+        let resolver = BalanceViewResolver {
+            balance_view: &view,
+        };
+
+        let aptos_alice = AccountAddress::new([1u8; 32]);
+        let (bytes, size) = resolver
+            .get_resource_bytes_with_metadata_and_layout(
+                &aptos_alice,
+                &coin_store_tag(),
+                &[],
+                None,
+            )
+            .unwrap();
+
+        assert_eq!(size, COIN_STORE_BCS_LEN);
+        let bytes = bytes.expect("CoinStore resource");
+        assert_eq!(bytes.len(), COIN_STORE_BCS_LEN);
+        let (value, sequence) = decode_coin_store(&bytes).expect("decode");
+        assert_eq!(value, 1000);
+        assert_eq!(sequence, 7);
+    }
+
+    #[test]
+    fn balance_view_resolver_returns_none_for_other_struct_tags() {
+        let view = ZeroView;
+        let resolver = BalanceViewResolver {
+            balance_view: &view,
+        };
+
+        let addr = AccountAddress::new([1u8; 32]);
+        let other_tag = StructTag {
+            address: AccountAddress::new([0xAA; 32]),
+            module: move_core_types::identifier::Identifier::new("other").unwrap(),
+            name: move_core_types::identifier::Identifier::new("Type").unwrap(),
+            type_args: Vec::new(),
+        };
+        let (bytes, size) = resolver
+            .get_resource_bytes_with_metadata_and_layout(&addr, &other_tag, &[], None)
+            .unwrap();
+        assert!(bytes.is_none());
+        assert_eq!(size, 0);
+    }
+
+    #[test]
+    fn balance_view_resolver_zero_for_unseeded_address() {
+        let view = ZeroView;
+        let resolver = BalanceViewResolver {
+            balance_view: &view,
+        };
+
+        let addr = AccountAddress::new([9u8; 32]);
+        let (bytes, _) = resolver
+            .get_resource_bytes_with_metadata_and_layout(&addr, &coin_store_tag(), &[], None)
+            .unwrap();
+        let bytes = bytes.expect("CoinStore resource always returned for canonical tag");
+        let (value, sequence) = decode_coin_store(&bytes).expect("decode");
+        assert_eq!(value, 0);
+        assert_eq!(sequence, 0);
     }
 }
