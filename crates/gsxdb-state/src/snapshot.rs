@@ -6,9 +6,19 @@
 //! - State export for cross-chain validation
 //! - Rollback to known-good state
 
-use crate::Commitment;
+use crate::{Address, Balance, BalanceSlot, BridgeToken, Commitment, State, StateChange};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Per-entry payload size for [`StateSnapshot::encoded_state`].
+/// 20 bytes address + 16 bytes canonical balance (u128 LE) = 36.
+pub const SNAPSHOT_ENTRY_BYTES: usize = 36;
+
+/// Magic header prepended to `encoded_state` so a corrupted or
+/// mistyped file fails loudly instead of silently restoring zero
+/// balances.
+const SNAPSHOT_MAGIC: &[u8; 8] = b"GSXDB\0\0\x01";
 
 /// A snapshot of the entire state at a specific block height.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,6 +96,129 @@ impl StateSnapshot {
     /// Returns true if anchor_hash matches the snapshot's anchor_hash field.
     pub fn verify_anchor(&self, anchor_hash: &[u8; 32]) -> bool {
         self.anchor_hash.as_ref() == Some(anchor_hash)
+    }
+
+    /// **S12.2** — capture a snapshot from a live [`State`].
+    ///
+    /// Encodes every `(addr, slot.canonical())` as a 36-byte tuple in
+    /// `encoded_state` prefixed by the [`SNAPSHOT_MAGIC`] header. The
+    /// `state_root` field is left as `Commitment([0; 32])` because the
+    /// state-tree root is computed separately (callers typically have
+    /// it already); use [`Self::with_state_root`] to fill it in.
+    #[must_use]
+    pub fn from_state(state: &State, height: u64, anchor_hash: Option<[u8; 32]>) -> Self {
+        let entries = state.entries();
+        let mut encoded = Vec::with_capacity(SNAPSHOT_MAGIC.len() + entries.len() * SNAPSHOT_ENTRY_BYTES);
+        encoded.extend_from_slice(SNAPSHOT_MAGIC);
+        for (addr, slot) in &entries {
+            encoded.extend_from_slice(&addr.0);
+            encoded.extend_from_slice(&slot.canonical().to_le_bytes());
+        }
+        Self::new(height, Commitment([0; 32]), encoded, anchor_hash)
+    }
+
+    /// Builder-style setter for the post-`from_state` state root.
+    #[must_use]
+    pub fn with_state_root(mut self, root: Commitment) -> Self {
+        self.state_root = root;
+        self
+    }
+
+    /// **S12.2** — write this snapshot to `path` as pretty-printed
+    /// JSON. The `encoded_state` blob is hex-encoded inside the JSON
+    /// envelope so files are line-diffable.
+    pub fn write_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), String> {
+        let bytes = serde_json::to_vec_pretty(self).map_err(|e| format!("serialize: {e}"))?;
+        std::fs::write(path, bytes).map_err(|e| format!("write: {e}"))
+    }
+
+    /// **S12.2** — read a snapshot from `path`.
+    pub fn read_from_file<P: AsRef<Path>>(path: P) -> Result<Self, String> {
+        let bytes = std::fs::read(path).map_err(|e| format!("read: {e}"))?;
+        let snapshot: Self =
+            serde_json::from_slice(&bytes).map_err(|e| format!("deserialize: {e}"))?;
+        // Cheap header check — caught here so callers don't have to
+        // pre-validate before `restore_into_state`.
+        if snapshot.encoded_state.len() < SNAPSHOT_MAGIC.len()
+            || &snapshot.encoded_state[..SNAPSHOT_MAGIC.len()] != SNAPSHOT_MAGIC
+        {
+            return Err(format!(
+                "snapshot magic mismatch (expected {:?})",
+                SNAPSHOT_MAGIC
+            ));
+        }
+        let body_len = snapshot.encoded_state.len() - SNAPSHOT_MAGIC.len();
+        if body_len % SNAPSHOT_ENTRY_BYTES != 0 {
+            return Err(format!(
+                "snapshot body length {body_len} not a multiple of {SNAPSHOT_ENTRY_BYTES}"
+            ));
+        }
+        Ok(snapshot)
+    }
+
+    /// **S12.2** — restore the encoded entries into `state` via the
+    /// bridge token. Existing entries are left in place unless they're
+    /// overwritten by the snapshot's addresses; for a hard restore,
+    /// reset the state externally first.
+    ///
+    /// Returns the number of entries applied.
+    ///
+    /// # Errors
+    ///
+    /// Returns a string describing the failure if `encoded_state` is
+    /// malformed (missing magic, non-multiple length, etc.).
+    pub fn restore_into_state(&self, state: &mut State, token: &BridgeToken) -> Result<usize, String> {
+        if self.encoded_state.len() < SNAPSHOT_MAGIC.len()
+            || &self.encoded_state[..SNAPSHOT_MAGIC.len()] != SNAPSHOT_MAGIC
+        {
+            return Err("snapshot magic mismatch".to_string());
+        }
+        let body = &self.encoded_state[SNAPSHOT_MAGIC.len()..];
+        if body.len() % SNAPSHOT_ENTRY_BYTES != 0 {
+            return Err(format!(
+                "snapshot body length {} not a multiple of {SNAPSHOT_ENTRY_BYTES}",
+                body.len()
+            ));
+        }
+        let mut applied = 0usize;
+        for chunk in body.chunks_exact(SNAPSHOT_ENTRY_BYTES) {
+            let mut addr_bytes = [0u8; 20];
+            addr_bytes.copy_from_slice(&chunk[..20]);
+            let mut bal_bytes = [0u8; 16];
+            bal_bytes.copy_from_slice(&chunk[20..]);
+            let value = u128::from_le_bytes(bal_bytes);
+            state.apply(
+                token,
+                &StateChange::SetBalance {
+                    addr: Address(addr_bytes),
+                    to: Balance(value),
+                },
+            );
+            applied += 1;
+        }
+        Ok(applied)
+    }
+
+    /// **S12.2** — number of entries the encoded body claims.
+    /// Returns `None` if the body is malformed.
+    #[must_use]
+    pub fn entry_count(&self) -> Option<usize> {
+        if self.encoded_state.len() < SNAPSHOT_MAGIC.len()
+            || &self.encoded_state[..SNAPSHOT_MAGIC.len()] != SNAPSHOT_MAGIC
+        {
+            return None;
+        }
+        let body_len = self.encoded_state.len() - SNAPSHOT_MAGIC.len();
+        if body_len % SNAPSHOT_ENTRY_BYTES != 0 {
+            return None;
+        }
+        Some(body_len / SNAPSHOT_ENTRY_BYTES)
+    }
+
+    /// Unused stub kept until `BalanceSlot` is reachable directly.
+    #[doc(hidden)]
+    pub fn __load_balance_slot_for_tests(byte: u8) -> BalanceSlot {
+        BalanceSlot::new(u128::from(byte))
     }
 
     /// JSON representation for metadata storage.
@@ -235,6 +368,95 @@ mod tests {
         assert!(json["state_root"].is_string());
         assert!(json["timestamp"].is_number());
         assert!(json["anchor_hash"].is_string());
+    }
+
+    #[test]
+    fn snapshot_from_state_then_restore_round_trips() {
+        // S12.2 core: build a state, snapshot it, restore into a
+        // fresh state, assert balance-by-balance equality.
+        let mut original = State::default();
+        let token = BridgeToken::__for_bridge_only();
+        for i in 1u8..=8 {
+            original.apply(
+                &token,
+                &StateChange::SetBalance {
+                    addr: Address([i; 20]),
+                    to: Balance(u128::from(i) * 100),
+                },
+            );
+        }
+
+        let snapshot = StateSnapshot::from_state(&original, 10, Some([0xAB; 32]));
+        assert_eq!(snapshot.entry_count(), Some(8));
+
+        let mut restored = State::default();
+        let applied = snapshot
+            .restore_into_state(&mut restored, &token)
+            .expect("restore");
+        assert_eq!(applied, 8);
+        for i in 1u8..=8 {
+            assert_eq!(
+                restored.balance_of(&Address([i; 20])),
+                Balance(u128::from(i) * 100),
+                "mismatch at addr {i}"
+            );
+        }
+    }
+
+    #[test]
+    fn snapshot_file_io_round_trips() {
+        // S12.2: write + read round-trip through a tempfile.
+        let mut state = State::default();
+        let token = BridgeToken::__for_bridge_only();
+        state.apply(
+            &token,
+            &StateChange::SetBalance {
+                addr: Address([7; 20]),
+                to: Balance(424_242),
+            },
+        );
+        let snapshot = StateSnapshot::from_state(&state, 1, None)
+            .with_state_root(Commitment([0xCC; 32]));
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("snap.json");
+        snapshot.write_to_file(&path).expect("write");
+        let loaded = StateSnapshot::read_from_file(&path).expect("read");
+        assert_eq!(loaded.height, snapshot.height);
+        assert_eq!(loaded.state_root, snapshot.state_root);
+        assert_eq!(loaded.encoded_state, snapshot.encoded_state);
+        assert_eq!(loaded.entry_count(), Some(1));
+    }
+
+    #[test]
+    fn snapshot_read_rejects_missing_magic() {
+        let snap = StateSnapshot::new(1, root(1), b"not-magic-prefix-followed-by-noise".to_vec(), None);
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("bad.json");
+        snap.write_to_file(&path).expect("write");
+        let err = StateSnapshot::read_from_file(&path).unwrap_err();
+        assert!(err.contains("magic"), "got: {err}");
+    }
+
+    #[test]
+    fn snapshot_read_rejects_truncated_body() {
+        // Header present but body not a multiple of SNAPSHOT_ENTRY_BYTES.
+        let mut state = State::default();
+        let token = BridgeToken::__for_bridge_only();
+        state.apply(
+            &token,
+            &StateChange::SetBalance {
+                addr: Address([1; 20]),
+                to: Balance(1),
+            },
+        );
+        let mut snap = StateSnapshot::from_state(&state, 1, None);
+        snap.encoded_state.pop(); // truncate the last byte
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("truncated.json");
+        snap.write_to_file(&path).expect("write");
+        let err = StateSnapshot::read_from_file(&path).unwrap_err();
+        assert!(err.contains("multiple"), "got: {err}");
     }
 
     #[test]
