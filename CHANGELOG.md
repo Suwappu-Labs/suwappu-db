@@ -4,9 +4,69 @@ All notable changes to gsx-db are recorded here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
-once the project is tagged. Pre-tag, every change lands under `[Unreleased]`.
+once the project is tagged. Pre-1.0, minor bumps may include
+breaking changes — see `INTEGRATORS.md` "Stability promises".
 
 ## [Unreleased]
+
+## [0.1.0-pre] — 2026-05-16
+
+First Phase-1 launch-readiness pre-release. Marks completion of
+Pass A (S8.5–S12 sprints), Pass B (security audit + hardening),
+and Pass C (external-dev readiness; in-flight at tag time).
+
+### Added — Pass A (Phase-1 launch readiness)
+
+- **S8.5** — Redb-backed `RedbBlockStore` + replay persistence
+  hardening (IQ-8).
+- **S9** — Real Aptos Move VM via `move-vm-runtime` (IQ-3/4/5);
+  `aptos_move_vm_parity` 10k cross-VM proptest under
+  `production-move-executor`.
+- **S10** — Real Verkle commitments via banderwagon + per-step IPA
+  witnesses (IQ-6); `verkle_parity` exit gate under
+  `production-verkle`. Compact multipoint IPA witness (~200 B
+  target) is an explicit follow-on.
+- **S11** — Solidity `LTPAnchorRegistry` + ECDSA parity (IQ-7) —
+  `VerifierConfig`, `AnchorLog (anchor, credential)` storage,
+  `EcdsaSecp256k1Signer`, `dispatch_with_signer`, Foundry deploy
+  script + ABI publication, 16-vector cross-impl differential
+  test. Sp1 producer + ML-DSA-65 hybrid follow when zkVM / PQ
+  decisions land.
+- **S12** — DAG store traversal (children index +
+  ancestors/descendants/tips), snapshot capture+restore
+  (sorted-encode for byte-idempotent round-trips), Prometheus
+  exporter with summary-quantile output, shadow-testnet E2E gated
+  on `GSXDB_SHADOW_RPC`; `dag_snapshot_exit_gate` 10k proptest
+  (IQ-9).
+
+### Added — Pass B (security audit + hardening)
+
+- **B2** — Panic sweep: `parse_address_param` in `gsxdb-server`
+  RPC handlers; `RedbBlockStore::open` returns typed
+  `BlockStoreError` instead of `.expect()`-panicking on corrupt
+  redb state.
+- **B3** — CI security gates: `clippy --workspace -- -D warnings`,
+  `cargo audit --deny warnings`, gitleaks secret-scan (PR + push +
+  nightly cron).
+- **B5** — Key-custody operational-enforcement clarification.
+- **B6** — Opt-in bearer-token middleware (`GSXDB_BEARER_TOKEN`),
+  constant-time compare; deployment-topology doc + nginx /
+  Cloudflare Access samples.
+- **B7** — Anchor surface deep-review; 12 findings ✅, 3
+  documented divergences ⚠ accepted.
+
+### Added — Pass C (external-dev readiness)
+
+- **C1** — `LICENSE` (Apache-2.0) + `NOTICE` at repo root.
+- **C2** — `.github/workflows/release.yml` builds Linux + macOS
+  binaries + Solidity ABIs on `v*` tags and drafts a GitHub
+  Release. Workspace version bumped 0.0.1 → 0.1.0-pre.
+
+Remaining C-items (C3 INTEGRATORS, C4 RPC versioning, C5
+gsxdb-types, C6 CONTRIBUTING, C7 ABI cross-ref, C8 distribution)
+land on their own branches before the `v0.1.0-pre` tag is cut.
+
+## [Pre-Pass-A entries below]
 
 ### Added
 
