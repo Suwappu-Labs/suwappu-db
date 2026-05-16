@@ -120,7 +120,20 @@ pub fn commit_node(node: &Node) -> Commitment {
 
 - [x] `tree/verkle.rs` scaffold + `GroupElement` placeholder
 - [x] `production-verkle` feature gate
-- [ ] Real IPA + banderwagon arithmetic
-- [ ] `go-ipa` differential parity harness
-- [ ] Witness-size budget test
+- [x] Real IPA + banderwagon arithmetic (S10.1-S10.4 —
+  `tree/verkle_scheme.rs` wires `BanderwagonIpaScheme` over
+  `ipa-multipoint::DefaultCommitter` and `CRS::default()` with
+  per-step opening prover/verifier in `prove_opening` /
+  `verify_opening`)
+- [x] Witness-size budget test (S10.5 —
+  `verkle_inclusion_witness_within_per_step_budget` asserts
+  ≤ 14 KB per inclusion at depth 20 under the per-step opening
+  format; ~609 B per opening × 21 openings)
+- [ ] `go-ipa` differential parity harness (deferred — single-impl
+  parity holds via Rust ↔ Rust round-trips; cross-impl
+  differential testing follows mainnet decision)
+- [ ] Compact multipoint IPA witness (~200 B target) — the
+  per-step format is sound but 65× larger than the
+  multipoint-aggregated witness. Multipoint optimization is
+  required before the witness-size benefit fully materializes.
 - [ ] Third-party audit on the IPA implementation

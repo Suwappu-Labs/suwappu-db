@@ -59,6 +59,15 @@ impl StateTree {
         commit_node(&self.root)
     }
 
+    /// Root commitment under an arbitrary [`CommitmentScheme`].
+    /// Used by callers that need a non-BLAKE3 root — e.g., the
+    /// Verkle [`StateTree::verify_verkle`] entry point. Recomputes
+    /// the tree from scratch via the scheme's `commit` per call.
+    #[must_use]
+    pub fn root_via<S: super::commit::CommitmentScheme>(&self, scheme: &S) -> Commitment {
+        scheme.commit(&self.root)
+    }
+
     /// Inclusion / non-inclusion proof for `addr`.
     ///
     /// The returned `Proof` includes the slot (if present) and one

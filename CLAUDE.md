@@ -55,8 +55,8 @@ Between sessions, you resume via:
 | S7     | 13–14  | ✅ Closed    | Cross-chain anchor log + parity (in-memory + MAC per IQ-7); cross_chain_parity_holds @ 10k passing |
 | S8     | 15–16  | ✅ Closed    | Block store + recovery (in-memory per IQ-8); recover_matches_live_state @ 10k passing |
 | S8.5   | 17     | ✅ Closed    | Redb-backed `RedbBlockStore` + replay persistence hardening (IQ-8); 5 persistence tests covering round-trip + restart + corrupt-payload rejection + aborted-write isolation. Landed in PR #2. |
-| S9     | 18+    | ⏳ Queued    | Launch-readiness: real Move VM + address-shape/nonce semantics (IQ-3/4/5) |
-| S10    | 18+    | ⏳ Queued    | Real Verkle commitments + IPA witnesses + parity harness (IQ-6)      |
+| S9     | 18+    | ✅ Closed    | Real Aptos Move VM via `move-vm-runtime` (IQ-3/4/5); `aptos_move_vm_parity` 10k cross-VM proptest passing under `production-move-executor`. |
+| S10    | 18+    | ✅ Closed    | Real Verkle commitments via banderwagon + per-step IPA witnesses (IQ-6); `verkle_parity` exit-gate 10k cases on commit-determinism + 32 cases on the full prove/verify path under `production-verkle`. Compact multipoint IPA witness (~200 B target) is an explicit follow-on. |
 | S11    | 18+    | ⏳ Queued    | Solidity `LTPAnchorRegistry` + ECDSA parity (IQ-7)                   |
 | S12    | 18+    | ⏳ Queued    | DAG store, snapshots, telemetry, and testnet shadow E2E (IQ-9)       |
 
