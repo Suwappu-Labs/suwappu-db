@@ -4,13 +4,18 @@
 # Per-machine local settings overrides
 .claude/settings.local.json
 
-# Sprint state (committed only on active sprint branches, not main)
-# .sprint-state.md  # uncomment if you decide it shouldn't track on any branch
+# Sprint state moved to docs/internal/sprint-state.md in
+# oss-readiness/g5-root-cleanup. No longer relevant at root.
 
 # Rust
 target/
 **/*.rs.bk
 Cargo.lock.bak
+
+# proptest minimal-failure cases (re-derived on every run; no value
+# committing the local reproducer).
+**/proptest-regressions/
+**/*.proptest-regressions
 
 # Editor
 .idea/
