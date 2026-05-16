@@ -51,6 +51,21 @@ allow = [
 confidence-threshold = 0.93
 exceptions = []
 
+# Clarifications — for crates that don't declare a `license` field in
+# their own Cargo.toml but are licensed via their workspace root or
+# LICENSE files. Without these, cargo-deny errors with "unlicensed".
+[[licenses.clarify]]
+# banderwagon (crate-crypto/rust-verkle) — workspace root declares
+# `license = "MIT"`. Repo root carries LICENSE-MIT and LICENSE-APACHE.
+name = "banderwagon"
+expression = "MIT"
+license-files = []
+
+[[licenses.clarify]]
+name = "ipa-multipoint"
+expression = "MIT"
+license-files = []
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
@@ -78,4 +93,9 @@ allow-git = [
     # Aptos's fork of zefchain/bcs pinned to a specific rev. Pulled
     # implicitly via aptos-core; we list it explicitly for cargo-deny.
     "https://github.com/aptos-labs/bcs.git",
+    # S10.1: crate-crypto/rust-verkle — Ethereum Foundation's
+    # reference Verkle implementation (banderwagon curve + IPA
+    # multipoint). Not on crates.io. Pinned by rev in gsxdb-state's
+    # Cargo.toml. Pulled in only with `production-verkle`.
+    "https://github.com/crate-crypto/rust-verkle",
 ]
