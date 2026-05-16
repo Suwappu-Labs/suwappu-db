@@ -115,6 +115,30 @@ impl Anchor {
         }
     }
 
+    /// **S11.3** — Construct an ECDSA-scheme anchor. The `mac` field is
+    /// zero-filled (no MAC for non-Blake3 schemes); the actual ECDSA
+    /// signature lives in the sidecar
+    /// [`super::credential::AnchorAuthCredential::EcdsaSecp256k1`] produced
+    /// by an `AnchorSigner`. The Solidity `hashAnchor` ABI-encodes the
+    /// zero-`mac` field as 32 zero-bytes, so this matches on-chain
+    /// parity exactly.
+    #[must_use]
+    pub fn ecdsa(
+        chain_id: ChainId,
+        height: u64,
+        state_root: Commitment,
+        parent: AnchorHash,
+    ) -> Self {
+        Self {
+            chain_id,
+            height,
+            state_root,
+            parent,
+            mac: [0u8; 32],
+            auth_scheme: AuthScheme::EcdsaSecp256k1,
+        }
+    }
+
     /// Verify the MAC under `key`. Returns `true` iff the recomputed
     /// MAC matches.
     #[must_use]

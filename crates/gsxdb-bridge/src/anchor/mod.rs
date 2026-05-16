@@ -18,6 +18,7 @@ pub mod credential;
 pub mod dispatcher;
 pub mod l1_reader;
 pub mod log;
+pub mod signing;
 pub mod types;
 
 #[cfg(test)]
@@ -26,12 +27,13 @@ mod parity_test;
 pub use credential::{
     eth_signed_message_hash, verify_credential, verify_ecdsa, AnchorAuthCredential,
     CredentialVerifyError, EcdsaVerifyError, EthAddress, ExpectedVerifier, Sp1PublicValues,
-    ECDSA_SIG_LEN,
+    VerifierConfig, ECDSA_SIG_LEN,
 };
 
 #[cfg(feature = "production-pqc")]
 pub use credential::{verify_mldsa65, MlDsaVerifyError};
 pub use dispatcher::{AnchorDispatcher, ParityResult};
 pub use l1_reader::{L1AnchorReader, MockL1AnchorReader, RpcL1AnchorReader};
-pub use log::{AnchorLog, AppendError};
-pub use types::{Anchor, AnchorHash, ChainId, GENESIS_PARENT};
+pub use log::{AnchorEntry, AnchorLog, AppendError};
+pub use signing::{AnchorSigner, EcdsaSecp256k1Signer, SignerError};
+pub use types::{Anchor, AnchorHash, AuthScheme, ChainId, GENESIS_PARENT};
