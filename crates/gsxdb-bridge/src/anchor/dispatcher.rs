@@ -1,10 +1,8 @@
 //! Multi-chain anchor dispatcher + cross-chain parity check.
 
-use super::credential::{
-    verify_credential, AnchorAuthCredential, CredentialVerifyError, ExpectedVerifier, VerifierConfig,
-};
+use super::credential::{verify_credential, CredentialVerifyError, VerifierConfig};
 use super::log::{AnchorLog, AppendError};
-use super::types::{Anchor, AuthScheme, ChainId, GENESIS_PARENT};
+use super::types::{Anchor, ChainId, GENESIS_PARENT};
 use gsxdb_state::Commitment;
 use std::collections::BTreeMap;
 
@@ -196,14 +194,15 @@ impl AnchorDispatcher {
         let mut tampered: Vec<ChainId> = Vec::new();
 
         for (chain_id, log) in &self.logs {
-            match log.at(height) {
+            match log.entry_at(height) {
                 None => missing.push(*chain_id),
-                Some(anchor) => {
+                Some(entry) => {
                     let config = self
                         .configs
                         .get(chain_id)
                         .expect("registered configs match logs");
-                    if !Self::verify_anchor_with_config(anchor, config) {
+                    let anchor = &entry.anchor;
+                    if !Self::verify_entry_with_config(entry, config) {
                         // Tampered after-the-fact OR a non-Blake3Mac
                         // scheme without per-chain verifier config (S11
                         // adds the credential storage + verifier registry).
@@ -252,43 +251,32 @@ impl AnchorDispatcher {
         }
     }
 
-    /// Route an anchor's authenticator through the unified
+    /// Route an [`AnchorEntry`]'s authenticator through the unified
     /// [`verify_credential`] dispatch using the chain's
     /// [`VerifierConfig`].
     ///
-    /// Phase-1 (today): credentials are not yet stored in
-    /// [`AnchorLog`] (that's S11.2). For `Blake3Mac` chains the
-    /// credential is the anchor's own `mac` field, dispatched through
-    /// `verify_credential` for shape parity with the post-S11.2 path.
-    ///
-    /// Non-Blake3 chains have a config but no stored credential bytes
-    /// yet — they surface as tampered until S11.2 lands log-stored
-    /// credentials.
-    fn verify_anchor_with_config(anchor: &Anchor, config: &VerifierConfig) -> bool {
+    /// **S11.2**: every entry now carries a stored credential, so all
+    /// four schemes (Blake3 / ECDSA / Hybrid / Sp1) dispatch through
+    /// the same path. Pre-S11.2 dispatch_with_signer is still queued
+    /// (S11.3), so the producer side of non-Blake3 anchors is gated
+    /// — but parity_check + `append_with_credential` work end-to-end.
+    fn verify_entry_with_config(
+        entry: &super::log::AnchorEntry,
+        config: &VerifierConfig,
+    ) -> bool {
         // Schemes must agree: the config's declared scheme must match
         // the anchor's `auth_scheme`. Otherwise reject without even
         // attempting to dispatch — prevents config drift from silently
         // accepting cross-scheme anchors.
-        if config.scheme() != anchor.auth_scheme {
+        if config.scheme() != entry.anchor.auth_scheme {
             let _ = CredentialVerifyError::SchemeMismatch;
             return false;
         }
-        // Schemes agreed (gate above); dispatch on the (matched)
-        // scheme. Non-Blake3 schemes have no log-stored credential
-        // bytes yet — S11.2 lands that storage and lets the full
-        // `verify_credential` dispatch run.
-        match config {
-            VerifierConfig::Blake3Mac { .. } => {
-                let expected = config.as_expected_for(anchor);
-                matches!(
-                    verify_credential(anchor, &AnchorAuthCredential::Blake3Mac, &expected),
-                    Ok(())
-                )
-            }
-            VerifierConfig::EcdsaSecp256k1 { .. }
-            | VerifierConfig::MlDsa65Hybrid { .. }
-            | VerifierConfig::Sp1ZkProof { .. } => false,
-        }
+        let expected = config.as_expected_for(&entry.anchor);
+        matches!(
+            verify_credential(&entry.anchor, &entry.credential, &expected),
+            Ok(())
+        )
     }
 }
 
