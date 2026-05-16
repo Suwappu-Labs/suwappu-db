@@ -1,0 +1,136 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v0.1.0-pre)'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  RUST_BACKTRACE: 1
+
+jobs:
+  # C2: build release artefacts + draft a GitHub Release on `v*` tags.
+  # Two jobs run in parallel:
+  #
+  # 1. cargo-binary  — release-profile cargo build, uploads the
+  #    gsxdb-server binary.
+  # 2. solidity-abi  — forge build, uploads the
+  #    LTPAnchorRegistry ABI JSON committed in S11.4.
+  #
+  # The draft release is published manually after the human-review
+  # step verifies versions and changelog. Tag triggers a draft, not
+  # a publish.
+  cargo-binary:
+    name: Cargo release binary (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }} -p gsxdb-server
+
+      - name: Stage artefact
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/gsxdb-server dist/gsxdb-server-${{ matrix.target }}
+          (cd dist && sha256sum gsxdb-server-${{ matrix.target }} > gsxdb-server-${{ matrix.target }}.sha256)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cargo-${{ matrix.target }}
+          path: dist/*
+
+  solidity-abi:
+    name: Solidity ABI bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Install forge-std (pinned by foundry.lock)
+        working-directory: contracts
+        run: forge install foundry-rs/forge-std
+
+      - name: forge build
+        working-directory: contracts
+        run: forge build
+
+      - name: Stage ABI artefacts
+        run: |
+          mkdir -p dist
+          cp contracts/abi/LTPAnchorRegistry.abi.json dist/
+          cp contracts/abi/ILTPAnchorRegistry.abi.json dist/
+          (cd dist && sha256sum *.abi.json > abi.sha256)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: solidity-abi
+          path: dist/*
+
+  draft-release:
+    name: Draft GitHub Release
+    needs: [cargo-binary, solidity-abi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Collect artefacts into one directory
+        run: |
+          mkdir -p release
+          find dist -type f \( -name 'gsxdb-server-*' -o -name '*.abi.json' -o -name '*.sha256' \) \
+            -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Extract changelog section
+        id: changelog
+        run: |
+          # Pull the section between the matching tag header and the
+          # next "## [" so the release body cites Keep-a-Changelog
+          # entries for this version verbatim. Falls back to the
+          # entire CHANGELOG if no matching section is found.
+          tag="${GITHUB_REF_NAME:-${{ github.event.inputs.tag }}}"
+          version="${tag#v}"
+          awk "/^## \\[${version}\\]/{flag=1; next} /^## \\[/{flag=0} flag" CHANGELOG.md > release_notes.md
+          if [ ! -s release_notes.md ]; then
+            echo "No changelog section for ${version}; using [Unreleased]." >&2
+            awk '/^## \[Unreleased\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md > release_notes.md
+          fi
+
+      - name: Draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: false
+          body_path: release_notes.md
+          files: release/*

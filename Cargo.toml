@@ -7,7 +7,12 @@ members = [
 ]
 
 [workspace.package]
-version = "0.0.1"
+# C2: workspace version. Bumped 0.0.1 → 0.1.0-pre at the
+# Pass-A close so the first release tag (`v0.1.0-pre`) marks
+# Phase-1 launch readiness. SemVer kicks in at `v1.0.0`; until then
+# minor bumps may include breaking changes, per the INTEGRATORS.md
+# stability promises.
+version = "0.1.0-pre"
 edition = "2021"
 rust-version = "1.78"
 license = "Apache-2.0"
