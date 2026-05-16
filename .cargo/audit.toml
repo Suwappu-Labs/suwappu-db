@@ -1,0 +1,22 @@
+# cargo-audit configuration — mirrors the [advisories.ignore] list in
+# `deny.toml` so the B3 `cargo audit --deny warnings` CI gate accepts
+# the same set of advisory exceptions.
+#
+# Each entry has a rationale comment matching deny.toml. Keep them in
+# sync: dropping an ignore here MUST be paired with dropping it from
+# deny.toml (and vice versa).
+[advisories]
+ignore = [
+    # rustls-pemfile is unmaintained; pulled transitively via
+    # ureq -> rustls. No vulnerability — maintenance status only.
+    "RUSTSEC-2025-0134",
+    # paste is unmaintained; pulled transitively via the crypto crates
+    # (pqcrypto / ml-dsa derive macros). Build-time-only proc-macro.
+    "RUSTSEC-2024-0436",
+    # derivative is unmaintained; pulled transitively via Aptos
+    # move-vm-types. Build-time-only derive macro.
+    "RUSTSEC-2024-0388",
+    # fxhash is unmaintained; pulled transitively via Aptos
+    # move-vm-runtime. Hot-path non-cryptographic hash.
+    "RUSTSEC-2025-0057",
+]

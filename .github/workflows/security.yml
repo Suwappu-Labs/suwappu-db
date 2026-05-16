@@ -1,0 +1,74 @@
+name: Security
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Nightly run picks up RustSec advisories published after merge.
+    - cron: '0 6 * * *'
+
+env:
+  RUST_BACKTRACE: 1
+
+jobs:
+  clippy-strict:
+    name: Clippy (strict)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Workspace lints already declare `clippy::all = deny`; this CI
+      # job promotes any remaining warning to an error so PRs can't
+      # land with new noise. `-D warnings` mirrors the local
+      # `cargo clippy -- -D warnings` invocation in CLAUDE.md.
+      - name: cargo clippy --workspace -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  cargo-audit:
+    name: cargo-audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88
+
+      - uses: Swatinem/rust-cache@v2
+
+      # cargo-deny already runs in ci.yml under [advisories], but
+      # cargo-audit's DB sync is more aggressive (pulled fresh per run)
+      # and its output is more readable for security review. Both
+      # produce the same advisory set; this is a belt-and-braces gate.
+      - name: Install cargo-audit
+        run: cargo install --locked cargo-audit
+      - name: cargo audit
+        # `--deny warnings` so an unmaintained-crate advisory fails
+        # the run. ignore-list lives in deny.toml; cargo-audit
+        # respects the same RUSTSEC ignores via .cargo/audit.toml.
+        run: cargo audit --deny warnings
+
+  secret-scan:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so gitleaks scans every commit, not just HEAD.
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Default config is sufficient; .gitleaks.toml at repo root
+          # can override allow-listed false positives if any surface.
