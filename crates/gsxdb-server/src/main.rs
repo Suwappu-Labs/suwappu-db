@@ -5,10 +5,12 @@
 use axum::{
     extract::State as AxumState,
     http::StatusCode,
+    middleware,
     response::Json,
     routing::{get, post},
     Router,
 };
+use gsxdb_server::{bearer_auth, BearerAuthConfig};
 use gsxdb_state::{Address, State};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -214,11 +216,33 @@ async fn main() -> anyhow::Result<()> {
         state: Mutex::new(State::default()),
     });
 
-    // Build router
+    // B6: opt-in bearer-token auth. Set GSXDB_BEARER_TOKEN to gate
+    // the /rpc surface behind `Authorization: Bearer <token>`. With
+    // the env unset, the middleware passes every request through
+    // (default off; production-deployment posture is firewall + ALB
+    // — see docs/architecture/deployment-topology.md).
+    let auth_config = BearerAuthConfig::from_env();
+    if auth_config.is_enabled() {
+        info!("Bearer-token auth ENABLED on /rpc (GSXDB_BEARER_TOKEN set)");
+    } else {
+        info!(
+            "Bearer-token auth disabled (GSXDB_BEARER_TOKEN unset). \
+             Production deployments MUST also firewall the listening port \
+             or front this service with an ALB / Cloudflare Access — see \
+             docs/architecture/deployment-topology.md"
+        );
+    }
+
+    // Build router. /health and /metrics stay open for liveness probes;
+    // /rpc gets the bearer-auth middleware when enabled.
+    let rpc_route = post(rpc).layer(middleware::from_fn_with_state(
+        auth_config.clone(),
+        bearer_auth,
+    ));
     let app = Router::new()
         .route("/health", get(health))
         .route("/metrics", get(metrics))
-        .route("/rpc", post(rpc))
+        .route("/rpc", rpc_route)
         .with_state(state);
 
     // Run server
