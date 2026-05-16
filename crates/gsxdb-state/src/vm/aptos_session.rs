@@ -116,6 +116,41 @@ const GSXDB_COIN_ADDRESS: AccountAddress = AccountAddress::new([
 const GSXDB_COIN_MODULE_NAME: &str = "coin";
 const GSXDB_COIN_STRUCT_NAME: &str = "CoinStore";
 
+/// S9.5g: compiled bytecode for the canonical gsx-db Coin module.
+///
+/// Source: `move/canonical-coin/sources/coin.move` (gsx-db repo root).
+/// Compiled by `aptos move compile` against `aptos-node-v1.44.9-hotfix`
+/// MoveStdlib. The build artifact (`build/.../coin.mv`) is checked in
+/// alongside this crate at `move-bytecode/canonical_coin.mv` so
+/// production-move-executor builds don't need an aptos-cli install.
+///
+/// Re-generating after any change to the Move source:
+///
+/// ```sh
+/// cd move/canonical-coin && aptos move compile --skip-fetch-latest-git-deps
+/// cp build/gsxdb_canonical_coin/bytecode_modules/coin.mv \
+///    crates/gsxdb-state/move-bytecode/canonical_coin.mv
+/// ```
+///
+/// The bytecode is consumed by callers that want to auto-deploy the
+/// module into a fresh `ModuleStore` at bundle-executor startup —
+/// without it, an `Intent::Call` targeting `0x1::coin` would hit
+/// `MoveExecutionError::ModuleNotFound` before reaching the
+/// interpreter.
+pub fn canonical_coin_bytecode() -> &'static [u8] {
+    include_bytes!("../../move-bytecode/canonical_coin.mv")
+}
+
+/// gsx-db `ModuleId` for the canonical coin module. Use with
+/// `ModuleStore::put` at bundle-executor startup.
+pub fn canonical_coin_module_id() -> ModuleId {
+    ModuleId {
+        address: MoveAddress(GSXDB_COIN_ADDRESS.into_bytes()),
+        name: Identifier::new(GSXDB_COIN_MODULE_NAME)
+            .expect("canonical coin module name is a valid identifier"),
+    }
+}
+
 /// BCS layout of the canonical gsx-db `CoinStore` Move resource:
 ///
 /// ```move
@@ -373,6 +408,36 @@ mod tests {
             .unwrap();
         assert!(bytes.is_none());
         assert_eq!(size, 0);
+    }
+
+    #[test]
+    fn canonical_coin_bytecode_deserializes_and_verifies() {
+        use move_binary_format::file_format::CompiledModule;
+
+        let bytes = canonical_coin_bytecode();
+        assert!(
+            !bytes.is_empty(),
+            "compiled bytecode artifact missing — re-run aptos move compile"
+        );
+
+        let compiled = CompiledModule::deserialize(bytes)
+            .expect("canonical coin bytecode deserializes");
+
+        // The compiled module should declare its self_id matching our
+        // canonical (address, name) pair.
+        let self_id = compiled.self_id();
+        assert_eq!(*self_id.address(), GSXDB_COIN_ADDRESS);
+        assert_eq!(self_id.name().as_str(), GSXDB_COIN_MODULE_NAME);
+
+        move_bytecode_verifier::verifier::verify_module(&compiled)
+            .expect("canonical coin bytecode passes the verifier");
+    }
+
+    #[test]
+    fn canonical_coin_module_id_matches_resolver_constants() {
+        let id = canonical_coin_module_id();
+        assert_eq!(id.address.0, GSXDB_COIN_ADDRESS.into_bytes());
+        assert_eq!(id.name.as_str(), GSXDB_COIN_MODULE_NAME);
     }
 
     #[test]

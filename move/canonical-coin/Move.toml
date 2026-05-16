@@ -1,0 +1,7 @@
+[package]
+name = "gsxdb_canonical_coin"
+version = "0.1.0"
+authors = []
+
+[addresses]
+gsxdb_coin = "0x1"
