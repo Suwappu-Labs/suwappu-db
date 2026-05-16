@@ -1,7 +1,7 @@
 //! Multi-chain anchor dispatcher + cross-chain parity check.
 
 use super::credential::{
-    verify_credential, AnchorAuthCredential, CredentialVerifyError, ExpectedVerifier,
+    verify_credential, AnchorAuthCredential, CredentialVerifyError, ExpectedVerifier, VerifierConfig,
 };
 use super::log::{AnchorLog, AppendError};
 use super::types::{Anchor, AuthScheme, ChainId, GENESIS_PARENT};
@@ -44,11 +44,20 @@ pub enum ParityResult {
 }
 
 /// Multi-chain dispatcher. Owns one [`AnchorLog`] per registered chain
-/// plus the symmetric authenticator key for each.
+/// plus the [`VerifierConfig`] for each.
+///
+/// Two registration paths:
+/// - [`Self::register`] — legacy / Blake3-only convenience that takes a
+///   32-byte symmetric key. Wraps [`Self::register_with_config`] with
+///   [`VerifierConfig::Blake3Mac`].
+/// - [`Self::register_with_config`] — S11 path. Accepts any
+///   [`VerifierConfig`] variant, including ECDSA / hybrid / Sp1.
 #[derive(Debug, Clone)]
 pub struct AnchorDispatcher {
     logs: BTreeMap<ChainId, AnchorLog>,
-    keys: BTreeMap<ChainId, [u8; 32]>,
+    /// Per-chain verifier config (S11). Replaces the pre-S11 raw-key
+    /// `keys` map. Blake3 chains store their key inside the config.
+    configs: BTreeMap<ChainId, VerifierConfig>,
 }
 
 impl AnchorDispatcher {
@@ -57,17 +66,36 @@ impl AnchorDispatcher {
     pub fn new() -> Self {
         Self {
             logs: BTreeMap::new(),
-            keys: BTreeMap::new(),
+            configs: BTreeMap::new(),
         }
     }
 
-    /// Register a chain with its authenticator key. Replaces any
-    /// existing registration. Existing log on `chain_id` is preserved.
+    /// **Legacy / Blake3-only convenience.** Registers `chain_id` with
+    /// a [`VerifierConfig::Blake3Mac`] config built from `key`. Existing
+    /// log on `chain_id` is preserved. Equivalent to:
+    ///
+    /// ```ignore
+    /// dispatcher.register_with_config(chain_id, VerifierConfig::Blake3Mac { key });
+    /// ```
     pub fn register(&mut self, chain_id: ChainId, key: [u8; 32]) {
+        self.register_with_config(chain_id, VerifierConfig::Blake3Mac { key });
+    }
+
+    /// **S11.1 entry point.** Register `chain_id` with an arbitrary
+    /// [`VerifierConfig`]. Replaces any existing config; the
+    /// [`AnchorLog`] on `chain_id` is preserved across re-registration.
+    pub fn register_with_config(&mut self, chain_id: ChainId, config: VerifierConfig) {
         self.logs
             .entry(chain_id)
             .or_insert_with(|| AnchorLog::new(chain_id));
-        self.keys.insert(chain_id, key);
+        self.configs.insert(chain_id, config);
+    }
+
+    /// Read-only access to a chain's [`VerifierConfig`]. `None` if the
+    /// chain is unregistered.
+    #[must_use]
+    pub fn config(&self, chain_id: ChainId) -> Option<&VerifierConfig> {
+        self.configs.get(&chain_id)
     }
 
     /// Number of registered chains.
@@ -109,8 +137,13 @@ impl AnchorDispatcher {
     ///
     /// # Panics
     ///
-    /// Panics if `keys` and `logs` disagree on registered chains. This
-    /// is an invariant maintained by [`Self::register`].
+    /// Panics if `configs` and `logs` disagree on registered chains.
+    /// Invariant maintained by [`Self::register_with_config`].
+    ///
+    /// Dispatch path covers Blake3-MAC chains only; non-MAC schemes
+    /// require a signer (S11.3 — see `dispatch_with_signer`). Chains
+    /// registered with a non-Blake3 [`VerifierConfig`] return
+    /// `(chain_id, AppendError::SchemeRequiresSigner)`.
     pub fn dispatch(
         &mut self,
         height: u64,
@@ -119,10 +152,16 @@ impl AnchorDispatcher {
         let mut out = Vec::with_capacity(self.logs.len());
         let chain_ids: Vec<ChainId> = self.logs.keys().copied().collect();
         for chain_id in chain_ids {
-            let key = *self
-                .keys
+            let config = self
+                .configs
                 .get(&chain_id)
-                .expect("registered keys match logs");
+                .expect("registered configs match logs");
+            let key = match config {
+                VerifierConfig::Blake3Mac { key } => *key,
+                // S11.3 lands the signing pipeline for non-MAC schemes.
+                // Until then `dispatch` only handles Blake3 chains.
+                _ => return Err((chain_id, AppendError::SchemeRequiresSigner)),
+            };
             let parent = self
                 .logs
                 .get(&chain_id)
@@ -148,8 +187,8 @@ impl AnchorDispatcher {
     ///
     /// # Panics
     ///
-    /// Panics if `keys` and `logs` disagree on registered chains. See
-    /// [`Self::dispatch`].
+    /// Panics if `configs` and `logs` disagree on registered chains.
+    /// See [`Self::dispatch`].
     #[must_use]
     pub fn parity_check(&self, height: u64) -> ParityResult {
         let mut roots: Vec<(ChainId, Commitment)> = Vec::new();
@@ -160,8 +199,11 @@ impl AnchorDispatcher {
             match log.at(height) {
                 None => missing.push(*chain_id),
                 Some(anchor) => {
-                    let key = self.keys.get(chain_id).expect("registered keys match logs");
-                    if !Self::verify_anchor_credential(anchor, key) {
+                    let config = self
+                        .configs
+                        .get(chain_id)
+                        .expect("registered configs match logs");
+                    if !Self::verify_anchor_with_config(anchor, config) {
                         // Tampered after-the-fact OR a non-Blake3Mac
                         // scheme without per-chain verifier config (S11
                         // adds the credential storage + verifier registry).
@@ -211,36 +253,41 @@ impl AnchorDispatcher {
     }
 
     /// Route an anchor's authenticator through the unified
-    /// [`verify_credential`] dispatch.
+    /// [`verify_credential`] dispatch using the chain's
+    /// [`VerifierConfig`].
     ///
-    /// Phase-1 (today): `Blake3Mac` is the only scheme stored in
-    /// [`AnchorLog`], so the credential is the anchor's own `mac` field
-    /// and the verifier config is the registered per-chain key.
+    /// Phase-1 (today): credentials are not yet stored in
+    /// [`AnchorLog`] (that's S11.2). For `Blake3Mac` chains the
+    /// credential is the anchor's own `mac` field, dispatched through
+    /// `verify_credential` for shape parity with the post-S11.2 path.
     ///
-    /// S11 (Track 1.2 Step E): `register` will accept a
-    /// `VerifierConfig` enum carrying ECDSA / hybrid / Sp1 expected
-    /// values, the log will store `(Anchor, AnchorAuthCredential)`
-    /// pairs, and this helper will dispatch each scheme through
-    /// `verify_credential` with the right `ExpectedVerifier`. Until
-    /// then non-`Blake3Mac` anchors are rejected as
-    /// `UnsupportedScheme` — preferable to silently treating them as
-    /// authentic.
-    fn verify_anchor_credential(anchor: &Anchor, key: &[u8; 32]) -> bool {
-        match anchor.auth_scheme {
-            AuthScheme::Blake3Mac => matches!(
-                verify_credential(
-                    anchor,
-                    &AnchorAuthCredential::Blake3Mac,
-                    &ExpectedVerifier::Blake3Mac { key },
-                ),
-                Ok(())
-            ),
-            AuthScheme::Sp1ZkProof | AuthScheme::EcdsaSecp256k1 | AuthScheme::MlDsa65Hybrid => {
-                // No credential storage for non-MAC schemes yet.
-                // S11 lands this surface; until then reject explicitly.
-                let _ = CredentialVerifyError::UnsupportedScheme(anchor.auth_scheme);
-                false
+    /// Non-Blake3 chains have a config but no stored credential bytes
+    /// yet — they surface as tampered until S11.2 lands log-stored
+    /// credentials.
+    fn verify_anchor_with_config(anchor: &Anchor, config: &VerifierConfig) -> bool {
+        // Schemes must agree: the config's declared scheme must match
+        // the anchor's `auth_scheme`. Otherwise reject without even
+        // attempting to dispatch — prevents config drift from silently
+        // accepting cross-scheme anchors.
+        if config.scheme() != anchor.auth_scheme {
+            let _ = CredentialVerifyError::SchemeMismatch;
+            return false;
+        }
+        // Schemes agreed (gate above); dispatch on the (matched)
+        // scheme. Non-Blake3 schemes have no log-stored credential
+        // bytes yet — S11.2 lands that storage and lets the full
+        // `verify_credential` dispatch run.
+        match config {
+            VerifierConfig::Blake3Mac { .. } => {
+                let expected = config.as_expected_for(anchor);
+                matches!(
+                    verify_credential(anchor, &AnchorAuthCredential::Blake3Mac, &expected),
+                    Ok(())
+                )
             }
+            VerifierConfig::EcdsaSecp256k1 { .. }
+            | VerifierConfig::MlDsa65Hybrid { .. }
+            | VerifierConfig::Sp1ZkProof { .. } => false,
         }
     }
 }
@@ -417,6 +464,82 @@ mod tests {
         let a2 = log.at(2).unwrap();
         assert_eq!(a1.parent, a0.hash());
         assert_eq!(a2.parent, a1.hash());
+    }
+
+    #[test]
+    fn register_with_config_stores_arbitrary_scheme() {
+        // S11.1: registering an ECDSA chain stores the config and
+        // makes it readable via `config()`. The dispatcher accepts
+        // any VerifierConfig variant without requiring the full
+        // signing pipeline to be wired (that's S11.3).
+        let mut d = AnchorDispatcher::new();
+        let signer = crate::anchor::credential::EthAddress([0x42; 20]);
+        d.register_with_config(
+            ChainId(7),
+            VerifierConfig::EcdsaSecp256k1 { signer },
+        );
+
+        assert_eq!(d.len(), 1);
+        match d.config(ChainId(7)).expect("registered") {
+            VerifierConfig::EcdsaSecp256k1 { signer: s } => assert_eq!(*s, signer),
+            other => panic!("expected ECDSA config, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn legacy_register_creates_blake3_config() {
+        // S11.1: the legacy `register(chain_id, key)` API now stores
+        // a `VerifierConfig::Blake3Mac { key }`. Existing callers see
+        // no behavioural change.
+        let mut d = AnchorDispatcher::new();
+        d.register(ChainId(1), [0x99; 32]);
+        match d.config(ChainId(1)).expect("registered") {
+            VerifierConfig::Blake3Mac { key } => assert_eq!(*key, [0x99; 32]),
+            other => panic!("expected Blake3Mac config, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dispatch_rejects_non_blake3_config() {
+        // S11.1: until S11.3 wires the signer pipeline, `dispatch`
+        // can only produce Blake3-MAC anchors. Non-MAC chains return
+        // a typed error.
+        let mut d = AnchorDispatcher::new();
+        let signer = crate::anchor::credential::EthAddress([0x11; 20]);
+        d.register_with_config(
+            ChainId(5),
+            VerifierConfig::EcdsaSecp256k1 { signer },
+        );
+
+        let err = d.dispatch(0, root(1)).unwrap_err();
+        assert_eq!(err.0, ChainId(5));
+        assert!(matches!(err.1, AppendError::SchemeRequiresSigner));
+    }
+
+    #[test]
+    fn parity_rejects_blake3_anchor_under_ecdsa_config() {
+        // Scheme mismatch between the anchor and the config is an
+        // immediate `false` from verify_anchor_with_config — prevents
+        // a config-swap attack from re-validating old MAC anchors as
+        // if they were ECDSA.
+        let mut d = AnchorDispatcher::new();
+        d.register(ChainId(1), [1; 32]);
+        d.dispatch(0, root(1)).unwrap();
+
+        // Now swap the chain's config to ECDSA without changing the
+        // underlying anchor. Parity must reject.
+        d.register_with_config(
+            ChainId(1),
+            VerifierConfig::EcdsaSecp256k1 {
+                signer: crate::anchor::credential::EthAddress([0; 20]),
+            },
+        );
+        match d.parity_check(0) {
+            ParityResult::Disagreed { .. } => {}
+            other @ ParityResult::Agreed { .. } => {
+                panic!("config-swap must not reauthenticate the old anchor, got {other:?}")
+            }
+        }
     }
 
     #[test]
