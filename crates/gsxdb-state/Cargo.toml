@@ -41,6 +41,25 @@ move-vm-types = { git = "https://github.com/aptos-labs/aptos-core", tag = "aptos
 # in aptos_session.rs resolves explicitly.
 bytes = { version = "1", optional = true }
 
+# --- S10.1: Verkle crypto stack (production-verkle) ---
+#
+# crate-crypto/rust-verkle is the Ethereum Foundation's reference
+# Verkle implementation. MIT-licensed, used by EF research + various
+# Verkle prototypes. Not on crates.io; only available from git. Same
+# git-dep pattern as aptos-core for the Move VM.
+#
+# banderwagon — the Verkle curve (derived from Bandersnatch).
+# ipa-multipoint — IPA polynomial commitment over banderwagon.
+# Both are needed to commit and prove against a 256-ary trie node.
+banderwagon = { git = "https://github.com/crate-crypto/rust-verkle", rev = "e27b8b4edf1992b4afa636c2fc7983bcc27ddb88", optional = true, default-features = false }
+ipa-multipoint = { git = "https://github.com/crate-crypto/rust-verkle", rev = "e27b8b4edf1992b4afa636c2fc7983bcc27ddb88", optional = true }
+# Curve-side arithmetic helpers we need at the Verkle scheme layer
+# (scalar field, byte ↔ field conversion, point serialization).
+# Both come from the arkworks ecosystem; banderwagon/ipa-multipoint
+# already depend on these so the version is set by the git pin above.
+ark-ff = { version = "0.4", optional = true, default-features = false }
+ark-serialize = { version = "0.4", optional = true, default-features = false }
+
 [features]
 # Move VM execution strategy.
 # Default (none): mock executor for Phase 1.
@@ -60,7 +79,15 @@ production-move-executor = [
 # Commitment scheme strategy.
 # Default (none): hash-based (BLAKE3) for Phase 1.
 # production-verkle: real Verkle with IPA for S10+.
-production-verkle = []
+# Pulls banderwagon + ipa-multipoint from crate-crypto/rust-verkle
+# (pinned by rev) and the matching ark-ff/ark-serialize so the scheme
+# layer can move between scalar field and curve points.
+production-verkle = [
+    "dep:banderwagon",
+    "dep:ipa-multipoint",
+    "dep:ark-ff",
+    "dep:ark-serialize",
+]
 
 [dev-dependencies]
 proptest = "1"

@@ -87,12 +87,13 @@ impl IpaWitness {
 }
 
 /// Represents whether to use hash-based (Phase 1) or Verkle (S10+) commitments.
-#[cfg_attr(
-    feature = "production-verkle",
-    derive(Debug, Clone, Copy, PartialEq, Eq)
-)]
+///
+/// Distinct from [`super::commit::CommitmentScheme`] (the *trait* that
+/// the BLAKE3 and banderwagon schemes implement) — this enum is a
+/// runtime tag for telemetry / configuration. The trait dispatches
+/// the actual commit; this enum names which trait impl is wired in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CommitmentScheme {
+pub enum CommitmentSchemeKind {
     /// Hash-based (BLAKE3) for Phase 1.
     HashBased,
     /// Verkle with IPA for S10+.
@@ -100,9 +101,9 @@ pub enum CommitmentScheme {
     Verkle,
 }
 
-impl Default for CommitmentScheme {
+impl Default for CommitmentSchemeKind {
     fn default() -> Self {
-        CommitmentScheme::HashBased
+        CommitmentSchemeKind::HashBased
     }
 }
 
@@ -131,6 +132,9 @@ mod tests {
 
     #[test]
     fn commitment_scheme_default_is_hash_based() {
-        assert_eq!(CommitmentScheme::default(), CommitmentScheme::HashBased);
+        assert_eq!(
+            CommitmentSchemeKind::default(),
+            CommitmentSchemeKind::HashBased
+        );
     }
 }
