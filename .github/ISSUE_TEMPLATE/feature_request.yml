@@ -1,0 +1,80 @@
+name: Feature request
+description: Propose a change to gsx-db's behaviour, API, or scope.
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing:
+
+        - Non-trivial design changes go through the
+          [Investigation Question](../docs/iq/) workflow described
+          in [GOVERNANCE.md](../GOVERNANCE.md). Use this template
+          to open the conversation; we'll convert to an IQ if the
+          discussion warrants one.
+        - Breaking changes to frozen surfaces (see
+          [INTEGRATORS.md "Stability promises"](../INTEGRATORS.md#stability-promises))
+          require explicit maintainer approval before code lands.
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: What problem does this solve?
+      description: The use case or pain point. Concrete is better than abstract.
+      placeholder: |
+        I'm building a parallel verifier that needs to ...
+        Today the only way to do this is ...
+        Which means I have to ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API or behaviour
+      description: What would you change? Code sketches, sample RPC calls, type signatures welcome.
+      render: rust
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else could solve the same problem? Why is the proposal above better?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface affected
+      multiple: true
+      options:
+        - gsxdb-state
+        - gsxdb-bridge
+        - gsxdb-server
+        - gsxdb-types (frozen public surface — breaking changes need extra scrutiny)
+        - contracts (Solidity)
+        - JSON-RPC schema
+        - Build / CI
+        - Docs only
+    validations:
+      required: true
+
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: Is this a breaking change?
+      options:
+        - "No — additive only"
+        - "Yes — breaks a frozen surface (needs maintainer approval)"
+        - "Maybe — not sure how to classify"
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Related IQs, prior art in other repos, willingness to send the PR yourself, anything else.

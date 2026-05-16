@@ -1,0 +1,94 @@
+name: Bug report
+description: A reproducible defect in gsx-db code or behaviour.
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Before you continue:
+
+        - For **security vulnerabilities**, do not open a public issue.
+          Use the private disclosure path in [SECURITY.md](../SECURITY.md).
+        - For **integration questions** ("how do I do X?"), open a
+          [Discussion](https://github.com/GlobalSettlementNetwork/gsx-db/discussions)
+          or read [INTEGRATORS.md](../INTEGRATORS.md) first.
+
+  - type: input
+    id: version
+    attributes:
+      label: gsx-db version / commit
+      description: e.g. `v0.1.0-pre` or `git rev-parse HEAD` output.
+      placeholder: v0.1.0-pre
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      multiple: true
+      options:
+        - gsxdb-state (balances, state tree, snapshot, dag)
+        - gsxdb-bridge (OCC, bundles, anchor, recovery)
+        - gsxdb-server (HTTP, JSON-RPC, /metrics)
+        - gsxdb-types (public re-export facade)
+        - contracts (Solidity LTPAnchorRegistry)
+        - CI / workflows
+        - Docs
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: The observed behaviour. Include logs, panic output, or RPC responses if relevant.
+      placeholder: |
+        Ran `cargo test -p gsxdb-bridge --features production-pqc` and the
+        `mldsa_hybrid_verify` test panicked with ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      placeholder: Test passes cleanly under the production-pqc feature.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimum reproduction
+      description: Exact shell commands or a code snippet someone else can paste and run.
+      render: shell
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (aarch64)
+        - macOS (x86_64)
+        - Linux (x86_64)
+        - Linux (aarch64)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: rust-version
+    attributes:
+      label: Rust toolchain
+      description: Output of `rustc --version`. We test against 1.88.
+      placeholder: "rustc 1.88.0 (...)"
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Stack trace, network logs, related issue numbers, anything else.
