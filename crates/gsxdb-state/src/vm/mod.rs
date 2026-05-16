@@ -23,5 +23,7 @@ pub use executor::{
 };
 #[cfg(feature = "production-move-executor")]
 pub use executor::AptosMoveExecutor;
+#[cfg(feature = "production-move-executor")]
+pub use aptos_session::{canonical_coin_bytecode, canonical_coin_module_id};
 pub use projector::{EvmProjector, EvmView, MoveProjector, MoveView};
 pub use tx::{CanonicalTransfer, EvmTx, MoveTx};
