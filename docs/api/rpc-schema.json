@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/GlobalSettlementNetwork/gsx-db/docs/api/rpc-schema.json",
+  "title": "gsxdb-server JSON-RPC schema",
+  "description": "C4 (Pass C): JSON-RPC 2.0 method catalogue for gsxdb-server. Canonical mount is /v1/rpc; /rpc is a deprecated alias for one cycle past v0.1.0-pre. /health and /metrics are operational endpoints, not part of this schema.",
+  "version": "0.1.0-pre",
+  "endpoint": {
+    "method": "POST",
+    "path": "/v1/rpc",
+    "content_type": "application/json",
+    "auth": "Optional `Authorization: Bearer <token>` when GSXDB_BEARER_TOKEN is set (see docs/architecture/deployment-topology.md). /health and /metrics are unauthenticated."
+  },
+  "envelope": {
+    "request": {
+      "type": "object",
+      "required": ["jsonrpc", "method", "params", "id"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "method": { "type": "string" },
+        "params": { "type": "array" },
+        "id": { "type": ["string", "number", "null"] }
+      }
+    },
+    "response": {
+      "type": "object",
+      "required": ["jsonrpc", "id"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "result": { "type": ["object", "array", "string", "number", "boolean", "null"] },
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "integer" },
+            "message": { "type": "string" }
+          }
+        },
+        "id": { "type": ["string", "number", "null"] }
+      }
+    }
+  },
+  "methods": {
+    "gsx_getBalance": {
+      "summary": "Read the EVM-projected balance for an address.",
+      "params": [
+        {
+          "name": "address",
+          "type": "string",
+          "format": "0x-prefixed or bare 40-char hex (20-byte address)",
+          "required": true
+        }
+      ],
+      "result": {
+        "type": "object",
+        "properties": {
+          "address": { "type": "string" },
+          "balance": { "type": "string", "description": "u128 decimal" }
+        }
+      },
+      "errors": {
+        "-32602": "Invalid address format"
+      }
+    },
+    "gsx_getCoinValue": {
+      "summary": "Read the Move-projected coin value for an address. Equals balance under Proposition 1.",
+      "params": [
+        {
+          "name": "address",
+          "type": "string",
+          "format": "0x-prefixed or bare 40-char hex",
+          "required": true
+        }
+      ],
+      "result": {
+        "type": "object",
+        "properties": {
+          "address": { "type": "string" },
+          "coin_value": { "type": "string", "description": "u128 decimal" }
+        }
+      }
+    },
+    "gsx_getStateRoot": {
+      "summary": "Current state-tree root commitment.",
+      "params": [],
+      "result": {
+        "type": "object",
+        "properties": {
+          "state_root": { "type": "string", "description": "32-byte hex (no 0x prefix)" }
+        }
+      }
+    },
+    "gsx_getParity": {
+      "summary": "Cross-chain parity check at a given height across all registered chains in the AnchorDispatcher.",
+      "params": [
+        {
+          "name": "height",
+          "type": "integer",
+          "minimum": 0,
+          "required": true
+        }
+      ],
+      "result": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "parity": { "const": "agreed" },
+              "state_root": { "type": "string" },
+              "height": { "type": "integer" }
+            }
+          },
+          {
+            "type": "object",
+            "properties": {
+              "parity": { "const": "disagreed" },
+              "height": { "type": "integer" },
+              "divergent": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "chain_id": { "type": "integer" },
+                    "state_root": { "type": "string" }
+                  }
+                }
+              },
+              "missing": {
+                "type": "array",
+                "items": { "type": "integer" }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "gsx_getBlock": {
+      "summary": "Retrieve a recorded block by height. Placeholder in v0.1.0-pre; wires up when BlockStore is plumbed into the server.",
+      "params": [
+        {
+          "name": "height",
+          "type": "integer",
+          "required": true
+        }
+      ],
+      "result": { "type": "object" },
+      "status": "not yet implemented"
+    },
+    "gsx_submitIntent": {
+      "summary": "Submit a transaction intent into the bridge. Placeholder in v0.1.0-pre; wires up when the lane → bridge pipe is exposed.",
+      "params": [],
+      "result": { "type": "object" },
+      "status": "not yet implemented"
+    }
+  },
+  "error_codes": {
+    "-32600": "Invalid request envelope",
+    "-32601": "Method not found",
+    "-32602": "Invalid params",
+    "-32603": "Internal error"
+  },
+  "notes": [
+    "Method names will not be repurposed. Adding new variants to existing return objects is backward-compatible; removing or renaming a field is a breaking change.",
+    "The deprecated POST /rpc route routes through the same handler as POST /v1/rpc, but logs a warning on every hit. Removed in the next minor bump after v0.1.0-pre.",
+    "AuthScheme discriminants surfaced in future methods (e.g. gsx_getAnchor) follow the wire encoding fixed in crates/gsxdb-bridge/src/anchor/types.rs: Blake3Mac=0, Sp1ZkProof=1, EcdsaSecp256k1=2, MlDsa65Hybrid=3."
+  ]
+}

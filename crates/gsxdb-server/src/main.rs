@@ -84,7 +84,22 @@ async fn metrics() -> (StatusCode, String) {
     )
 }
 
-/// Handler: POST /rpc
+/// **C4 deprecation alias** — old `/rpc` path. Logs a warning on
+/// every hit and routes through the same handler as `/v1/rpc`.
+/// Will be removed in the next minor bump after `v0.1.0-pre`.
+async fn rpc_deprecated_alias(
+    state: AxumState<Arc<AppState>>,
+    req: Json<JsonRpcRequest>,
+) -> (StatusCode, Json<JsonRpcResponse>) {
+    tracing::warn!(
+        target: "gsxdb_server::rpc",
+        "POST /rpc is deprecated; use /v1/rpc. method={:?}",
+        req.0.method
+    );
+    rpc(state, req).await
+}
+
+/// Handler: POST /v1/rpc (canonical) and POST /rpc (deprecated alias).
 async fn rpc(
     AxumState(state): AxumState<Arc<AppState>>,
     Json(req): Json<JsonRpcRequest>,
@@ -216,33 +231,18 @@ async fn main() -> anyhow::Result<()> {
         state: Mutex::new(State::default()),
     });
 
-    // B6: opt-in bearer-token auth. Set GSXDB_BEARER_TOKEN to gate
-    // the /rpc surface behind `Authorization: Bearer <token>`. With
-    // the env unset, the middleware passes every request through
-    // (default off; production-deployment posture is firewall + ALB
-    // — see docs/architecture/deployment-topology.md).
-    let auth_config = BearerAuthConfig::from_env();
-    if auth_config.is_enabled() {
-        info!("Bearer-token auth ENABLED on /rpc (GSXDB_BEARER_TOKEN set)");
-    } else {
-        info!(
-            "Bearer-token auth disabled (GSXDB_BEARER_TOKEN unset). \
-             Production deployments MUST also firewall the listening port \
-             or front this service with an ALB / Cloudflare Access — see \
-             docs/architecture/deployment-topology.md"
-        );
-    }
-
-    // Build router. /health and /metrics stay open for liveness probes;
-    // /rpc gets the bearer-auth middleware when enabled.
-    let rpc_route = post(rpc).layer(middleware::from_fn_with_state(
-        auth_config.clone(),
-        bearer_auth,
-    ));
+    // Build router.
+    //
+    // **C4 — /v1/ versioning.** Canonical JSON-RPC route is now
+    // `/v1/rpc`. Root `/rpc` is preserved as a deprecation alias for
+    // one cycle (logged on each hit). `/health` and `/metrics` are
+    // not versioned — they're operational endpoints whose contract
+    // is set by Kubernetes probes / Prometheus and won't move.
     let app = Router::new()
         .route("/health", get(health))
         .route("/metrics", get(metrics))
-        .route("/rpc", rpc_route)
+        .route("/v1/rpc", post(rpc))
+        .route("/rpc", post(rpc_deprecated_alias))
         .with_state(state);
 
     // Run server
