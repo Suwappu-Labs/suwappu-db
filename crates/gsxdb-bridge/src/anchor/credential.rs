@@ -312,6 +312,95 @@ pub enum ExpectedVerifier<'a> {
     },
 }
 
+/// Owned per-chain verifier configuration. Carried by
+/// [`crate::anchor::dispatcher::AnchorDispatcher`]; converts to
+/// [`ExpectedVerifier`] on demand for [`verify_credential`] dispatch.
+///
+/// Variants mirror [`ExpectedVerifier`] but own their bytes instead of
+/// borrowing them — the dispatcher stores one config per chain in a
+/// `BTreeMap`, so the borrow form isn't usable directly.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VerifierConfig {
+    /// Symmetric BLAKE3 keyed-MAC. Legacy path — used by all chains
+    /// before S11.
+    Blake3Mac {
+        /// Per-chain symmetric authenticator key.
+        key: [u8; 32],
+    },
+    /// secp256k1 approved signer. Anchors are accepted iff the ECDSA
+    /// recoverable signature recovers to `signer`.
+    EcdsaSecp256k1 {
+        /// Authorized Ethereum signer address (20 bytes).
+        signer: EthAddress,
+    },
+    /// Hybrid ECDSA + ML-DSA-65 AND-gate. Both halves must verify.
+    /// Only used when the bridge is built with `production-pqc`; the
+    /// runtime check rejects the scheme on non-PQC builds.
+    MlDsa65Hybrid {
+        /// ECDSA half.
+        signer: EthAddress,
+        /// ML-DSA-65 raw public-key bytes (FIPS 204 encoding).
+        mldsa_public_key: Vec<u8>,
+    },
+    /// Sp1 (or other zkVM) validity-proof — for anchors that carry
+    /// a zk proof of correct block-replay.
+    Sp1ZkProof {
+        /// Hash of the registered guest-program verifying key.
+        vkey_hash: [u8; 32],
+        /// Last accepted `state_root` for this chain. Updated by the
+        /// dispatcher as anchors are appended.
+        expected_prev_state_root: [u8; 32],
+        /// `block_hash` the next anchor's proof must commit to.
+        /// Updated alongside `expected_prev_state_root`.
+        expected_block_hash: [u8; 32],
+    },
+}
+
+impl VerifierConfig {
+    /// Borrow this config as an [`ExpectedVerifier`] for a specific
+    /// anchor. The anchor's `state_root` populates the
+    /// `expected_new_state_root` field for the Sp1 variant.
+    #[must_use]
+    pub fn as_expected_for<'a>(&'a self, anchor: &'a Anchor) -> ExpectedVerifier<'a> {
+        match self {
+            VerifierConfig::Blake3Mac { key } => ExpectedVerifier::Blake3Mac { key },
+            VerifierConfig::EcdsaSecp256k1 { signer } => {
+                ExpectedVerifier::EcdsaSecp256k1 { signer: *signer }
+            }
+            VerifierConfig::MlDsa65Hybrid {
+                signer,
+                mldsa_public_key,
+            } => ExpectedVerifier::MlDsa65Hybrid {
+                signer: *signer,
+                mldsa_public_key: mldsa_public_key.as_slice(),
+            },
+            VerifierConfig::Sp1ZkProof {
+                vkey_hash,
+                expected_prev_state_root,
+                expected_block_hash,
+            } => ExpectedVerifier::Sp1ZkProof {
+                vkey_hash: *vkey_hash,
+                expected_prev_state_root: *expected_prev_state_root,
+                expected_new_state_root: anchor.state_root.0,
+                expected_block_hash: *expected_block_hash,
+            },
+        }
+    }
+
+    /// Which [`AuthScheme`] this config will accept on incoming
+    /// anchors. The dispatcher uses this to choose the
+    /// [`AnchorAuthCredential`] variant when *producing* anchors.
+    #[must_use]
+    pub fn scheme(&self) -> AuthScheme {
+        match self {
+            VerifierConfig::Blake3Mac { .. } => AuthScheme::Blake3Mac,
+            VerifierConfig::EcdsaSecp256k1 { .. } => AuthScheme::EcdsaSecp256k1,
+            VerifierConfig::MlDsa65Hybrid { .. } => AuthScheme::MlDsa65Hybrid,
+            VerifierConfig::Sp1ZkProof { .. } => AuthScheme::Sp1ZkProof,
+        }
+    }
+}
+
 /// Reasons [`verify_credential`] can fail. Distinct from the per-scheme
 /// `*VerifyError` types so the AND-gate caller can see which half of a
 /// hybrid failed.

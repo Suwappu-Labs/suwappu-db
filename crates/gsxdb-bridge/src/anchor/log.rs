@@ -31,6 +31,12 @@ pub enum AppendError {
     BadAuth,
     /// Anchor uses an auth scheme that has no verifier in this phase.
     UnsupportedAuthScheme(AuthScheme),
+    /// **S11.1**: dispatcher was asked to produce an anchor under a
+    /// non-Blake3 [`super::credential::VerifierConfig`] but no signer
+    /// was supplied. The dispatcher's `dispatch` path only emits
+    /// Blake3-MAC anchors; non-MAC chains require the S11.3
+    /// `dispatch_with_signer` entry point.
+    SchemeRequiresSigner,
 }
 
 /// Append-only per-chain log of anchors.
