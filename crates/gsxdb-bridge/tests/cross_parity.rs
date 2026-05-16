@@ -14,8 +14,13 @@
 //! ```
 
 use gsxdb_bridge::{Anchor, AnchorDispatcher, AnchorHash, ChainId, ParityResult, GENESIS_PARENT};
+use gsxdb_bridge::anchor::{
+    EcdsaSecp256k1Signer, VerifierConfig,
+};
 use gsxdb_state::Commitment;
+use k256::ecdsa::SigningKey;
 use proptest::prelude::*;
+use rand::rngs::OsRng;
 
 const NUM_CHAINS: u32 = 3;
 
@@ -111,6 +116,57 @@ proptest! {
                 false,
                 "tamper went undetected at height {tamper_height}"
             ),
+        }
+    }
+
+    /// **S11.5 EXIT GATE** — mixed-scheme dispatcher. Two Blake3
+    /// chains co-exist with one ECDSA chain; for every dispatched
+    /// `state_root`, `parity_check` returns `Agreed` after both
+    /// `dispatch` (Blake3) and `dispatch_with_signer` (ECDSA) write
+    /// the same root at the same height.
+    ///
+    /// Exits at 10k cases under `PROPTEST_CASES=10000`; default 32
+    /// because each case generates a fresh `SigningKey` plus N ECDSA
+    /// signatures.
+    #[test]
+    fn mixed_blake3_and_ecdsa_parity_holds(
+        roots in prop::collection::vec(root_strategy(), 1..8),
+    ) {
+        let signer = EcdsaSecp256k1Signer::new(SigningKey::random(&mut OsRng));
+        let mut d = AnchorDispatcher::new();
+        // Two Blake3 chains.
+        d.register(ChainId(1), [1u8; 32]);
+        d.register(ChainId(2), [2u8; 32]);
+        // One ECDSA chain under the signer's own address.
+        d.register_with_config(
+            ChainId(3),
+            VerifierConfig::EcdsaSecp256k1 { signer: signer.address() },
+        );
+
+        for (h, r) in roots.iter().enumerate() {
+            let height = u64::try_from(h).unwrap();
+            // Blake3 dispatch writes ChainId 1 and 2 (and fails on
+            // ChainId 3 with SchemeRequiresSigner, which we ignore —
+            // we'll write ChainId 3 explicitly via the signer).
+            let _ = d.dispatch(height, *r);
+            // ECDSA dispatch for ChainId 3.
+            d.dispatch_with_signer(ChainId(3), height, *r, &signer)
+                .expect("ECDSA dispatch must succeed under matched config");
+        }
+
+        for (h, expected_root) in roots.iter().enumerate() {
+            let height = u64::try_from(h).unwrap();
+            match d.parity_check(height) {
+                ParityResult::Agreed { state_root } => {
+                    prop_assert_eq!(state_root, *expected_root);
+                }
+                other @ ParityResult::Disagreed { .. } => {
+                    prop_assert!(
+                        false,
+                        "expected Agreed across mixed-scheme dispatch at height {height}, got {other:?}"
+                    );
+                }
+            }
         }
     }
 
