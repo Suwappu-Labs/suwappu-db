@@ -13,9 +13,14 @@ optimizer_runs = 200
 # EVM settings
 evm_version = "shanghai"
 
+# S11.5: allow the cross-impl parity differential test to read the
+# Rust-generated JSON vector fixture.
+fs_permissions = [{ access = "read", path = "./test/fixtures" }]
+
 [profile.test]
 # Faster compilation for tests
 optimizer = false
+fs_permissions = [{ access = "read", path = "./test/fixtures" }]
 
 # Dependencies via npm or submodules
 # Run: npm install @openzeppelin/contracts
