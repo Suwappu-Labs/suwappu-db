@@ -163,3 +163,58 @@ gsx-db owns the boxed-out execution and state surfaces. The
 consensus layer (above) is `gsxbft-consensus-only-demo` or the full
 `gsx-bft` repository; the LTP attestation pipeline (below) is
 documented in the LTP companion paper.
+
+## RPC endpoint auth posture (B6)
+
+`gsxdb-server` binds `0.0.0.0:8660` for `/health`, `/metrics`, and
+`/rpc`. There is **no implicit network ACL**; every endpoint is
+reachable from anything that can dial the port. Production
+deployments MUST add at least one of:
+
+1. **Firewall / VPC security group.** Allow inbound :8660 only from
+   the operator's bastion + the corridor super-nodes. The Terraform
+   modules under `terraform/` apply this profile by default.
+2. **Front-proxy with auth.** nginx with `auth_request`, Cloudflare
+   Access, or AWS ALB authentication. Sample nginx snippet:
+
+   ```nginx
+   location /rpc {
+       auth_request /_auth;
+       proxy_pass http://gsxdb_backend;
+       proxy_set_header Authorization $http_authorization;
+   }
+   location = /_auth {
+       internal;
+       proxy_pass http://accesssrv/validate;
+       proxy_pass_request_body off;
+       proxy_set_header Content-Length "";
+       proxy_set_header X-Original-URI $request_uri;
+   }
+   ```
+
+3. **Bearer token (B6 in-process)**. Set `GSXDB_BEARER_TOKEN` to a
+   shared secret; gsxdb-server's `bearer_auth` middleware then
+   requires `Authorization: Bearer <token>` on every `/rpc` request.
+   `/health` and `/metrics` stay open so liveness probes work.
+   Constant-time token compare. Sample:
+
+   ```sh
+   export GSXDB_BEARER_TOKEN=$(openssl rand -hex 32)
+   ./gsxdb-server   # logs "Bearer-token auth ENABLED on /rpc"
+   curl -H "Authorization: Bearer $GSXDB_BEARER_TOKEN" \
+        -d '{"jsonrpc":"2.0","method":"gsx_getStateRoot","params":[],"id":1}' \
+        http://gsxdb:8660/rpc
+   ```
+
+The bearer-token middleware is a **second layer**, not a primary
+access control. Treat it like Postgres' `password` auth: useful for
+defence-in-depth and accidental exposure, not load-bearing on its
+own. The firewall / front-proxy is the primary control. The
+in-process middleware exists because not every deployment has a
+front-proxy from day one, and the cost of an additional check on
+every request is sub-microsecond.
+
+`GSXDB_BEARER_TOKEN` unset (default) preserves the pre-B6 behaviour
+— gsxdb-server emits a startup log warning that the firewall /
+front-proxy requirement is the operator's responsibility. CI / dev
+runs are unaffected.
