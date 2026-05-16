@@ -75,24 +75,28 @@ impl RedbBlockStore {
     ///
     /// # Errors
     ///
-    /// Returns an error if the database cannot be opened/created.
-    pub fn open(path: impl AsRef<Path>) -> Result<Self, redb::DatabaseError> {
+    /// **B2**: returns [`BlockStoreError::Backend`] on any redb-side
+    /// failure (open / create / begin_write / table init / commit).
+    /// Pre-B2 the table-init path called `.expect()` and panicked on
+    /// corrupt files; this surfaces the failure as a typed error
+    /// callers can decide how to handle.
+    pub fn open(path: impl AsRef<Path>) -> Result<Self, BlockStoreError> {
         let db = if path.as_ref().exists() {
-            Database::open(path)?
+            Database::open(path).map_err(BlockStoreError::backend)?
         } else {
-            Database::create(path)?
+            Database::create(path).map_err(BlockStoreError::backend)?
         };
 
-        let write_txn = db.begin_write().expect("redb begin_write");
+        let write_txn = db.begin_write().map_err(BlockStoreError::backend)?;
         {
             write_txn
                 .open_table(BLOCKS_BY_HASH)
-                .expect("open blocks_by_hash table");
+                .map_err(BlockStoreError::backend)?;
             write_txn
                 .open_table(HEIGHT_TO_HASH)
-                .expect("open height_to_hash table");
+                .map_err(BlockStoreError::backend)?;
         }
-        write_txn.commit().expect("commit table initialization");
+        write_txn.commit().map_err(BlockStoreError::backend)?;
 
         Ok(Self { db })
     }

@@ -37,49 +37,36 @@ impl RpcHandler {
         if params.is_empty() {
             return json!({ "error": "missing address parameter" });
         }
-
-        if let Some(addr_str) = params[0].as_str() {
-            if addr_str.len() == 40 {
-                // Parse hex address
-                if let Ok(bytes) = hex::decode(&addr_str) {
-                    if bytes.len() == 20 {
-                        let addr = Address(bytes.try_into().unwrap());
-                        let state = self.state.lock().await;
-                        let slot = state.slot_of(&addr);
-                        return json!({
-                            "balance": slot.evm_balance().to_u128().to_string(),
-                            "address": addr_str
-                        });
-                    }
-                }
+        match parse_address_param(&params[0]) {
+            Some(addr) => {
+                let state = self.state.lock().await;
+                let slot = state.slot_of(&addr);
+                let addr_hex = hex::encode(addr.0);
+                json!({
+                    "balance": slot.evm_balance().to_u128().to_string(),
+                    "address": addr_hex,
+                })
             }
+            None => json!({ "error": "invalid address format" }),
         }
-
-        json!({ "error": "invalid address format" })
     }
 
     async fn get_coin_value(&self, params: &[Value]) -> Value {
         if params.is_empty() {
             return json!({ "error": "missing address parameter" });
         }
-
-        if let Some(addr_str) = params[0].as_str() {
-            if addr_str.len() == 40 {
-                if let Ok(bytes) = hex::decode(&addr_str) {
-                    if bytes.len() == 20 {
-                        let addr = Address(bytes.try_into().unwrap());
-                        let state = self.state.lock().await;
-                        let slot = state.slot_of(&addr);
-                        return json!({
-                            "coin_value": slot.move_coin_value().to_u128().to_string(),
-                            "address": addr_str
-                        });
-                    }
-                }
+        match parse_address_param(&params[0]) {
+            Some(addr) => {
+                let state = self.state.lock().await;
+                let slot = state.slot_of(&addr);
+                let addr_hex = hex::encode(addr.0);
+                json!({
+                    "coin_value": slot.move_coin_value().to_u128().to_string(),
+                    "address": addr_hex,
+                })
             }
+            None => json!({ "error": "invalid address format" }),
         }
-
-        json!({ "error": "invalid address format" })
     }
 
     async fn get_state_root(&self) -> Value {
@@ -187,4 +174,60 @@ pub async fn rpc_handler(
         result,
         id: req.id,
     })
+}
+
+/// **B2** — parse a JSON-RPC param into an [`Address`] without panicking
+/// on bad input. Accepts an optional `0x` prefix and exactly 40 hex
+/// chars (20 bytes). Returns `None` on any malformed shape; the
+/// caller emits a typed error response.
+///
+/// Pre-B2 this lived inline as `bytes.try_into().unwrap()` after a
+/// length-20 check. That was logically safe but kept an unwrap on an
+/// untrusted-input handler; the workspace lint posture forbids it.
+fn parse_address_param(value: &Value) -> Option<Address> {
+    let raw = value.as_str()?;
+    let hex_part = raw.strip_prefix("0x").unwrap_or(raw);
+    if hex_part.len() != 40 {
+        return None;
+    }
+    let bytes = hex::decode(hex_part).ok()?;
+    let arr: [u8; 20] = bytes.try_into().ok()?;
+    Some(Address(arr))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+
+    #[test]
+    fn parse_address_accepts_canonical_hex() {
+        let v: Value = Value::String("aa".repeat(20));
+        assert_eq!(parse_address_param(&v), Some(Address([0xAA; 20])));
+    }
+
+    #[test]
+    fn parse_address_accepts_0x_prefix() {
+        let v: Value = Value::String(format!("0x{}", "bb".repeat(20)));
+        assert_eq!(parse_address_param(&v), Some(Address([0xBB; 20])));
+    }
+
+    #[test]
+    fn parse_address_rejects_wrong_length() {
+        let v: Value = Value::String("aabbcc".to_string());
+        assert_eq!(parse_address_param(&v), None);
+    }
+
+    #[test]
+    fn parse_address_rejects_non_hex() {
+        let v: Value = Value::String("zz".repeat(20));
+        assert_eq!(parse_address_param(&v), None);
+    }
+
+    #[test]
+    fn parse_address_rejects_non_string() {
+        assert_eq!(parse_address_param(&Value::Null), None);
+        assert_eq!(parse_address_param(&serde_json::json!(42)), None);
+        assert_eq!(parse_address_param(&serde_json::json!([])), None);
+    }
 }
