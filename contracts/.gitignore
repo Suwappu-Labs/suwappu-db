@@ -1,0 +1,10 @@
+# Foundry artifacts and cache
+out/
+cache/
+
+# forge-std dependency vendored at build time; not committed.
+# Reproducible install via: forge install foundry-rs/forge-std
+lib/
+
+# Local broadcast records
+broadcast/
