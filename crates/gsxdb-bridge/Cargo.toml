@@ -44,6 +44,10 @@ pqcrypto-traits = { version = "0.3", optional = true }
 # Off by default to keep CI fast and avoid the pqclean C build until
 # the hybrid AND-gate dispatch (Step D) is ready.
 production-pqc = ["dep:pqcrypto-mldsa", "dep:pqcrypto-traits"]
+# Propagates gsxdb-state's `production-move-executor` so bridge-side
+# integration tests can exercise the real Aptos MoveVM through
+# BundleExecutor::execute_with_move_runtime (S9.6).
+production-move-executor = ["gsxdb-state/production-move-executor"]
 
 [dev-dependencies]
 proptest = "1"

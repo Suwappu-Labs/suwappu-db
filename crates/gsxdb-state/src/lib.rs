@@ -36,7 +36,7 @@ pub use vm::{
     TypeTag, ABORT_INSUFFICIENT_BALANCE, CANONICAL_COIN_ADDRESS,
 };
 #[cfg(feature = "production-move-executor")]
-pub use vm::AptosMoveExecutor;
+pub use vm::{canonical_coin_bytecode, canonical_coin_module_id, AptosMoveExecutor};
 
 /// 20-byte EVM-shaped address. Move addresses are projected onto this layout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, PartialOrd, Ord)]
