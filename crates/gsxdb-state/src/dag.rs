@@ -45,10 +45,20 @@ impl DagBlock {
     }
 }
 
-/// In-memory DAG store. Maps block hash → DagBlock.
+/// In-memory DAG store. Maps block hash → [`DagBlock`].
+///
+/// **S12.1**: maintains a children index alongside the primary map so
+/// downward traversal (`descendants_of`, `children_of`) is O(deg) per
+/// step instead of O(N). The two maps are kept in sync inside
+/// [`Self::put`].
 #[derive(Debug, Clone)]
 pub struct DagStore {
     blocks: BTreeMap<BlockHash, DagBlock>,
+    /// `parent_hash` → list of blocks whose `parent_hashes` contains it.
+    /// Populated incrementally by [`Self::put`]. Children may appear
+    /// before parents (out-of-order ingest), in which case the
+    /// children entry exists before the parent's `blocks` entry does.
+    children: BTreeMap<BlockHash, Vec<BlockHash>>,
 }
 
 impl DagStore {
@@ -56,11 +66,23 @@ impl DagStore {
     pub fn new() -> Self {
         Self {
             blocks: BTreeMap::new(),
+            children: BTreeMap::new(),
         }
     }
 
-    /// Insert a block into the DAG.
+    /// Insert a block into the DAG. Updates the children index by
+    /// appending this block's hash under each of its parents.
+    ///
+    /// **Idempotency**: re-inserting the same hash overwrites the
+    /// block but does NOT duplicate child entries — we check for
+    /// existing membership in each parent's child list.
     pub fn put(&mut self, hash: BlockHash, block: DagBlock) {
+        for parent in &block.parent_hashes {
+            let entry = self.children.entry(*parent).or_default();
+            if !entry.contains(&hash) {
+                entry.push(hash);
+            }
+        }
         self.blocks.insert(hash, block);
     }
 
@@ -146,6 +168,78 @@ impl DagStore {
             .iter()
             .max_by_key(|(_, b)| b.height)
             .map(|(h, b)| (*h, b))
+    }
+
+    /// **S12.1** — Direct children of `parent` (one level down).
+    /// O(deg) lookup via the children index. Returns an empty slice
+    /// if `parent` is a leaf or unknown.
+    pub fn children_of(&self, parent: &BlockHash) -> &[BlockHash] {
+        self.children
+            .get(parent)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
+    /// **S12.1** — All ancestors of `start` (transitively, up to
+    /// genesis). Result is in BFS order from `start`'s parents
+    /// outward. `start` itself is NOT included.
+    pub fn ancestors_of(&self, start: &BlockHash) -> Vec<BlockHash> {
+        let mut out = Vec::new();
+        let mut visited = std::collections::HashSet::new();
+        let mut queue: VecDeque<BlockHash> = VecDeque::new();
+        if let Some(block) = self.blocks.get(start) {
+            for p in &block.parent_hashes {
+                if visited.insert(*p) {
+                    queue.push_back(*p);
+                }
+            }
+        }
+        while let Some(current) = queue.pop_front() {
+            out.push(current);
+            if let Some(block) = self.blocks.get(&current) {
+                for p in &block.parent_hashes {
+                    if visited.insert(*p) {
+                        queue.push_back(*p);
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// **S12.1** — All descendants of `start` (transitively, down to
+    /// leaves). Result is in BFS order from `start`'s children
+    /// outward. `start` itself is NOT included.
+    pub fn descendants_of(&self, start: &BlockHash) -> Vec<BlockHash> {
+        let mut out = Vec::new();
+        let mut visited = std::collections::HashSet::new();
+        let mut queue: VecDeque<BlockHash> = VecDeque::new();
+        for c in self.children_of(start) {
+            if visited.insert(*c) {
+                queue.push_back(*c);
+            }
+        }
+        while let Some(current) = queue.pop_front() {
+            out.push(current);
+            for c in self.children_of(&current) {
+                if visited.insert(*c) {
+                    queue.push_back(*c);
+                }
+            }
+        }
+        out
+    }
+
+    /// **S12.1** — Tip hashes: blocks with no children. Useful for
+    /// reorg detection ("which heads are live?") and for snapshot
+    /// pruning (anything not in any tip's ancestor closure is
+    /// reorged out).
+    pub fn tips(&self) -> Vec<BlockHash> {
+        self.blocks
+            .keys()
+            .filter(|h| self.children_of(h).is_empty())
+            .copied()
+            .collect()
     }
 
     /// Validate the DAG structure:
@@ -341,6 +435,109 @@ mod tests {
         assert_eq!(dag.blocks_at_height(0).len(), 1);
         assert_eq!(dag.blocks_at_height(1).len(), 2);
         assert_eq!(dag.blocks_at_height(2).len(), 0);
+    }
+
+    #[test]
+    fn dag_children_index_tracks_inserts() {
+        // S12.1: put a parent and two children; both children appear
+        // under children_of(parent).
+        let mut dag = DagStore::new();
+        let b0 = DagBlock::genesis([0u8; 32], 1000);
+        let b1a = DagBlock::new(1, [1u8; 32], hash(0), 2000);
+        let b1b = DagBlock::new(1, [11u8; 32], hash(0), 2100);
+        dag.put(hash(0), b0);
+        dag.put(hash(1), b1a);
+        dag.put(hash(11), b1b);
+
+        let kids = dag.children_of(&hash(0));
+        assert_eq!(kids.len(), 2);
+        assert!(kids.contains(&hash(1)));
+        assert!(kids.contains(&hash(11)));
+    }
+
+    #[test]
+    fn dag_children_index_is_idempotent_on_reput() {
+        // S12.1: re-putting the same hash doesn't duplicate the
+        // child entry under its parent.
+        let mut dag = DagStore::new();
+        let b0 = DagBlock::genesis([0u8; 32], 1000);
+        let b1 = DagBlock::new(1, [1u8; 32], hash(0), 2000);
+        dag.put(hash(0), b0);
+        dag.put(hash(1), b1.clone());
+        dag.put(hash(1), b1);
+        assert_eq!(dag.children_of(&hash(0)), &[hash(1)]);
+    }
+
+    #[test]
+    fn dag_ancestors_returns_transitive_closure() {
+        // S12.1: ancestors_of walks all the way to genesis.
+        let mut dag = DagStore::new();
+        let b0 = DagBlock::genesis([0u8; 32], 1000);
+        let b1 = DagBlock::new(1, [1u8; 32], hash(0), 2000);
+        let b2 = DagBlock::new(2, [2u8; 32], hash(1), 3000);
+        let b3 = DagBlock::new(3, [3u8; 32], hash(2), 4000);
+        dag.put(hash(0), b0);
+        dag.put(hash(1), b1);
+        dag.put(hash(2), b2);
+        dag.put(hash(3), b3);
+
+        let ancs = dag.ancestors_of(&hash(3));
+        assert_eq!(ancs, vec![hash(2), hash(1), hash(0)]);
+    }
+
+    #[test]
+    fn dag_descendants_returns_transitive_closure() {
+        // S12.1: descendants_of walks all the way to leaves.
+        let mut dag = DagStore::new();
+        let b0 = DagBlock::genesis([0u8; 32], 1000);
+        let b1 = DagBlock::new(1, [1u8; 32], hash(0), 2000);
+        let b2 = DagBlock::new(2, [2u8; 32], hash(1), 3000);
+        dag.put(hash(0), b0);
+        dag.put(hash(1), b1);
+        dag.put(hash(2), b2);
+
+        let descs = dag.descendants_of(&hash(0));
+        assert_eq!(descs, vec![hash(1), hash(2)]);
+    }
+
+    #[test]
+    fn dag_tips_finds_leaves() {
+        // S12.1: tips() returns leaf blocks. With one fork, both
+        // forks appear.
+        let mut dag = DagStore::new();
+        let b0 = DagBlock::genesis([0u8; 32], 1000);
+        let b1a = DagBlock::new(1, [1u8; 32], hash(0), 2000);
+        let b1b = DagBlock::new(1, [11u8; 32], hash(0), 2100);
+        dag.put(hash(0), b0);
+        dag.put(hash(1), b1a);
+        dag.put(hash(11), b1b);
+
+        let tips = dag.tips();
+        assert_eq!(tips.len(), 2);
+        assert!(tips.contains(&hash(1)));
+        assert!(tips.contains(&hash(11)));
+        // Genesis has children, so it's NOT a tip.
+        assert!(!tips.contains(&hash(0)));
+    }
+
+    #[test]
+    fn dag_multi_parent_descendants_traversed_once() {
+        // S12.1: a diamond DAG (G → A,B → C) should yield C once,
+        // not twice, in descendants_of(G).
+        let mut dag = DagStore::new();
+        let b0 = DagBlock::genesis([0u8; 32], 1000);
+        let ba = DagBlock::new(1, [1u8; 32], hash(0), 2000);
+        let bb = DagBlock::new(1, [2u8; 32], hash(0), 2100);
+        let mut bc = DagBlock::new(2, [3u8; 32], hash(1), 3000);
+        bc.parent_hashes = vec![hash(1), hash(2)];
+        dag.put(hash(0), b0);
+        dag.put(hash(1), ba);
+        dag.put(hash(2), bb);
+        dag.put(hash(3), bc);
+
+        let descs = dag.descendants_of(&hash(0));
+        let count_3 = descs.iter().filter(|h| **h == hash(3)).count();
+        assert_eq!(count_3, 1, "diamond descendant visited twice");
     }
 
     #[test]
