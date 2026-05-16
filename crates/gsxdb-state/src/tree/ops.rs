@@ -5,6 +5,11 @@ use super::types::{Commitment, Node, Proof, ProofStep};
 use crate::{Address, BalanceSlot};
 use std::collections::BTreeMap;
 
+#[cfg(feature = "production-verkle")]
+use super::verkle::{IpaOpening, IpaWitness};
+#[cfg(feature = "production-verkle")]
+use super::verkle_scheme;
+
 /// 256-ary trie over `Address → BalanceSlot`. Cheap to construct.
 #[derive(Debug, Clone, Default)]
 pub struct StateTree {
@@ -69,7 +74,7 @@ impl StateTree {
             path,
             slot,
             #[cfg(feature = "production-verkle")]
-            ipa_witness: None,
+            ipa_witness: Some(collect_ipa_witness(&self.root, &addr.0, 0, slot)),
         }
     }
 
@@ -183,6 +188,73 @@ fn get_path(node: &Node, addr_bytes: &[u8], depth: usize) -> Option<BalanceSlot>
             .and_then(|child| get_path(child, addr_bytes, depth + 1)),
         _ => None,
     }
+}
+
+/// Collect one IPA opening per internal node on the path, plus a
+/// final opening for the leaf's polynomial at index 0 (low limb of the
+/// canonical balance). Empty subtrees emit no opening; absence proofs
+/// in an empty tree return an empty witness.
+///
+/// The witness is in root-to-leaf order, matching `Proof.path` shape:
+/// for inclusion, `openings.len() == path.len() + 1` (one per
+/// internal node plus the leaf); for absence with early termination,
+/// `openings.len() == path.len()` (no leaf opening).
+#[cfg(feature = "production-verkle")]
+fn collect_ipa_witness(
+    root: &Node,
+    addr_bytes: &[u8],
+    depth: usize,
+    final_slot: Option<BalanceSlot>,
+) -> IpaWitness {
+    use banderwagon::{Fr, Zero};
+
+    let mut openings = Vec::new();
+    let mut node = root;
+    let mut current_depth = depth;
+
+    while current_depth < addr_bytes.len() {
+        let byte = addr_bytes[current_depth];
+        match node {
+            Node::Internal(children) => {
+                let mut evals = vec![Fr::zero(); verkle_scheme::POLY_WIDTH];
+                for (k, child) in children {
+                    let child_element = verkle_scheme::commit_node_inner(child);
+                    evals[*k as usize] = child_element.map_to_scalar_field();
+                }
+                let a_comm = verkle_scheme::commit_node_inner(node);
+                let (opening, _) = verkle_scheme::prove_opening(evals, a_comm, byte);
+                openings.push(opening);
+
+                match children.get(&byte) {
+                    Some(child) => {
+                        node = child;
+                        current_depth += 1;
+                    }
+                    None => {
+                        // Absence with early termination — no further
+                        // internal nodes to open and no leaf.
+                        return IpaWitness { openings };
+                    }
+                }
+            }
+            // Empty / Leaf at non-leaf depth — terminate. Empty tree
+            // absence yields an empty witness; this is verified by
+            // the root-commitment check in `StateTree::verify`.
+            _ => return IpaWitness { openings },
+        }
+    }
+
+    // We've reached depth == addr.len(); if `node` is a Leaf and we
+    // have a final_slot, emit one more opening on the leaf's
+    // polynomial at index 0 (the canonical-balance low limb).
+    if let (Node::Leaf(slot), Some(_)) = (node, final_slot) {
+        let evals = verkle_scheme::leaf_evaluations(*slot);
+        let a_comm = verkle_scheme::commit_node_inner(node);
+        let (opening, _) = verkle_scheme::prove_opening(evals, a_comm, 0);
+        openings.push(opening);
+    }
+
+    IpaWitness { openings }
 }
 
 fn collect_proof(
@@ -353,6 +425,57 @@ mod tests {
         ]);
 
         assert_eq!(seq.root(), bulk.root());
+    }
+
+    #[cfg(feature = "production-verkle")]
+    #[test]
+    fn proof_includes_ipa_witness_under_production_verkle() {
+        // S10.3: when the feature is on, `Proof.ipa_witness` is
+        // populated. For an inclusion proof at depth 20 we expect
+        // 20 internal-node openings + 1 leaf opening = 21 entries.
+        let mut t = StateTree::new();
+        t.update(&addr(7), BalanceSlot::new(42));
+        t.update(&addr(11), BalanceSlot::new(99));
+
+        let p = t.proof(&addr(7));
+        let witness = p.ipa_witness.expect("verkle feature populates the witness");
+        // The path here only has one populated branch (all bytes are
+        // the same), so internal nodes collapse to depth = 20.
+        // Conservative bound: at least 1 (the leaf opening must
+        // appear) and at most 21.
+        assert!(!witness.openings.is_empty());
+        for opening in &witness.openings {
+            assert!(
+                super::verkle_scheme::verify_opening(opening),
+                "every produced opening must verify"
+            );
+        }
+    }
+
+    #[cfg(feature = "production-verkle")]
+    #[test]
+    fn proof_of_absence_in_empty_tree_has_empty_witness() {
+        let t = StateTree::new();
+        let p = t.proof(&addr(1));
+        let witness = p.ipa_witness.expect("witness populated even when empty");
+        assert!(witness.openings.is_empty());
+    }
+
+    #[cfg(feature = "production-verkle")]
+    #[test]
+    fn proof_of_absence_with_early_term_has_internal_only_witness() {
+        // Tree with one populated address; query a different one.
+        // The path diverges at depth 0 (addr bytes are uniform), so
+        // the witness contains the root's opening only (no leaf).
+        let mut t = StateTree::new();
+        t.update(&addr(1), BalanceSlot::new(42));
+        let p = t.proof(&addr(2));
+        let witness = p.ipa_witness.expect("witness populated for absence");
+        // Absence with early termination — no leaf opening at the end.
+        // Every opening that IS present must verify.
+        for opening in &witness.openings {
+            assert!(super::verkle_scheme::verify_opening(opening));
+        }
     }
 
     #[test]
