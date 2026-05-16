@@ -1,0 +1,69 @@
+name: Publish container image
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g. v0.1.0-pre)'
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # C8: build + push the gsxdb-server container to GHCR on every `v*`
+  # tag. Pairs with the cargo-binary artefacts in `release.yml` —
+  # cargo binaries go to GitHub Releases, container goes to GHCR.
+  #
+  # Tags applied (per docker/metadata-action defaults):
+  #   - The literal tag from the ref (e.g. v0.1.0-pre)
+  #   - The version without v-prefix (0.1.0-pre)
+  #   - `latest` only for non-prerelease tags (so v0.1.0-pre does NOT
+  #     get latest, but a future v1.0.0 will).
+  build-and-push:
+    name: Build + push to GHCR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata + tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ !contains(github.ref, 'pre') }}
+
+      # Multi-platform build. The cargo target matrix in `release.yml`
+      # builds Linux x86_64 + macOS aarch64; for the container we
+      # produce linux/amd64 + linux/arm64 so common deploy targets
+      # (Fargate, GKE, k8s-arm) get a matching variant.
+      - name: Build + push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
