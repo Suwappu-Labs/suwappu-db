@@ -285,6 +285,19 @@ pub(crate) fn child_commitment_to_scalar(c: &Commitment) -> Option<Fr> {
     Some(commitment_to_element(c)?.map_to_scalar_field())
 }
 
+/// Deserialize a 32-byte compressed `Fr` (as stored in
+/// [`IpaOpening::claimed_value`]). Returns `None` if the bytes are
+/// not a valid scalar.
+pub(crate) fn claimed_value_to_fr(bytes: &[u8; 32]) -> Option<Fr> {
+    <Fr as ark_serialize::CanonicalDeserialize>::deserialize_compressed(&bytes[..]).ok()
+}
+
+/// Convert a `u64` to `Fr` via banderwagon's standard `From<u64>`
+/// embedding. Used by the S10.4 leaf-opening check.
+pub(crate) fn fr_from_u64(v: u64) -> Fr {
+    Fr::from(v)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

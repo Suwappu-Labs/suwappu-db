@@ -6,7 +6,7 @@ use crate::{Address, BalanceSlot};
 use std::collections::BTreeMap;
 
 #[cfg(feature = "production-verkle")]
-use super::verkle::{IpaOpening, IpaWitness};
+use super::verkle::IpaWitness;
 #[cfg(feature = "production-verkle")]
 use super::verkle_scheme;
 
@@ -148,6 +148,140 @@ impl StateTree {
         }
 
         current == Some(root)
+    }
+}
+
+impl StateTree {
+    /// **S10.4 — Verkle verify path.** Verify a [`Proof`] using its
+    /// IPA witness rather than BLAKE3 sibling reconstruction.
+    ///
+    /// `proof.ipa_witness` must be `Some` (populated by the prover at
+    /// S10.3). Verification checks, in order:
+    ///
+    /// 1. Each [`IpaOpening`] verifies under `verkle_scheme::verify_opening`.
+    /// 2. The first opening's `commitment` matches the claimed `root`.
+    ///    (Empty-tree absence: `root` must be the empty Verkle
+    ///    commitment.)
+    /// 3. Consecutive opening pairs are consistent — opening[i]'s
+    ///    `claimed_value` equals `Element(opening[i+1].commitment)
+    ///    .map_to_scalar_field()`.
+    /// 4. Each opening's `domain_index` matches the address byte at
+    ///    that depth.
+    /// 5. **Inclusion** (`slot_opt.is_some()`): the final opening's
+    ///    `claimed_value` equals the low-64-bit limb of
+    ///    `slot.canonical()`. (We don't open the high limb at index 1
+    ///    in S10.4; that's adequate for balances < 2^64. Phase-2 may
+    ///    add a second opening if higher slots are needed.)
+    /// 6. **Absence** (`slot_opt.is_none()`): the witness either ends
+    ///    before reaching addr-depth (early termination — the byte at
+    ///    that level was unallocated) or the tree is empty.
+    #[cfg(feature = "production-verkle")]
+    #[must_use]
+    pub fn verify_verkle(
+        root: Commitment,
+        addr: &Address,
+        slot_opt: Option<BalanceSlot>,
+        proof: &Proof,
+    ) -> bool {
+        use super::verkle_scheme;
+
+        let Some(witness) = proof.ipa_witness.as_ref() else {
+            return false;
+        };
+
+        // Path bytes must match address prefix.
+        if proof.path.len() > addr.0.len() {
+            return false;
+        }
+        for (i, step) in proof.path.iter().enumerate() {
+            if step.byte != addr.0[i] {
+                return false;
+            }
+        }
+
+        if proof.slot != slot_opt {
+            return false;
+        }
+
+        // Empty-tree absence: no openings; root must be empty Verkle
+        // commitment (all zeros — the identity-point encoding).
+        if witness.openings.is_empty() {
+            return slot_opt.is_none() && root == Commitment([0u8; 32]);
+        }
+
+        // 1. Every opening verifies in isolation.
+        for opening in &witness.openings {
+            if !verkle_scheme::verify_opening(opening) {
+                return false;
+            }
+        }
+
+        // 2. First opening must commit to `root`.
+        if witness.openings[0].commitment.0 != root.0 {
+            return false;
+        }
+
+        // 4. Each opening's domain_index matches the path byte at
+        // that depth. For inclusion, the leaf opening at depth 20
+        // uses index 0 (the low limb). For absence with early
+        // termination, the LAST opening's index is the byte where
+        // the path diverged.
+        let n_openings = witness.openings.len();
+        let inclusion = slot_opt.is_some();
+        // Number of internal-node openings on the path (everything
+        // except the optional leaf opening).
+        let n_internal = if inclusion { n_openings - 1 } else { n_openings };
+
+        if inclusion && n_openings != addr.0.len() + 1 {
+            return false;
+        }
+
+        for i in 0..n_internal {
+            if usize::from(witness.openings[i].domain_index) != usize::from(addr.0[i]) {
+                return false;
+            }
+        }
+
+        // 3. Consecutive openings are linked: opening[i].claimed_value
+        // must equal child_to_scalar(opening[i+1].commitment).
+        for i in 0..(n_openings - 1) {
+            let next_commitment = Commitment(witness.openings[i + 1].commitment.0);
+            let expected_scalar = verkle_scheme::child_commitment_to_scalar(&next_commitment);
+            let Some(expected_scalar) = expected_scalar else {
+                return false;
+            };
+            let claimed = verkle_scheme::claimed_value_to_fr(&witness.openings[i].claimed_value);
+            let Some(claimed) = claimed else {
+                return false;
+            };
+            if claimed != expected_scalar {
+                return false;
+            }
+        }
+
+        // 5. Inclusion: leaf opening's claimed_value is the low limb
+        // of the canonical balance. (Index 0 of the leaf polynomial.)
+        if inclusion {
+            let leaf_opening = witness
+                .openings
+                .last()
+                .expect("inclusion has ≥ 1 opening");
+            if leaf_opening.domain_index != 0 {
+                return false;
+            }
+            let slot = slot_opt.expect("inclusion implies Some");
+            let expected_low = (slot.canonical() as u64) & u64::MAX;
+            let Some(claimed) =
+                verkle_scheme::claimed_value_to_fr(&leaf_opening.claimed_value)
+            else {
+                return false;
+            };
+            if claimed != verkle_scheme::fr_from_u64(expected_low) {
+                return false;
+            }
+        }
+
+        true
     }
 }
 
@@ -459,6 +593,104 @@ mod tests {
         let p = t.proof(&addr(1));
         let witness = p.ipa_witness.expect("witness populated even when empty");
         assert!(witness.openings.is_empty());
+    }
+
+    #[cfg(feature = "production-verkle")]
+    #[test]
+    fn verify_verkle_accepts_inclusion_proof() {
+        let mut t = StateTree::new();
+        let a = Address([
+            0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE,
+            0xFF, 0x00, 0x12, 0x34, 0x56, 0x78,
+        ]);
+        let slot = BalanceSlot::new(424_242);
+        t.update(&a, slot);
+        // Add a second address so the tree has at least one internal
+        // node with > 1 child (sanity — single-child branch is also
+        // valid but less interesting).
+        t.update(&addr(5), BalanceSlot::new(1));
+
+        let p = t.proof(&a);
+        let verkle_root = verkle_root_of(&t);
+        assert!(StateTree::verify_verkle(verkle_root, &a, Some(slot), &p));
+    }
+
+    #[cfg(feature = "production-verkle")]
+    #[test]
+    fn verify_verkle_rejects_wrong_slot() {
+        let mut t = StateTree::new();
+        let a = addr(7);
+        t.update(&a, BalanceSlot::new(100));
+        t.update(&addr(11), BalanceSlot::new(99));
+
+        let p = t.proof(&a);
+        let verkle_root = verkle_root_of(&t);
+        // Claim the slot is 101 instead of 100.
+        assert!(!StateTree::verify_verkle(
+            verkle_root,
+            &a,
+            Some(BalanceSlot::new(101)),
+            &p,
+        ));
+    }
+
+    #[cfg(feature = "production-verkle")]
+    #[test]
+    fn verify_verkle_rejects_wrong_root() {
+        let mut t = StateTree::new();
+        let a = addr(7);
+        t.update(&a, BalanceSlot::new(100));
+        t.update(&addr(11), BalanceSlot::new(99));
+
+        let p = t.proof(&a);
+        // Fabricate a different root.
+        let mut bad_root_bytes = verkle_root_of(&t).0;
+        bad_root_bytes[0] ^= 0xFF;
+        assert!(!StateTree::verify_verkle(
+            Commitment(bad_root_bytes),
+            &a,
+            Some(BalanceSlot::new(100)),
+            &p,
+        ));
+    }
+
+    #[cfg(feature = "production-verkle")]
+    #[test]
+    fn verify_verkle_accepts_absence_in_empty_tree() {
+        let t = StateTree::new();
+        let p = t.proof(&addr(1));
+        let verkle_root = Commitment([0u8; 32]); // Verkle empty commitment.
+        assert!(StateTree::verify_verkle(verkle_root, &addr(1), None, &p));
+    }
+
+    #[cfg(feature = "production-verkle")]
+    #[test]
+    fn verify_verkle_rejects_tampered_witness_opening() {
+        let mut t = StateTree::new();
+        let a = addr(7);
+        t.update(&a, BalanceSlot::new(100));
+        t.update(&addr(11), BalanceSlot::new(99));
+
+        let mut p = t.proof(&a);
+        let verkle_root = verkle_root_of(&t);
+        // Tamper with the leaf opening's claimed value.
+        if let Some(witness) = p.ipa_witness.as_mut() {
+            if let Some(last) = witness.openings.last_mut() {
+                last.claimed_value[0] ^= 0x01;
+            }
+        }
+        assert!(!StateTree::verify_verkle(
+            verkle_root,
+            &a,
+            Some(BalanceSlot::new(100)),
+            &p,
+        ));
+    }
+
+    #[cfg(feature = "production-verkle")]
+    fn verkle_root_of(tree: &StateTree) -> Commitment {
+        use super::super::commit::CommitmentScheme as _;
+        super::super::verkle_scheme::BanderwagonIpaScheme.commit(&tree.root)
     }
 
     #[cfg(feature = "production-verkle")]
