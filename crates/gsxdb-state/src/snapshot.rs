@@ -101,14 +101,22 @@ impl StateSnapshot {
     /// **S12.2** — capture a snapshot from a live [`State`].
     ///
     /// Encodes every `(addr, slot.canonical())` as a 36-byte tuple in
-    /// `encoded_state` prefixed by the [`SNAPSHOT_MAGIC`] header. The
-    /// `state_root` field is left as `Commitment([0; 32])` because the
-    /// state-tree root is computed separately (callers typically have
-    /// it already); use [`Self::with_state_root`] to fill it in.
+    /// `encoded_state` prefixed by the [`SNAPSHOT_MAGIC`] header.
+    /// **Determinism (S12.5 fix)**: entries are sorted by address
+    /// before encoding so the byte-stream is independent of the
+    /// store's iteration order — `InMemoryBalanceStore` uses a
+    /// `HashMap` and would otherwise yield bytewise non-idempotent
+    /// `from_state ∘ restore_into_state ∘ from_state` round-trips.
+    ///
+    /// The `state_root` field is left as `Commitment([0; 32])` because
+    /// the state-tree root is computed separately; use
+    /// [`Self::with_state_root`] to fill it in.
     #[must_use]
     pub fn from_state(state: &State, height: u64, anchor_hash: Option<[u8; 32]>) -> Self {
-        let entries = state.entries();
-        let mut encoded = Vec::with_capacity(SNAPSHOT_MAGIC.len() + entries.len() * SNAPSHOT_ENTRY_BYTES);
+        let mut entries = state.entries();
+        entries.sort_by(|a, b| a.0 .0.cmp(&b.0 .0));
+        let mut encoded =
+            Vec::with_capacity(SNAPSHOT_MAGIC.len() + entries.len() * SNAPSHOT_ENTRY_BYTES);
         encoded.extend_from_slice(SNAPSHOT_MAGIC);
         for (addr, slot) in &entries {
             encoded.extend_from_slice(&addr.0);

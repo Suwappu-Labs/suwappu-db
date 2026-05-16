@@ -58,9 +58,13 @@ Between sessions, you resume via:
 | S9     | 18+    | ✅ Closed    | Real Aptos Move VM via `move-vm-runtime` (IQ-3/4/5); `aptos_move_vm_parity` 10k cross-VM proptest passing under `production-move-executor`. |
 | S10    | 18+    | ✅ Closed    | Real Verkle commitments via banderwagon + per-step IPA witnesses (IQ-6); `verkle_parity` exit-gate 10k cases on commit-determinism + 32 cases on the full prove/verify path under `production-verkle`. Compact multipoint IPA witness (~200 B target) is an explicit follow-on. |
 | S11    | 18+    | ✅ Closed    | Solidity `LTPAnchorRegistry` + ECDSA parity (IQ-7) — `VerifierConfig`, `AnchorLog (anchor, credential)` storage, `EcdsaSecp256k1Signer`, `dispatch_with_signer`, Foundry deploy script + ABI publication, cross-impl differential test verifying 16 Rust-signed vectors via Solidity `recoverSigner`. Sp1 producer + ML-DSA-65 hybrid follow when zkVM / PQ decisions land. |
-| S12    | 18+    | ⏳ Queued    | DAG store, snapshots, telemetry, and testnet shadow E2E (IQ-9)       |
+| S12    | 18+    | ✅ Closed    | DAG store traversal (children index + ancestors/descendants/tips), snapshot capture+restore (sorted-encode for byte-idempotent round-trips), Prometheus exporter with summary-quantile output, shadow-testnet E2E gated on `GSXDB_SHADOW_RPC`; `dag_snapshot_exit_gate` 10k proptest passing in 1.12s under release (IQ-9). |
 
 Update this table when a sprint closes.
+
+**Pass A complete.** Phase-1 launch readiness (S8.5–S12) landed; Pass
+B (security audit / harden) and Pass C (external-dev readiness) are
+the remaining engagements.
 
 ## Conventions
 
