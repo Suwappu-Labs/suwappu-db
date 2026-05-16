@@ -202,6 +202,99 @@ Default builds compile only the phase-1 substrate: BLAKE3 state-tree,
 mock Move executor, ECDSA-only anchor verifier. Flip features on for
 launch-readiness behaviour.
 
+## Solidity ABI artefacts (C7)
+
+The `LTPAnchorRegistry` Solidity ABI is published in two forms:
+
+- **Committed in-repo** under [`contracts/abi/`](./contracts/abi/):
+  - `LTPAnchorRegistry.abi.json` — full contract ABI (24 entries).
+  - `ILTPAnchorRegistry.abi.json` — interface-only ABI (21
+    entries). Use this if you only need to call the contract,
+    not link against its storage layout.
+- **Bundled in each GitHub Release** alongside the cargo binaries
+  by `.github/workflows/release.yml`. The release artefact
+  manifest includes SHA-256 checksums; the embedded `metadata`
+  field also pins the compiler version (Solc 0.8.20).
+
+Use cases:
+
+- **TypeScript / ethers.js / viem:** `import abi from
+  '@gsxdb/abi/LTPAnchorRegistry.abi.json'` (vendor the file from
+  the release bundle).
+- **Rust / ethers-rs:** `abigen!(...)` with the ABI path or the
+  release URL.
+- **Solidity downstream:** import
+  [`contracts/src/ILTPAnchorRegistry.sol`](./contracts/src/ILTPAnchorRegistry.sol)
+  directly.
+
+The contract is not yet live on any chain. The deploy script lives
+at `contracts/script/Deploy.s.sol`; expected mainnet address is TBD
+and will be documented here at deploy time.
+
+## Distribution — Docker (C8)
+
+The release pipeline publishes a multi-arch container image
+(`linux/amd64` + `linux/arm64`) to GitHub Container Registry on
+every `v*` tag:
+
+```sh
+docker pull ghcr.io/globalsettlementnetwork/gsx-db:v0.1.0-pre
+```
+
+Tagging rules (per
+`.github/workflows/publish-image.yml`):
+
+- Every `v*` tag publishes the literal tag (e.g. `v0.1.0-pre`)
+  and the version-only form (`0.1.0-pre`).
+- `latest` moves only for **non-pre-release** tags. `v0.1.0-pre`
+  does not get `latest`; a future `v1.0.0` will.
+
+### Minimal-config run
+
+```sh
+docker run --rm -p 8660:8660 -p 9660:9660 \
+    -e RUST_LOG=info \
+    ghcr.io/globalsettlementnetwork/gsx-db:v0.1.0-pre
+```
+
+The container exposes:
+
+- `8660` — JSON-RPC (`POST /v1/rpc`) + health/metrics
+  (`GET /health`, `GET /metrics`).
+- `9660` — reserved for the side-car metrics port; currently
+  shares 8660 since metrics are served from the same router.
+
+Health check is built-in (`curl /health` every 30s); orchestrators
+that read the Docker HEALTHCHECK field don't need separate probes.
+
+### Hardened production run
+
+Layer the B6 bearer-token auth + the deployment-topology firewall
+recommendations on top:
+
+```sh
+docker run --rm \
+    -p 127.0.0.1:8660:8660 \                # bind localhost only
+    -e GSXDB_BEARER_TOKEN=$(openssl rand -hex 32) \  # B6 auth
+    -e RUST_LOG=info \
+    ghcr.io/globalsettlementnetwork/gsx-db:v0.1.0-pre
+```
+
+…then expose 8660 to the outside world only through nginx /
+Cloudflare Access / ALB authentication. See
+[`docs/architecture/deployment-topology.md`](./docs/architecture/deployment-topology.md)
+"RPC endpoint auth posture" for the full pattern.
+
+### Building locally
+
+```sh
+docker build -t gsxdb-server:dev .
+```
+
+`Dockerfile` is multi-stage; the final image is `debian:bookworm-slim`
+with the gsxdb-server binary + `ca-certificates` + `curl` for the
+HEALTHCHECK probe. Total image ~80 MB.
+
 ## License
 
 This repository is [Apache-2.0](./LICENSE).

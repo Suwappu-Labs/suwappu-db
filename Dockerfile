@@ -1,6 +1,16 @@
-# Multi-stage build for gsxdb-server
+# Multi-stage build for gsxdb-server.
+#
+# C8: Rust toolchain bumped 1.78 → 1.88 to match the workspace
+# `rust-version` in Cargo.toml. The C2 release workflow builds the
+# cargo binary directly; this Dockerfile is the container path.
+#
+# Layer ordering: deps-only build before COPY src so dependency
+# compilation caches across source changes. The COPY crates step
+# invalidates the source layer when any crate changes; the deps
+# layer below stays warm.
+
 # Stage 1: Builder
-FROM rust:1.78 AS builder
+FROM rust:1.88 AS builder
 
 WORKDIR /build
 
@@ -14,8 +24,12 @@ RUN cargo build --release -p gsxdb-server
 # Stage 2: Runtime
 FROM debian:bookworm-slim
 
-# Install ca-certificates for HTTPS
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+# Install ca-certificates (HTTPS to op-reth + L1 RPCs) + curl
+# (HEALTHCHECK probe). `apt-get install --no-install-recommends`
+# keeps the image small.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create data directory
 RUN mkdir -p /data/gsxdb
