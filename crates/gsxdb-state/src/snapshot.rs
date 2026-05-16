@@ -58,6 +58,12 @@ impl StateSnapshot {
     /// Check if snapshot is valid:
     /// - height > 0
     /// - timestamp is recent (not in future, not too old)
+    ///
+    /// **B4 audit note**: this freshness gate reads `SystemTime::now`
+    /// at validation time. Local clock skew can reject otherwise-valid
+    /// snapshots; operators with drift should widen `max_age_secs`.
+    /// Not a soundness issue — snapshot equality / restore correctness
+    /// do not depend on the timestamp, only this acceptance window.
     pub fn is_valid(&self, max_age_secs: u64) -> bool {
         if self.height == 0 {
             return false; // Genesis snapshot unlikely
