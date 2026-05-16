@@ -31,7 +31,13 @@ pub mod ops;
 pub mod types;
 pub mod verkle;
 
+#[cfg(feature = "production-verkle")]
+pub mod verkle_scheme;
+
 pub use commit::{commit_node, Blake3Scheme, CommitmentScheme, EMPTY_COMMITMENT};
 pub use ops::StateTree;
 pub use types::{Commitment, Node, Proof, ProofStep};
-pub use verkle::{GroupElement, IpaWitness};
+pub use verkle::{CommitmentSchemeKind, GroupElement, IpaWitness};
+
+#[cfg(feature = "production-verkle")]
+pub use verkle_scheme::BanderwagonIpaScheme;
