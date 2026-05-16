@@ -935,6 +935,55 @@ mod tests {
 
     #[cfg(feature = "production-move-executor")]
     #[test]
+    fn aptos_executor_canonical_coin_bytecode_reaches_interpreter() {
+        // S9.5g end-to-end smoke test: deploy the compiled canonical
+        // Coin module bytecode, invoke balance() on a fresh address,
+        // and confirm AptosMoveExecutor::execute drives the full
+        // pipeline through to MoveVM::execute_loaded_function.
+        //
+        // We use the view function balance(addr) — it reads CoinStore
+        // via borrow_global. With no resource at the address +
+        // BalanceViewResolver returning the zero-valued CoinStore,
+        // borrow_global succeeds and balance() returns 0. Test passes
+        // iff the executor reports Ok(MoveOutcome).
+        use crate::vm::aptos_session::{canonical_coin_bytecode, canonical_coin_module_id};
+
+        let alice = move_addr(1);
+        let view = InMemoryView::default();
+        let mut state = MoveSessionState::new(&view);
+
+        let mut modules = InMemoryModuleStore::new();
+        modules
+            .put(
+                canonical_coin_module_id(),
+                CompiledModule {
+                    bytes: canonical_coin_bytecode().to_vec(),
+                },
+            )
+            .unwrap();
+
+        let executor = AptosMoveExecutor;
+        let call = MoveCall {
+            caller: alice,
+            module: canonical_coin_module_id(),
+            function: Identifier::new("balance").unwrap(),
+            type_arguments: Vec::new(),
+            arguments: vec![alice.0.to_vec()],
+        };
+
+        let outcome = executor
+            .execute(&call, &modules, &mut state)
+            .expect("balance() reaches the interpreter and returns Ok");
+
+        // balance() is a #[view] function: no resource writes, no
+        // events. The return value comes back as SerializedReturnValues
+        // which we currently don't surface (S9.5g+ will).
+        assert!(outcome.resource_writes.is_empty());
+        assert!(outcome.events.is_empty());
+    }
+
+    #[cfg(feature = "production-move-executor")]
+    #[test]
     fn aptos_executor_rejects_malformed_bytecode() {
         // S9.5c: bytecode-format verification is wired. Random bytes
         // fail CompiledModule::deserialize and surface as
