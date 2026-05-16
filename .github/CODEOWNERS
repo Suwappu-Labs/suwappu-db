@@ -1,0 +1,42 @@
+# CODEOWNERS — auto-requests review from listed maintainers on PRs
+# touching the paths below. Human-readable version of this map lives
+# in MAINTAINERS.md.
+#
+# Syntax: <path-pattern>  <@handle> [<@handle> ...]
+# Later rules override earlier ones for the same path.
+
+# Default owner for everything.
+*                                                @tomagsx
+
+# Lane separation — the type-system invariant gate.
+/scripts/check-lane-separation.sh                @tomagsx
+/deny.toml                                       @tomagsx
+/crates/gsxdb-lane/                              @tomagsx
+/crates/gsxdb-bridge/                            @tomagsx
+
+# Cryptography surfaces — Verkle, signatures, key custody.
+/crates/gsxdb-state/src/tree/                    @tomagsx
+/crates/gsxdb-bridge/src/anchor/credential.rs    @tomagsx
+/crates/gsxdb-bridge/src/anchor/signing.rs       @tomagsx
+/docs/spec/key-custody.md                        @tomagsx
+
+# Anchor parity — Rust ↔ Solidity cross-impl boundary.
+/crates/gsxdb-bridge/src/anchor/                 @tomagsx
+/contracts/                                      @tomagsx
+/docs/iq/IQ-7-anchor-parity.md                   @tomagsx
+
+# Recovery + DAG soundness.
+/crates/gsxdb-bridge/src/recovery/               @tomagsx
+/crates/gsxdb-state/src/dag.rs                   @tomagsx
+/crates/gsxdb-state/src/snapshot.rs              @tomagsx
+
+# Security policy + audit ledgers — maintainer-only.
+/SECURITY.md                                     @tomagsx
+/docs/audit/                                     @tomagsx
+
+# CI workflows + repo policy.
+/.github/                                        @tomagsx
+/CONTRIBUTING.md                                 @tomagsx
+/GOVERNANCE.md                                   @tomagsx
+/MAINTAINERS.md                                  @tomagsx
+/CODEOWNERS                                      @tomagsx
