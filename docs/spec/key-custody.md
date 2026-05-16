@@ -72,6 +72,39 @@ build rejects production binaries that linked it in.
 | Attestation expired in peer handshake | Verifier rejects expired signature | Drop the connection |
 | Counterparty advertises insecure module | `module_type` not in accepted set | Drop the connection |
 
+## Enforcement model (B5 clarification)
+
+**Operational, not code-level.** The HSM-only profile above is
+enforced by **deployment tooling and the per-peer handshake**, not by
+a compile-time check inside the gsxdb binary.
+
+| Layer | Mechanism | Where it runs |
+|---|---|---|
+| Build | `production-pqc` and similar features gate optional crypto deps; **no feature gates `InsecureSoftKey` out of production builds today**. | Cargo |
+| Deploy | Terraform / Helm values + bootstrap scripts pin `KEY_SOURCE` env to one of `cloudhsm`/`yubihsm`/`fireblocks-mpc`; AMI image lacks a writable filesystem path for raw keys. | Operator infrastructure |
+| Runtime | The attestation-handshake check in the failure-modes table rejects peers whose `module_type` is not in the accepted set, and refuses to start if the local handle cannot produce a valid attestation. | gsxdb node |
+| Audit | The validator's signed attestation (handshake JSON) is mirrored into the on-chain anchor / governance log; off-chain compliance can verify the chain of custody after the fact. | LTP super-nodes |
+
+**Why operational and not code-level.** A compile-time gate that
+rejects `InsecureSoftKey` in `--release` was considered and rejected
+for two reasons:
+
+1. Half a sprint of code-side scaffolding (feature plumbing across
+   five crates, build-time CI assertion) to enforce something the
+   handshake already rejects at runtime. The runtime gate is
+   strictly stronger — it catches keys loaded from any source, not
+   just the `InsecureSoftKey` path.
+2. Test binaries and local-dev runs need the soft-key path. A
+   feature gate that's "off in release" still leaves the cfg-flag
+   active in CI; the attack surface is the binary that actually
+   ships to the production rollout, and that surface is bounded by
+   deployment tooling.
+
+See [`docs/architecture/deployment-topology.md`](../architecture/deployment-topology.md)
+for the deployment-layer enforcement specifics (AMI / cloud-init /
+secrets manager paths) and [`docs/audit/pass-b-2026-05-16.md`](../audit/pass-b-2026-05-16.md)
+for the B5 audit verdict.
+
 ## Migration
 
 The phase-1 substrate uses no real validator keys — it's a substrate,
