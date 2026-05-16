@@ -43,10 +43,17 @@
 
 use super::commit::CommitmentScheme;
 use super::types::{Commitment, Node};
+use super::verkle::{GroupElement, IpaOpening};
 use crate::BalanceSlot;
 use ark_serialize::CanonicalSerialize;
-use banderwagon::{Element, Fr, PrimeField};
-use ipa_multipoint::{committer::Committer, committer::DefaultCommitter, crs::CRS};
+use banderwagon::{Element, Fr, PrimeField, Zero};
+use ipa_multipoint::{
+    committer::Committer,
+    committer::DefaultCommitter,
+    crs::CRS,
+    ipa::{create as ipa_create, IPAProof},
+    transcript::Transcript,
+};
 use std::sync::LazyLock;
 
 /// Width of the banderwagon Lagrange polynomial. The Ethereum Verkle
@@ -54,15 +61,17 @@ use std::sync::LazyLock;
 /// child map).
 pub const POLY_WIDTH: usize = 256;
 
+/// Process-wide cached CRS (Ethereum Verkle setup). Used by both the
+/// committer and the IPA prover/verifier so they share generators.
+pub(crate) static CRS_INSTANCE: LazyLock<CRS> = LazyLock::new(CRS::default);
+
 /// Process-wide cached committer over the Ethereum Verkle CRS.
 ///
 /// `CRS::default()` decodes the hex-encoded `eth_verkle_oct_2021`
 /// setup; `DefaultCommitter::new` builds the windowed precomputation
 /// tables. Both are non-trivial but deterministic and safe to share.
-static COMMITTER: LazyLock<DefaultCommitter> = LazyLock::new(|| {
-    let crs = CRS::default();
-    DefaultCommitter::new(&crs.G)
-});
+static COMMITTER: LazyLock<DefaultCommitter> =
+    LazyLock::new(|| DefaultCommitter::new(&CRS_INSTANCE.G));
 
 /// IPA / banderwagon commitment scheme — the launch-readiness
 /// implementation of [`CommitmentScheme`]. Behavioural counterpart to
@@ -171,6 +180,109 @@ pub(crate) fn fr_canonical_bytes(fr: &Fr) -> [u8; 32] {
 #[allow(dead_code)]
 pub(crate) fn fr_from_le_bytes_mod_order(bytes: &[u8]) -> Fr {
     Fr::from_le_bytes_mod_order(bytes)
+}
+
+/// Transcript label used for every per-step IPA opening on the proof
+/// path. Picked once so prover + verifier agree.
+const PROOF_STEP_TRANSCRIPT_LABEL: &[u8] = b"gsxdb-verkle-step";
+
+/// Build the 256-element b-vector that opens a Lagrange-basis
+/// polynomial at evaluation index `domain_index`.
+///
+/// For a polynomial stored as `(f(0), f(1), …, f(255))`, the inner
+/// product `<a, e_i>` equals `f(i)`, so we just need the unit vector
+/// at position `i`. Soundness of the IPA does not depend on `b`
+/// having any specific structure — only that prover + verifier agree.
+fn unit_b_vector(domain_index: usize) -> Vec<Fr> {
+    let mut b = vec![Fr::zero(); POLY_WIDTH];
+    b[domain_index] = Fr::from(1u64);
+    b
+}
+
+/// Compute one IPA opening: prove that the polynomial `a` opens to
+/// `a[domain_index]` under commitment `a_comm`, where `a_comm` is
+/// `BanderwagonIpaScheme.commit(...)`'s underlying [`Element`].
+///
+/// `domain_index` is also fed into the transcript as the labelled
+/// `input point` so the verifier rejects forged openings that change
+/// the index after the fact.
+pub(crate) fn prove_opening(
+    a: Vec<Fr>,
+    a_comm: Element,
+    domain_index: u8,
+) -> (IpaOpening, Fr) {
+    let b = unit_b_vector(domain_index as usize);
+    let input_point = Fr::from(domain_index as u64);
+    let claimed_value = a[domain_index as usize];
+
+    let mut transcript = Transcript::new(PROOF_STEP_TRANSCRIPT_LABEL);
+    let proof = ipa_create(
+        &mut transcript,
+        CRS_INSTANCE.clone(),
+        a,
+        a_comm,
+        b,
+        input_point,
+    );
+
+    let mut claimed_value_bytes = [0u8; 32];
+    claimed_value
+        .serialize_compressed(&mut claimed_value_bytes[..])
+        .expect("Fr always serializes to 32 bytes");
+
+    let ipa_proof_bytes = proof
+        .to_bytes()
+        .expect("IPAProof::to_bytes is infallible for our setup");
+
+    let opening = IpaOpening {
+        commitment: GroupElement(a_comm.to_bytes()),
+        domain_index,
+        claimed_value: claimed_value_bytes,
+        ipa_proof_bytes,
+    };
+
+    (opening, claimed_value)
+}
+
+/// Verify one IPA opening produced by [`prove_opening`].
+///
+/// Returns `true` iff (a) the deserialized commitment / IPA proof
+/// parse cleanly, (b) `IPAProof::verify` accepts under the same
+/// transcript label + CRS, and (c) the claimed-value scalar matches
+/// the opening's declared scalar.
+pub(crate) fn verify_opening(opening: &IpaOpening) -> bool {
+    let Some(commitment) = commitment_to_element(&Commitment(opening.commitment.0)) else {
+        return false;
+    };
+    let Ok(claimed_value) = <Fr as ark_serialize::CanonicalDeserialize>::deserialize_compressed(
+        &opening.claimed_value[..],
+    ) else {
+        return false;
+    };
+    let Ok(proof) = IPAProof::from_bytes(&opening.ipa_proof_bytes, POLY_WIDTH) else {
+        return false;
+    };
+
+    let b = unit_b_vector(opening.domain_index as usize);
+    let input_point = Fr::from(opening.domain_index as u64);
+
+    let mut transcript = Transcript::new(PROOF_STEP_TRANSCRIPT_LABEL);
+    proof.verify(
+        &mut transcript,
+        CRS_INSTANCE.clone(),
+        b,
+        commitment,
+        input_point,
+        claimed_value,
+    )
+}
+
+/// Recover the [`Fr`] scalar a verifier should compute for a child
+/// commitment when walking the proof path. Mirrors
+/// `Element::map_to_scalar_field` used by [`commit_node_inner`] for
+/// internal nodes, but starts from the 32-byte `Commitment` form.
+pub(crate) fn child_commitment_to_scalar(c: &Commitment) -> Option<Fr> {
+    Some(commitment_to_element(c)?.map_to_scalar_field())
 }
 
 #[cfg(test)]
@@ -282,6 +394,87 @@ mod tests {
         let (lo, hi) = canonical_u128_to_u64_pair(0x1234_5678_9abc_def0_0fed_cba9_8765_4321);
         assert_eq!(lo, 0x0fed_cba9_8765_4321);
         assert_eq!(hi, 0x1234_5678_9abc_def0);
+    }
+
+    #[test]
+    fn ipa_opening_round_trips_for_leaf() {
+        // S10.3 sanity: prove an opening on a leaf's polynomial and
+        // verify it under the same CRS / transcript label.
+        let slot = BalanceSlot::new(12345);
+        let a = leaf_evaluations(slot);
+        let a_comm = commit_node_inner(&Node::Leaf(slot));
+        // Open at index 0 — the low limb of the canonical balance.
+        let (opening, claimed) = prove_opening(a, a_comm, 0);
+        assert_eq!(claimed, Fr::from(12345u64));
+        assert!(verify_opening(&opening));
+    }
+
+    #[test]
+    fn ipa_opening_round_trips_for_internal_node() {
+        // Internal node: build a children map, commit, then open at
+        // one of the populated indices.
+        let mut children = BTreeMap::new();
+        children.insert(7u8, Box::new(Node::Leaf(BalanceSlot::new(100))));
+        children.insert(42u8, Box::new(Node::Leaf(BalanceSlot::new(200))));
+        let internal = Node::Internal(children);
+
+        let a_comm = commit_node_inner(&internal);
+        // Rebuild the evaluation vector at this internal node — same
+        // pattern as `commit_node_inner` for the Internal arm.
+        let Node::Internal(ref children) = internal else { unreachable!() };
+        let mut evals = vec![Fr::from(0u64); POLY_WIDTH];
+        for (byte, child) in children {
+            let child_element = commit_node_inner(child);
+            evals[*byte as usize] = child_element.map_to_scalar_field();
+        }
+
+        let (opening, _) = prove_opening(evals, a_comm, 7);
+        assert!(verify_opening(&opening));
+    }
+
+    #[test]
+    fn ipa_opening_rejects_tampered_claimed_value() {
+        let slot = BalanceSlot::new(99);
+        let a = leaf_evaluations(slot);
+        let a_comm = commit_node_inner(&Node::Leaf(slot));
+        let (mut opening, _) = prove_opening(a, a_comm, 0);
+        // Flip one byte in the claimed-value scalar.
+        opening.claimed_value[0] ^= 0x01;
+        assert!(!verify_opening(&opening));
+    }
+
+    #[test]
+    fn ipa_opening_rejects_tampered_commitment() {
+        let slot = BalanceSlot::new(99);
+        let a = leaf_evaluations(slot);
+        let a_comm = commit_node_inner(&Node::Leaf(slot));
+        let (mut opening, _) = prove_opening(a, a_comm, 0);
+        // Replace the commitment with the zero point — verify must
+        // reject (it would only accept if zero opened to claimed_value
+        // at index 0, which it doesn't unless slot == 0).
+        opening.commitment.0 = [0u8; 32];
+        assert!(!verify_opening(&opening));
+    }
+
+    #[test]
+    fn ipa_opening_rejects_tampered_domain_index() {
+        let slot = BalanceSlot::new(99);
+        let a = leaf_evaluations(slot);
+        let a_comm = commit_node_inner(&Node::Leaf(slot));
+        let (mut opening, _) = prove_opening(a, a_comm, 0);
+        // Re-target the same opening at a different index — verifier
+        // recomputes b_vec from the index and rejects.
+        opening.domain_index = 5;
+        assert!(!verify_opening(&opening));
+    }
+
+    #[test]
+    fn child_commitment_to_scalar_matches_inline_map() {
+        let child = Node::Leaf(BalanceSlot::new(7));
+        let child_element = commit_node_inner(&child);
+        let c = element_to_commitment(&child_element);
+        let scalar = child_commitment_to_scalar(&c).expect("our own commit round-trips");
+        assert_eq!(scalar, child_element.map_to_scalar_field());
     }
 
     #[test]

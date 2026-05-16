@@ -46,43 +46,59 @@ impl GroupElement {
     }
 }
 
-/// Inner Product Argument witness for proof compression.
+/// One IPA opening — proves that a single Lagrange-basis polynomial
+/// (committed via banderwagon-IPA) evaluates to `claimed_value` at the
+/// challenge point `query_point`.
 ///
-/// Reduces 256 sibling commitments to ~16 group elements (8 L, 8 R)
-/// through recursive folding.
+/// The opening is the serialized `IPAProof` from `ipa-multipoint`:
+/// `log2(domain_size) * 2 + 1` field elements = 17 × 32 B = 544 B for
+/// our 256-wide domain.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IpaWitness {
-    /// Left folding elements (one per recursion level, ~8 for 256-ary).
-    /// Named `L` to match cryptographic literature.
-    pub left: Vec<GroupElement>,
-    /// Right folding elements (one per recursion level, ~8 for 256-ary).
-    /// Named `right` to match cryptographic literature.
-    pub right: Vec<GroupElement>,
-    /// Final commitment after all folding
-    pub final_commitment: GroupElement,
-    /// Final evaluation point (scalar)
-    pub final_evaluation: [u8; 32],
+pub struct IpaOpening {
+    /// Commitment to the polynomial being opened (32 bytes).
+    pub commitment: GroupElement,
+    /// Domain index where the relation is being asserted (0..256).
+    /// The verifier expands this into the Lagrange-coefficient vector.
+    pub domain_index: u8,
+    /// Claimed evaluation `f(domain_index)` as a 32-byte scalar.
+    pub claimed_value: [u8; 32],
+    /// Serialized `IPAProof` (L_vec + R_vec + a). Variable-length but
+    /// deterministic for a fixed domain: 17 × 32 = 544 B for width-256.
+    pub ipa_proof_bytes: Vec<u8>,
 }
 
-// Implement L/R accessors for compatibility with cryptographic notation
-impl IpaWitness {
-    /// Alias for `left` (matches cryptographic notation L_i).
-    #[allow(non_snake_case)]
-    pub fn L(&self) -> &[GroupElement] {
-        &self.left
-    }
-
-    /// Alias for `right` (matches cryptographic notation R_i).
-    #[allow(non_snake_case)]
-    pub fn R(&self) -> &[GroupElement] {
-        &self.right
-    }
-}
-
-impl IpaWitness {
-    /// Size in bytes of the witness (for measurement).
+impl IpaOpening {
+    /// Size in bytes of the opening (commitment + index + value +
+    /// IPA proof). Used by the witness-size budget test in S10.6.
     pub fn size_bytes(&self) -> usize {
-        32 * (self.left.len() + self.right.len()) + 32 + 32 // L + R + final_commitment + final_evaluation
+        32 /* commitment */ + 1 /* domain_index */ + 32 /* claimed_value */ + self.ipa_proof_bytes.len()
+    }
+}
+
+/// IPA witness — one [`IpaOpening`] per internal node on the proof
+/// path. Length matches `Proof.path.len()` minus the optional leaf
+/// node (the leaf's polynomial opens at indices 0/1 to expose the
+/// canonical balance; that opening is the last entry).
+///
+/// Provides O(log W) proof-size in W (the Lagrange domain width) per
+/// path step, instead of the BLAKE3 path's O(W) sibling list per step.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct IpaWitness {
+    /// One opening per internal node, in root-to-leaf order. The
+    /// last entry corresponds to the leaf's polynomial commitment
+    /// being opened at index 0 (low limb of the canonical balance).
+    pub openings: Vec<IpaOpening>,
+}
+
+impl IpaWitness {
+    /// Empty witness (used for non-inclusion proofs in an empty tree).
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Total size in bytes — sum of each opening's `size_bytes`.
+    pub fn size_bytes(&self) -> usize {
+        self.openings.iter().map(IpaOpening::size_bytes).sum()
     }
 }
 
@@ -119,15 +135,44 @@ mod tests {
     }
 
     #[test]
-    fn ipa_witness_size_estimate() {
-        let witness = IpaWitness {
-            left: vec![GroupElement([0; 32]); 8],
-            right: vec![GroupElement([0; 32]); 8],
-            final_commitment: GroupElement([0; 32]),
-            final_evaluation: [0; 32],
+    fn ipa_opening_size_is_proof_plus_overhead() {
+        // For domain-256, ipa-multipoint's IPAProof serializes as
+        // log2(256) = 8 L points + 8 R points + 1 final scalar = 17 ×
+        // 32 = 544 bytes. The full opening adds 32 (commitment) + 1
+        // (index) + 32 (claimed value) = 609 bytes.
+        let opening = IpaOpening {
+            commitment: GroupElement([0; 32]),
+            domain_index: 7,
+            claimed_value: [0; 32],
+            ipa_proof_bytes: vec![0u8; 17 * 32],
         };
-        // 8 + 8 + 1 + 1 = 18 group elements = 576 bytes
-        assert_eq!(witness.size_bytes(), 576);
+        assert_eq!(opening.size_bytes(), 32 + 1 + 32 + 17 * 32);
+    }
+
+    #[test]
+    fn empty_witness_size_is_zero() {
+        let w = IpaWitness::new();
+        assert_eq!(w.size_bytes(), 0);
+    }
+
+    #[test]
+    fn witness_size_is_sum_of_openings() {
+        let openings = vec![
+            IpaOpening {
+                commitment: GroupElement([0; 32]),
+                domain_index: 0,
+                claimed_value: [0; 32],
+                ipa_proof_bytes: vec![0u8; 17 * 32],
+            },
+            IpaOpening {
+                commitment: GroupElement([0; 32]),
+                domain_index: 0,
+                claimed_value: [0; 32],
+                ipa_proof_bytes: vec![0u8; 17 * 32],
+            },
+        ];
+        let witness = IpaWitness { openings };
+        assert_eq!(witness.size_bytes(), 2 * (32 + 1 + 32 + 17 * 32));
     }
 
     #[test]
