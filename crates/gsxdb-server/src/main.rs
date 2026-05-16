@@ -82,7 +82,22 @@ async fn metrics() -> (StatusCode, String) {
     )
 }
 
-/// Handler: POST /rpc
+/// **C4 deprecation alias** — old `/rpc` path. Logs a warning on
+/// every hit and routes through the same handler as `/v1/rpc`.
+/// Will be removed in the next minor bump after `v0.1.0-pre`.
+async fn rpc_deprecated_alias(
+    state: AxumState<Arc<AppState>>,
+    req: Json<JsonRpcRequest>,
+) -> (StatusCode, Json<JsonRpcResponse>) {
+    tracing::warn!(
+        target: "gsxdb_server::rpc",
+        "POST /rpc is deprecated; use /v1/rpc. method={:?}",
+        req.0.method
+    );
+    rpc(state, req).await
+}
+
+/// Handler: POST /v1/rpc (canonical) and POST /rpc (deprecated alias).
 async fn rpc(
     AxumState(state): AxumState<Arc<AppState>>,
     Json(req): Json<JsonRpcRequest>,
@@ -214,11 +229,18 @@ async fn main() -> anyhow::Result<()> {
         state: Mutex::new(State::default()),
     });
 
-    // Build router
+    // Build router.
+    //
+    // **C4 — /v1/ versioning.** Canonical JSON-RPC route is now
+    // `/v1/rpc`. Root `/rpc` is preserved as a deprecation alias for
+    // one cycle (logged on each hit). `/health` and `/metrics` are
+    // not versioned — they're operational endpoints whose contract
+    // is set by Kubernetes probes / Prometheus and won't move.
     let app = Router::new()
         .route("/health", get(health))
         .route("/metrics", get(metrics))
-        .route("/rpc", post(rpc))
+        .route("/v1/rpc", post(rpc))
+        .route("/rpc", post(rpc_deprecated_alias))
         .with_state(state);
 
     // Run server
