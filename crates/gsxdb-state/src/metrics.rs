@@ -104,6 +104,35 @@ impl Histogram {
     pub fn count(&self) -> usize {
         self.samples.lock().unwrap_or_else(|e| e.into_inner()).len()
     }
+
+    /// **S12.3** — Sum of all recorded samples. Required for the
+    /// Prometheus summary `_sum` line.
+    pub fn sum(&self) -> f64 {
+        self.samples
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .sum()
+    }
+
+    /// **S12.3** — Arbitrary quantile (`0.0..=1.0`). Used to emit
+    /// `_summary{quantile="0.5"}`, `quantile="0.95"`, `quantile="0.99"`.
+    /// Naïve linear interpolation; the histogram bound (last 1000
+    /// samples) keeps this cheap.
+    pub fn quantile(&self, q: f64) -> f64 {
+        let q = q.clamp(0.0, 1.0);
+        let mut samples = self
+            .samples
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        if samples.is_empty() {
+            return 0.0;
+        }
+        samples.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let idx = ((samples.len() - 1) as f64 * q).round() as usize;
+        samples.get(idx).copied().unwrap_or(0.0)
+    }
 }
 
 impl Default for Histogram {
@@ -246,166 +275,117 @@ impl Metrics {
         }
     }
 
-    /// Export metrics in Prometheus text format.
+    /// **S12.3** — Export metrics in Prometheus text-exposition format.
+    ///
+    /// Conforms to <https://prometheus.io/docs/instrumenting/exposition_formats/>:
+    /// every metric has a paired `# HELP` and `# TYPE` line; histograms
+    /// emit as `summary` with `quantile="0.5"`, `0.95`, `0.99`, plus
+    /// the required `_sum` and `_count` series. The previous emission
+    /// labelled the histograms as `histogram` but only carried
+    /// count+sum, which the Prometheus parser flags — `summary` is the
+    /// correct type for our sample-array-based aggregation.
     pub fn to_prometheus_text(&self) -> String {
-        let mut output = String::new();
+        let mut out = String::new();
 
-        // Gauges
-        output.push_str("# HELP gsxdb_block_height Current block height\n");
-        output.push_str("# TYPE gsxdb_block_height gauge\n");
-        output.push_str(&format!(
-            "gsxdb_block_height {}\n",
-            self.block_height.get() as u64
-        ));
-
-        output.push_str("# HELP gsxdb_snapshot_size_bytes Latest snapshot size in bytes\n");
-        output.push_str("# TYPE gsxdb_snapshot_size_bytes gauge\n");
-        output.push_str(&format!(
-            "gsxdb_snapshot_size_bytes {}\n",
-            self.snapshot_size_bytes.get() as u64
-        ));
-
-        output.push_str("# HELP gsxdb_tree_depth State tree depth\n");
-        output.push_str("# TYPE gsxdb_tree_depth gauge\n");
-        output.push_str(&format!(
-            "gsxdb_tree_depth {}\n",
-            self.tree_depth.get() as u64
-        ));
-
-        output.push_str("# HELP gsxdb_address_count Number of addresses in state\n");
-        output.push_str("# TYPE gsxdb_address_count gauge\n");
-        output.push_str(&format!(
-            "gsxdb_address_count {}\n",
-            self.address_count.get() as u64
-        ));
-
-        output.push_str("# HELP gsxdb_state_size_bytes Total state size in bytes\n");
-        output.push_str("# TYPE gsxdb_state_size_bytes gauge\n");
-        output.push_str(&format!(
-            "gsxdb_state_size_bytes {}\n",
-            self.state_size_bytes.get() as u64
-        ));
-
-        // Histograms (as summary metrics)
-        output
-            .push_str("# HELP gsxdb_block_duration_ms Block execution duration in milliseconds\n");
-        output.push_str("# TYPE gsxdb_block_duration_ms histogram\n");
-        output.push_str(&format!(
-            "gsxdb_block_duration_ms_count {}\n",
-            self.block_duration_ms.count()
-        ));
-        output.push_str(&format!(
-            "gsxdb_block_duration_ms_sum {}\n",
-            self.block_duration_ms
-                .samples
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .iter()
-                .sum::<f64>()
-        ));
-
-        output
-            .push_str("# HELP gsxdb_anchor_latency_ms Anchor submission latency in milliseconds\n");
-        output.push_str("# TYPE gsxdb_anchor_latency_ms histogram\n");
-        output.push_str(&format!(
-            "gsxdb_anchor_latency_ms_count {}\n",
-            self.anchor_latency_ms.count()
-        ));
-        output.push_str(&format!(
-            "gsxdb_anchor_latency_ms_sum {}\n",
-            self.anchor_latency_ms
-                .samples
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .iter()
-                .sum::<f64>()
-        ));
-
-        output.push_str(
-            "# HELP gsxdb_parity_check_duration_ms Parity check duration in milliseconds\n",
+        // ---- Gauges ----
+        emit_gauge(&mut out, "gsxdb_block_height", "Current block height",
+            self.block_height.get());
+        emit_gauge(&mut out, "gsxdb_snapshot_size_bytes", "Latest snapshot size in bytes",
+            self.snapshot_size_bytes.get());
+        emit_gauge(&mut out, "gsxdb_tree_depth", "State tree depth",
+            self.tree_depth.get());
+        emit_gauge(&mut out, "gsxdb_address_count", "Number of addresses in state",
+            self.address_count.get());
+        emit_gauge(&mut out, "gsxdb_state_size_bytes", "Total state size in bytes",
+            self.state_size_bytes.get());
+        emit_gauge(
+            &mut out,
+            "gsxdb_anchor_parity_missing_chains",
+            "Chains missing an anchor at last parity check (HARDENING rec 6; KelpDAO 292M)",
+            self.anchor_parity_missing_chains.get(),
         );
-        output.push_str("# TYPE gsxdb_parity_check_duration_ms histogram\n");
-        output.push_str(&format!(
-            "gsxdb_parity_check_duration_ms_count {}\n",
-            self.parity_check_duration_ms.count()
-        ));
-        output.push_str(&format!(
-            "gsxdb_parity_check_duration_ms_sum {}\n",
-            self.parity_check_duration_ms
-                .samples
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .iter()
-                .sum::<f64>()
-        ));
 
-        // Counters
-        output.push_str("# HELP gsxdb_blocks_committed Total blocks committed\n");
-        output.push_str("# TYPE gsxdb_blocks_committed counter\n");
-        output.push_str(&format!(
-            "gsxdb_blocks_committed {}\n",
-            self.blocks_committed.get()
-        ));
-
-        output.push_str("# HELP gsxdb_anchors_submitted Total anchors submitted\n");
-        output.push_str("# TYPE gsxdb_anchors_submitted counter\n");
-        output.push_str(&format!(
-            "gsxdb_anchors_submitted {}\n",
-            self.anchors_submitted.get()
-        ));
-
-        output.push_str("# HELP gsxdb_parity_failures Total parity check failures\n");
-        output.push_str("# TYPE gsxdb_parity_failures counter\n");
-        output.push_str(&format!(
-            "gsxdb_parity_failures {}\n",
-            self.parity_failures.get()
-        ));
-
-        // HARDENING rec 8 — additional metrics anchored to peer-chain
-        // post-mortems. Each emits even when zero so absence is itself
-        // an alert.
-        output.push_str(
-            "# HELP gsxdb_occ_collapse_to_sequential_total \
-             Hot-slot conflict-storm collapses (HARDENING rec 2.2; Aptos AIP-47)\n",
+        // ---- Summaries (sample-based; sub for full histogram) ----
+        emit_summary(
+            &mut out,
+            "gsxdb_block_duration_ms",
+            "Block execution duration in milliseconds",
+            &self.block_duration_ms,
         );
-        output.push_str("# TYPE gsxdb_occ_collapse_to_sequential_total counter\n");
-        output.push_str(&format!(
-            "gsxdb_occ_collapse_to_sequential_total {}\n",
-            self.occ_collapse_to_sequential_total.get()
-        ));
-
-        output.push_str(
-            "# HELP gsxdb_occ_aborts_total \
-             OCC re-executions; abort_rate = total / blocks_committed (Block-STM PPoPP)\n",
+        emit_summary(
+            &mut out,
+            "gsxdb_anchor_latency_ms",
+            "Anchor submission latency in milliseconds",
+            &self.anchor_latency_ms,
         );
-        output.push_str("# TYPE gsxdb_occ_aborts_total counter\n");
-        output.push_str(&format!(
-            "gsxdb_occ_aborts_total {}\n",
-            self.occ_aborts_total.get()
-        ));
-
-        output.push_str(
-            "# HELP gsxdb_anchor_parity_missing_chains \
-             Chains missing an anchor at last parity check (HARDENING rec 6; KelpDAO 292M)\n",
+        emit_summary(
+            &mut out,
+            "gsxdb_parity_check_duration_ms",
+            "Parity check duration in milliseconds",
+            &self.parity_check_duration_ms,
         );
-        output.push_str("# TYPE gsxdb_anchor_parity_missing_chains gauge\n");
-        output.push_str(&format!(
-            "gsxdb_anchor_parity_missing_chains {}\n",
-            self.anchor_parity_missing_chains.get() as u64
-        ));
 
-        output.push_str(
-            "# HELP gsxdb_anchor_parity_divergent_total \
-             Cumulative divergent (chain, state_root) pairs across parity checks\n",
+        // ---- Counters ----
+        emit_counter(&mut out, "gsxdb_blocks_committed", "Total blocks committed",
+            self.blocks_committed.get());
+        emit_counter(&mut out, "gsxdb_anchors_submitted", "Total anchors submitted",
+            self.anchors_submitted.get());
+        emit_counter(&mut out, "gsxdb_parity_failures", "Total parity check failures",
+            self.parity_failures.get());
+        emit_counter(
+            &mut out,
+            "gsxdb_occ_collapse_to_sequential_total",
+            "Hot-slot conflict-storm collapses (HARDENING rec 2.2; Aptos AIP-47)",
+            self.occ_collapse_to_sequential_total.get(),
         );
-        output.push_str("# TYPE gsxdb_anchor_parity_divergent_total counter\n");
-        output.push_str(&format!(
-            "gsxdb_anchor_parity_divergent_total {}\n",
-            self.anchor_parity_divergent_total.get()
-        ));
+        emit_counter(
+            &mut out,
+            "gsxdb_occ_aborts_total",
+            "OCC re-executions; abort_rate = total / blocks_committed (Block-STM PPoPP)",
+            self.occ_aborts_total.get(),
+        );
+        emit_counter(
+            &mut out,
+            "gsxdb_anchor_parity_divergent_total",
+            "Cumulative divergent (chain, state_root) pairs across parity checks",
+            self.anchor_parity_divergent_total.get(),
+        );
 
-        output
+        out
     }
+}
+
+fn emit_gauge(out: &mut String, name: &str, help: &str, value: f64) {
+    out.push_str(&format!("# HELP {name} {help}\n"));
+    out.push_str(&format!("# TYPE {name} gauge\n"));
+    out.push_str(&format!("{name} {value}\n"));
+}
+
+fn emit_counter(out: &mut String, name: &str, help: &str, value: u64) {
+    out.push_str(&format!("# HELP {name} {help}\n"));
+    out.push_str(&format!("# TYPE {name} counter\n"));
+    out.push_str(&format!("{name} {value}\n"));
+}
+
+fn emit_summary(out: &mut String, name: &str, help: &str, h: &Histogram) {
+    out.push_str(&format!("# HELP {name} {help}\n"));
+    out.push_str(&format!("# TYPE {name} summary\n"));
+    // Quantiles: 0.5 / 0.95 / 0.99. Always emit, even when count == 0,
+    // so scraper alerts on missing series fire on a stuck producer.
+    out.push_str(&format!(
+        "{name}{{quantile=\"0.5\"}} {}\n",
+        h.quantile(0.5)
+    ));
+    out.push_str(&format!(
+        "{name}{{quantile=\"0.95\"}} {}\n",
+        h.quantile(0.95)
+    ));
+    out.push_str(&format!(
+        "{name}{{quantile=\"0.99\"}} {}\n",
+        h.quantile(0.99)
+    ));
+    out.push_str(&format!("{name}_sum {}\n", h.sum()));
+    out.push_str(&format!("{name}_count {}\n", h.count()));
 }
 
 impl Default for Metrics {
@@ -487,5 +467,100 @@ mod tests {
         assert!(text.contains("gsxdb_block_height 42"));
         assert!(text.contains("gsxdb_blocks_committed 5"));
         assert!(text.contains("gsxdb_block_duration_ms_count 1"));
+    }
+
+    /// S12.3: every metric series has paired `# HELP` and `# TYPE`
+    /// lines (Prometheus exposition format requires it).
+    #[test]
+    fn prometheus_emits_help_and_type_for_every_metric() {
+        let m = Metrics::new();
+        let text = m.to_prometheus_text();
+
+        // Every metric name appears once in `# HELP <name> ...` and
+        // once in `# TYPE <name> ...`. Pair count must match.
+        let help_count = text.lines().filter(|l| l.starts_with("# HELP ")).count();
+        let type_count = text.lines().filter(|l| l.starts_with("# TYPE ")).count();
+        assert_eq!(help_count, type_count, "HELP/TYPE line counts diverged");
+
+        // Each declared metric should appear at least once as data.
+        for name in [
+            "gsxdb_block_height",
+            "gsxdb_snapshot_size_bytes",
+            "gsxdb_tree_depth",
+            "gsxdb_address_count",
+            "gsxdb_state_size_bytes",
+            "gsxdb_anchor_parity_missing_chains",
+            "gsxdb_block_duration_ms",
+            "gsxdb_anchor_latency_ms",
+            "gsxdb_parity_check_duration_ms",
+            "gsxdb_blocks_committed",
+            "gsxdb_anchors_submitted",
+            "gsxdb_parity_failures",
+            "gsxdb_occ_collapse_to_sequential_total",
+            "gsxdb_occ_aborts_total",
+            "gsxdb_anchor_parity_divergent_total",
+        ] {
+            assert!(
+                text.contains(&format!("# TYPE {name} ")),
+                "missing # TYPE line for {name}",
+            );
+        }
+    }
+
+    /// S12.3: summary metrics expose three quantile series + sum +
+    /// count, even on an empty histogram.
+    #[test]
+    fn prometheus_summary_emits_quantiles_sum_count() {
+        let m = Metrics::new();
+        m.block_duration_ms.record(10.0);
+        m.block_duration_ms.record(20.0);
+        m.block_duration_ms.record(30.0);
+
+        let text = m.to_prometheus_text();
+        assert!(text.contains("gsxdb_block_duration_ms{quantile=\"0.5\"}"));
+        assert!(text.contains("gsxdb_block_duration_ms{quantile=\"0.95\"}"));
+        assert!(text.contains("gsxdb_block_duration_ms{quantile=\"0.99\"}"));
+        assert!(text.contains("gsxdb_block_duration_ms_sum 60"));
+        assert!(text.contains("gsxdb_block_duration_ms_count 3"));
+    }
+
+    /// S12.3: summary type is what Prometheus expects from sample-
+    /// array-based aggregation (we don't compute bucket counts).
+    #[test]
+    fn prometheus_histogram_metrics_use_summary_type() {
+        let m = Metrics::new();
+        let text = m.to_prometheus_text();
+        // None of our histograms should label as `histogram` — that
+        // would require `_bucket{le="..."}` lines we don't emit.
+        for name in [
+            "gsxdb_block_duration_ms",
+            "gsxdb_anchor_latency_ms",
+            "gsxdb_parity_check_duration_ms",
+        ] {
+            assert!(
+                text.contains(&format!("# TYPE {name} summary")),
+                "{name} should be `summary` not `histogram`"
+            );
+            assert!(
+                !text.contains(&format!("# TYPE {name} histogram")),
+                "{name} mistakenly labeled `histogram`"
+            );
+        }
+    }
+
+    /// S12.3: quantile uses rounded-nearest indexing; emit increasing.
+    #[test]
+    fn histogram_quantile_monotonic_for_sorted_input() {
+        let h = Histogram::new();
+        for i in 1..=100 {
+            h.record(i as f64);
+        }
+        let p50 = h.quantile(0.5);
+        let p95 = h.quantile(0.95);
+        let p99 = h.quantile(0.99);
+        assert!(p50 <= p95, "p50={p50} > p95={p95}");
+        assert!(p95 <= p99, "p95={p95} > p99={p99}");
+        assert!(p99 <= 100.0);
+        assert_eq!(h.sum(), (1..=100).map(f64::from).sum::<f64>());
     }
 }
