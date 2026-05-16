@@ -1,0 +1,65 @@
+name: DCO
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  # C6: enforce the Developer Certificate of Origin on every commit
+  # in a PR. Every commit must carry a `Signed-off-by:` trailer that
+  # matches the author email. Standard Apache-2.0-style DCO; the
+  # lightweight alternative to a CLA documented in CONTRIBUTING.md.
+  dco-check:
+    name: Signed-off-by trailer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Fetch full history of the PR branch so we can iterate
+          # every commit, not just the merge target.
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Check every commit has a Signed-off-by trailer
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+
+          # Iterate commits in the PR (base..head exclusive of base).
+          missing=0
+          while read -r sha; do
+            author_email="$(git log -1 --format='%ae' "$sha")"
+            sob="$(git log -1 --format='%(trailers:key=Signed-off-by,valueonly)' "$sha" | tr -d '[:space:]')"
+            if [ -z "$sob" ]; then
+              echo "::error::Commit $sha missing Signed-off-by trailer"
+              missing=$((missing + 1))
+              continue
+            fi
+            # Normalise: strip the "Name <email>" wrapper, lowercase
+            # both sides for comparison.
+            sob_email="$(git log -1 --format='%(trailers:key=Signed-off-by,valueonly)' "$sha" \
+              | sed -E 's/.*<([^>]+)>.*/\1/' \
+              | tr '[:upper:]' '[:lower:]' \
+              | tr -d '[:space:]')"
+            author_email_lower="$(echo "$author_email" | tr '[:upper:]' '[:lower:]')"
+            if [ "$sob_email" != "$author_email_lower" ]; then
+              echo "::error::Commit $sha — Signed-off-by email ($sob_email) doesn't match author ($author_email_lower)"
+              missing=$((missing + 1))
+            fi
+          done < <(git rev-list "$base..$head")
+
+          if [ "$missing" -gt 0 ]; then
+            echo ""
+            echo "DCO failed: $missing commit(s) missing or with mismatched Signed-off-by."
+            echo "Fix with:"
+            echo "  git commit --amend -s    # last commit"
+            echo "  git rebase -i HEAD~N --exec 'git commit --amend --no-edit -s'   # last N"
+            echo "Then force-push the branch."
+            echo "See CONTRIBUTING.md for the full DCO policy."
+            exit 1
+          fi
+          echo "All commits carry valid Signed-off-by trailers."
