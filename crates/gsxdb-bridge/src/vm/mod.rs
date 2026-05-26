@@ -11,5 +11,9 @@
 //! Move-VM integration lands in a follow-up sprint per IQ-2.
 
 pub mod executor;
+#[cfg(feature = "production-evm-executor")]
+pub mod revm_executor;
 
 pub use executor::{EvmError, MockEvm, MockMove, MoveError};
+#[cfg(feature = "production-evm-executor")]
+pub use revm_executor::RevmExecutor;

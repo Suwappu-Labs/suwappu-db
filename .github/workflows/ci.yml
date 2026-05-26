@@ -76,6 +76,25 @@ jobs:
         with:
           log-level: warn
 
+  revm-executor:
+    name: revm EVM executor (production-evm-executor)
+    runs-on: ubuntu-latest
+    # Builds + tests the real revm-backed EVM executor (gsx-revm / revm 34).
+    # Feature-gated out of the default matrix because it pulls revm + alloy +
+    # C crypto deps (c-kzg/blst/secp256k1); enforced here so the real EVM
+    # executor can't silently regress on main.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: test gsxdb-bridge (production-evm-executor)
+        run: cargo test -p gsxdb-bridge --features production-evm-executor --lib
+
   build-docker:
     name: Build Docker Image
     runs-on: ubuntu-latest

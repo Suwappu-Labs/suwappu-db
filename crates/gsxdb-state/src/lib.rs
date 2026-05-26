@@ -78,11 +78,27 @@ impl Default for State {
 #[derive(Debug, Clone)]
 pub enum StateChange {
     /// Set the balance of `addr` to `to`. Replaces, does not add.
+    ///
+    /// Resets the nonce to zero — use [`StateChange::SetAccount`] to set
+    /// balance and nonce together.
     SetBalance {
         /// Target address.
         addr: Address,
         /// New balance.
         to: Balance,
+    },
+    /// Set both the balance and nonce of `addr`, replacing the whole slot.
+    ///
+    /// The real EVM executor uses this to write back a post-execution
+    /// account whose nonce advanced; `SetBalance` cannot express a nonce
+    /// change because it zeroes the nonce.
+    SetAccount {
+        /// Target address.
+        addr: Address,
+        /// New balance.
+        balance: Balance,
+        /// New nonce.
+        nonce: u64,
     },
 }
 
@@ -143,6 +159,19 @@ impl State {
         match *change {
             StateChange::SetBalance { addr, to } => {
                 self.store.set(&addr, BalanceSlot::new(to.0));
+            }
+            StateChange::SetAccount {
+                addr,
+                balance,
+                nonce,
+            } => {
+                self.store.set(
+                    &addr,
+                    BalanceSlot::with_nonce(
+                        balance.0,
+                        crate::nonce_semantics::AccountNonce::new(nonce),
+                    ),
+                );
             }
         }
     }

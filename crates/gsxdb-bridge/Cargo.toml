@@ -38,6 +38,15 @@ k256 = { version = "0.13", features = ["ecdsa", "arithmetic"] }
 # C-based pqclean backend is heavy and has cross-compile gotchas under musl.
 pqcrypto-mldsa = { version = "0.1", default-features = false, optional = true }
 pqcrypto-traits = { version = "0.3", optional = true }
+# Real EVM engine for the production EVM executor. `gsx-revm` is the org's
+# monad-revm (bluealloy revm 34, MonadNine spec, 0x1000 staking precompile).
+# git-only and heavy (revm + alloy + c-kzg/blst/secp256k1), so it is pulled
+# in only behind `production-evm-executor`, mirroring the move-executor gate.
+gsx-revm = { git = "https://github.com/GlobalSettlementNetwork/gsx-revm", branch = "gsx", optional = true }
+# bluealloy revm — pinned to the exact version gsx-revm builds on, so the
+# `Database`/`TxEnv`/`AccountInfo` types unify. Only the type/trait surface
+# is used directly; execution goes through gsx-revm's Monad EVM.
+revm = { version = "34.0.0", optional = true }
 
 [features]
 # Enables the ML-DSA-65 verifier path for AuthScheme::MlDsa65Hybrid.
@@ -48,6 +57,9 @@ production-pqc = ["dep:pqcrypto-mldsa", "dep:pqcrypto-traits"]
 # integration tests can exercise the real Aptos MoveVM through
 # BundleExecutor::execute_with_move_runtime (S9.6).
 production-move-executor = ["gsxdb-state/production-move-executor"]
+# Swaps `MockEvm` for `RevmExecutor` backed by gsx-revm (real bytecode EVM).
+# Off by default — pulls revm 34 + alloy + C crypto deps (c-kzg/blst).
+production-evm-executor = ["dep:gsx-revm", "dep:revm"]
 
 [dev-dependencies]
 proptest = "1"

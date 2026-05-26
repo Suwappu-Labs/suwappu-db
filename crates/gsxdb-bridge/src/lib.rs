@@ -216,6 +216,25 @@ impl<'s> Bridge<'s> {
             }
         }
     }
+
+    /// Set an account's balance and nonce wholesale.
+    ///
+    /// The real EVM executor's write-back path: revm returns absolute
+    /// post-execution account state, and a value transfer advances the
+    /// sender's nonce — which `submit`'s `SetBalance` cannot persist (it
+    /// zeroes the nonce). Lane separation is preserved (the mutation goes
+    /// through the `BridgeToken` gate); authorization is upstream, exactly
+    /// as for `submit`.
+    pub fn set_account(&mut self, addr: Address, balance: Balance, nonce: u64) {
+        self.state.apply(
+            &self.token,
+            &StateChange::SetAccount {
+                addr,
+                balance,
+                nonce,
+            },
+        );
+    }
 }
 
 #[cfg(test)]
