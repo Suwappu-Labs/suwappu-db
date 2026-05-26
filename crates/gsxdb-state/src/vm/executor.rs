@@ -547,7 +547,7 @@ impl MoveExecutor for AptosMoveExecutor {
             AsUnsyncModuleStorage, EagerLoader, InstantiatedFunctionLoader,
             LegacyLoaderConfig, RuntimeEnvironment,
         };
-        use move_vm_types::gas::UnmeteredGasMeter;
+        use crate::vm::gas::BoundedGasMeter;
 
         // 1. Module-not-found check.
         let cm = modules
@@ -578,7 +578,10 @@ impl MoveExecutor for AptosMoveExecutor {
             balance_view: state.balance_view,
         };
         let mut data_cache = TransactionDataCache::empty();
-        let mut gas = UnmeteredGasMeter;
+        // Bounded gas: the interpreter charges per-op against this budget
+        // and aborts with OUT_OF_GAS if exhausted. Loading stays unmetered
+        // (LegacyLoaderConfig::unmetered below); execution is metered.
+        let mut gas = BoundedGasMeter::default();
         let traversal_storage = TraversalStorage::new();
         let mut traversal = TraversalContext::new(&traversal_storage);
         let mut extensions = NativeContextExtensions::default();
