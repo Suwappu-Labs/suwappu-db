@@ -93,7 +93,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: test gsxdb-bridge (production-evm-executor)
-        run: cargo test -p gsxdb-bridge --features production-evm-executor --lib
+        run: cargo test -p gsxdb-bridge --features production-evm-executor --lib --test revm_move_parity
 
   build-docker:
     name: Build Docker Image
