@@ -216,6 +216,74 @@ impl<'s> Bridge<'s> {
             }
         }
     }
+
+    /// Protocol-owned credit: add `amount` to `addr`'s balance with no
+    /// debiting counterparty.
+    ///
+    /// This is the mechanism behind **genesis seeding** and protocol
+    /// payouts (inflation, ring rewards, insurance, treasury, slashing
+    /// distribution) — cases that [`Bridge::submit`] (transfer-only)
+    /// cannot express and that gsx-dag's in-memory substrate handles via a
+    /// private `credit_unchecked` path.
+    ///
+    /// **Authorization is the caller's responsibility.** Like
+    /// [`Bridge::submit`], this is pure mechanism: lane separation still
+    /// holds (the mutation goes through the [`BridgeToken`] gate), but
+    /// whether a credit is legitimate is decided upstream. In gsx-dag only
+    /// consensus-authorized, daemon-emitted intents (`GenesisAllocation`,
+    /// `MintInflation`, `DistributeRewards`, slashing distribution) reach
+    /// this method; user transactions never do.
+    ///
+    /// # Errors
+    ///
+    /// [`RejectReason::AmountOverflow`] if the resulting balance would
+    /// exceed `u128`. A zero `amount` is a no-op.
+    pub fn credit(&mut self, addr: Address, amount: Balance) -> Result<(), RejectReason> {
+        if amount.0 == 0 {
+            return Ok(());
+        }
+        let new = self
+            .state
+            .balance_of(&addr)
+            .0
+            .checked_add(amount.0)
+            .ok_or(RejectReason::AmountOverflow)?;
+        self.state.apply(
+            &self.token,
+            &StateChange::SetBalance {
+                addr,
+                to: Balance(new),
+            },
+        );
+        Ok(())
+    }
+
+    /// Protocol-owned debit: remove `amount` from `addr`'s balance with no
+    /// crediting counterparty (slashing burn, escrow / bond drain).
+    ///
+    /// Same authorization model as [`Bridge::credit`] — mechanism only.
+    ///
+    /// # Errors
+    ///
+    /// [`RejectReason::InsufficientBalance`] if `addr` holds less than
+    /// `amount`. A zero `amount` is a no-op.
+    pub fn debit(&mut self, addr: Address, amount: Balance) -> Result<(), RejectReason> {
+        if amount.0 == 0 {
+            return Ok(());
+        }
+        let current = self.state.balance_of(&addr).0;
+        if current < amount.0 {
+            return Err(RejectReason::InsufficientBalance);
+        }
+        self.state.apply(
+            &self.token,
+            &StateChange::SetBalance {
+                addr,
+                to: Balance(current - amount.0),
+            },
+        );
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -330,5 +398,56 @@ mod tests {
         assert_eq!(result, Err(RejectReason::DeployModuleRequiresModuleStore));
         // No state mutation.
         assert_eq!(bridge.balance_of(&alice), Balance(100));
+    }
+
+    #[test]
+    fn credit_seeds_a_fresh_address() {
+        // Genesis-seeding path: credit from zero with no counterparty —
+        // the case `submit` (transfer-only) cannot express.
+        let alice = Address([1; 20]);
+        let mut state = State::default();
+
+        let mut bridge = Bridge::new(&mut state);
+        bridge.credit(alice, Balance(1_000)).unwrap();
+        assert_eq!(bridge.balance_of(&alice), Balance(1_000));
+
+        // Credits accumulate.
+        bridge.credit(alice, Balance(500)).unwrap();
+        assert_eq!(bridge.balance_of(&alice), Balance(1_500));
+
+        // Zero is a no-op.
+        bridge.credit(alice, Balance(0)).unwrap();
+        assert_eq!(bridge.balance_of(&alice), Balance(1_500));
+    }
+
+    #[test]
+    fn credit_rejects_overflow() {
+        let alice = Address([1; 20]);
+        let mut state = seeded_state(alice, u128::MAX);
+
+        let mut bridge = Bridge::new(&mut state);
+        let result = bridge.credit(alice, Balance(1));
+        assert_eq!(result, Err(RejectReason::AmountOverflow));
+        // Balance unchanged on rejection.
+        assert_eq!(bridge.balance_of(&alice), Balance(u128::MAX));
+    }
+
+    #[test]
+    fn debit_reduces_balance_and_guards_underflow() {
+        let alice = Address([1; 20]);
+        let mut state = seeded_state(alice, 100);
+
+        let mut bridge = Bridge::new(&mut state);
+        bridge.debit(alice, Balance(30)).unwrap();
+        assert_eq!(bridge.balance_of(&alice), Balance(70));
+
+        // Debiting more than held rejects and leaves the balance intact.
+        let result = bridge.debit(alice, Balance(1_000));
+        assert_eq!(result, Err(RejectReason::InsufficientBalance));
+        assert_eq!(bridge.balance_of(&alice), Balance(70));
+
+        // Zero is a no-op.
+        bridge.debit(alice, Balance(0)).unwrap();
+        assert_eq!(bridge.balance_of(&alice), Balance(70));
     }
 }
