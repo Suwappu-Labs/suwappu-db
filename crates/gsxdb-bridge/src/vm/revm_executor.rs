@@ -110,15 +110,27 @@ impl RevmExecutor {
             return Err(EvmError::Revert(RejectReason::InsufficientBalance));
         }
 
-        // Write the post-execution diff (balance + nonce) back through the
-        // capability gate, for every touched account.
-        let mut bridge = Bridge::new(state);
+        // Pre-convert every touched balance BEFORE writing any back, so a
+        // U256 balance above u128::MAX reverts the whole tx instead of
+        // saturating (which would debit a sender without fully crediting the
+        // recipient) or partially writing. revm already succeeded; the
+        // u128 representability check is the only gate on the way back into
+        // the canonical balance map.
+        let mut writes = Vec::new();
         for (addr, account) in diff {
             if !account.is_touched() {
                 continue;
             }
-            let balance = u128::try_from(account.info.balance).unwrap_or(u128::MAX);
-            bridge.set_account(Address(addr.into_array()), Balance(balance), account.info.nonce);
+            let balance = u128::try_from(account.info.balance)
+                .map_err(|_| EvmError::Revert(RejectReason::BalanceOverflow))?;
+            writes.push((Address(addr.into_array()), Balance(balance), account.info.nonce));
+        }
+
+        // All balances representable — commit the diff through the
+        // capability gate.
+        let mut bridge = Bridge::new(state);
+        for (addr, balance, nonce) in writes {
+            bridge.set_account(addr, balance, nonce);
         }
         Ok(())
     }
@@ -192,5 +204,68 @@ mod tests {
         assert_eq!(state.balance_of(&bob), Balance(0));
         // Untouched: nonce did not advance on a rejected tx.
         assert_eq!(state.slot_of(&alice).nonce().value, 0);
+    }
+
+    /// A transfer whose recipient would exceed `u128::MAX` reverts (it must
+    /// NOT saturate the recipient to `u128::MAX`, which would let the sender
+    /// be debited without the recipient being fully credited). State is
+    /// untouched on the revert.
+    #[test]
+    fn real_evm_balance_overflow_reverts_untouched() {
+        let alice = addr(1);
+        let bob = addr(2);
+        let mut state = seeded(alice, 10);
+        // Seed bob just under the u128 ceiling so the incoming transfer
+        // would push his post-state balance above u128::MAX.
+        let token = BridgeToken::__for_bridge_only();
+        state.apply(
+            &token,
+            &StateChange::SetBalance {
+                addr: bob,
+                to: Balance(u128::MAX - 5),
+            },
+        );
+
+        let err = RevmExecutor
+            .execute(
+                &mut state,
+                EvmTx {
+                    from: alice,
+                    to: bob,
+                    value: 10,
+                },
+            )
+            .unwrap_err();
+
+        assert_eq!(err, EvmError::Revert(RejectReason::BalanceOverflow));
+        // Atomic revert: neither balance moved and the nonce did not advance.
+        assert_eq!(state.balance_of(&alice), Balance(10));
+        assert_eq!(state.balance_of(&bob), Balance(u128::MAX - 5));
+        assert_eq!(state.slot_of(&alice).nonce().value, 0);
+    }
+
+    /// A successful real-EVM transfer is supply-neutral: the total across
+    /// the involved accounts is identical before and after (no mint/burn).
+    #[test]
+    fn real_evm_transfer_conserves_supply() {
+        let alice = addr(1);
+        let bob = addr(2);
+        let mut state = seeded(alice, 100);
+
+        let before = state.balance_of(&alice).0 + state.balance_of(&bob).0;
+        RevmExecutor
+            .execute(
+                &mut state,
+                EvmTx {
+                    from: alice,
+                    to: bob,
+                    value: 30,
+                },
+            )
+            .unwrap();
+        let after = state.balance_of(&alice).0 + state.balance_of(&bob).0;
+
+        assert_eq!(before, 100);
+        assert_eq!(after, before, "real EVM transfer must not mint or burn");
     }
 }

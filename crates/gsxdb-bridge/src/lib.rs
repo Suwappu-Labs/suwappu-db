@@ -132,6 +132,11 @@ pub enum RejectReason {
     /// (already-exists or backend failure). The textual form is in
     /// the variant.
     ModuleDeployFailed(String),
+    /// A post-execution EVM balance exceeded `u128::MAX` and cannot be
+    /// represented in the canonical balance map. The transaction reverts
+    /// rather than saturating — saturating would debit a sender without
+    /// fully crediting the recipient, breaking balance conservation.
+    BalanceOverflow,
 }
 
 /// Wraps a mutable [`State`] reference and offers the only validated path to
@@ -222,10 +227,19 @@ impl<'s> Bridge<'s> {
     /// The real EVM executor's write-back path: revm returns absolute
     /// post-execution account state, and a value transfer advances the
     /// sender's nonce — which `submit`'s `SetBalance` cannot persist (it
-    /// zeroes the nonce). Lane separation is preserved (the mutation goes
-    /// through the `BridgeToken` gate); authorization is upstream, exactly
-    /// as for `submit`.
-    pub fn set_account(&mut self, addr: Address, balance: Balance, nonce: u64) {
+    /// zeroes the nonce).
+    ///
+    /// `pub(crate)`: this is an UNVALIDATED raw mutation (it sets an
+    /// absolute balance/nonce, bypassing `submit`'s balance checks). Only
+    /// the in-crate `revm_executor` may call it, after revm has produced a
+    /// validated post-state. Exposing it publicly would let any `Bridge`
+    /// holder mint/burn or rewrite nonces, defeating lane separation.
+    ///
+    /// Gated on `production-evm-executor`: its only caller is the in-crate
+    /// `revm_executor` (itself behind that feature), so without it the
+    /// method would be dead code and trip `-D warnings`.
+    #[cfg(feature = "production-evm-executor")]
+    pub(crate) fn set_account(&mut self, addr: Address, balance: Balance, nonce: u64) {
         self.state.apply(
             &self.token,
             &StateChange::SetAccount {
