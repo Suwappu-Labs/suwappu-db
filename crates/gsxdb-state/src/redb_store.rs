@@ -49,6 +49,13 @@ pub const TABLE_EVM_NONCES: TableDefinition<&[u8], &[u8]> = TableDefinition::new
 /// Table reserved for Move resource trees (S3).
 pub const TABLE_MOVE_RESOURCES: TableDefinition<&[u8], &[u8]> =
     TableDefinition::new("move_resources");
+/// Table holding `code_hash` (32 B) → EVM contract bytecode.
+pub const TABLE_EVM_CODE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("evm_code");
+/// Table holding `Address` (20 B) → contract `code_hash` (32 B) pointer.
+pub const TABLE_EVM_ACCOUNT_CODE: TableDefinition<&[u8], &[u8]> =
+    TableDefinition::new("evm_account_code");
+/// Table holding `Address` (20 B) → reserved-address `bytes_state` record.
+pub const TABLE_BYTES_STATE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("bytes_state");
 
 /// All tables the database is opened with. Order is irrelevant.
 pub const ALL_TABLES: &[TableDefinition<&[u8], &[u8]>] = &[
@@ -57,6 +64,9 @@ pub const ALL_TABLES: &[TableDefinition<&[u8], &[u8]>] = &[
     TABLE_EVM_STORAGE,
     TABLE_EVM_NONCES,
     TABLE_MOVE_RESOURCES,
+    TABLE_EVM_CODE,
+    TABLE_EVM_ACCOUNT_CODE,
+    TABLE_BYTES_STATE,
 ];
 
 const VALUE_LEN: usize = 16; // u128 big-endian
@@ -190,6 +200,146 @@ impl BalanceStore for RedbBalanceStore {
             let mut addr_bytes = [0u8; 20];
             addr_bytes.copy_from_slice(kb);
             out.push((Address(addr_bytes), Self::decode_value(v.value())));
+        }
+        out
+    }
+
+    fn set_code(&mut self, code_hash: &[u8; 32], code: &[u8]) {
+        let txn = self.db.begin_write().expect("set_code: begin_write");
+        {
+            let mut table = txn
+                .open_table(TABLE_EVM_CODE)
+                .expect("set_code: open_table(evm_code)");
+            table
+                .insert(code_hash.as_slice(), code)
+                .expect("set_code: insert");
+        }
+        txn.commit().expect("set_code: commit");
+    }
+
+    fn set_storage(&mut self, addr: &Address, slot: &[u8; 32], value: &[u8; 32]) {
+        let mut key = [0u8; 52];
+        key[..20].copy_from_slice(&addr.0);
+        key[20..].copy_from_slice(slot);
+        let txn = self.db.begin_write().expect("set_storage: begin_write");
+        {
+            let mut table = txn
+                .open_table(TABLE_EVM_STORAGE)
+                .expect("set_storage: open_table(evm_storage)");
+            // A zero value is EVM-equivalent to an unset slot — clear the
+            // durable entry so the hydrated map matches the in-memory
+            // canonicalization (write-then-clear == never-write).
+            if *value == [0u8; 32] {
+                table.remove(key.as_slice()).expect("set_storage: remove");
+            } else {
+                table
+                    .insert(key.as_slice(), value.as_slice())
+                    .expect("set_storage: insert");
+            }
+        }
+        txn.commit().expect("set_storage: commit");
+    }
+
+    fn set_account_code(&mut self, addr: &Address, code_hash: &[u8; 32]) {
+        let txn = self.db.begin_write().expect("set_account_code: begin_write");
+        {
+            let mut table = txn
+                .open_table(TABLE_EVM_ACCOUNT_CODE)
+                .expect("set_account_code: open_table(evm_account_code)");
+            table
+                .insert(addr.0.as_slice(), code_hash.as_slice())
+                .expect("set_account_code: insert");
+        }
+        txn.commit().expect("set_account_code: commit");
+    }
+
+    fn codes(&self) -> Vec<([u8; 32], Vec<u8>)> {
+        let txn = self.db.begin_read().expect("codes: begin_read");
+        let table = txn
+            .open_table(TABLE_EVM_CODE)
+            .expect("codes: open_table(evm_code)");
+        let mut out = Vec::new();
+        for entry in table.iter().expect("codes: iter") {
+            let (k, v) = entry.expect("codes: row");
+            let kb = k.value();
+            assert_eq!(kb.len(), 32, "code_hash key length");
+            let mut hash = [0u8; 32];
+            hash.copy_from_slice(kb);
+            out.push((hash, v.value().to_vec()));
+        }
+        out
+    }
+
+    fn storage_entries(&self) -> Vec<crate::EvmStorageEntry> {
+        let txn = self.db.begin_read().expect("storage_entries: begin_read");
+        let table = txn
+            .open_table(TABLE_EVM_STORAGE)
+            .expect("storage_entries: open_table(evm_storage)");
+        let mut out = Vec::new();
+        for entry in table.iter().expect("storage_entries: iter") {
+            let (k, v) = entry.expect("storage_entries: row");
+            let kb = k.value();
+            assert_eq!(kb.len(), 52, "storage key length (addr||slot)");
+            let mut addr = [0u8; 20];
+            addr.copy_from_slice(&kb[..20]);
+            let mut slot = [0u8; 32];
+            slot.copy_from_slice(&kb[20..]);
+            let vb = v.value();
+            assert_eq!(vb.len(), 32, "storage value length");
+            let mut value = [0u8; 32];
+            value.copy_from_slice(vb);
+            out.push(((Address(addr), slot), value));
+        }
+        out
+    }
+
+    fn account_codes(&self) -> Vec<(Address, [u8; 32])> {
+        let txn = self.db.begin_read().expect("account_codes: begin_read");
+        let table = txn
+            .open_table(TABLE_EVM_ACCOUNT_CODE)
+            .expect("account_codes: open_table(evm_account_code)");
+        let mut out = Vec::new();
+        for entry in table.iter().expect("account_codes: iter") {
+            let (k, v) = entry.expect("account_codes: row");
+            let kb = k.value();
+            assert_eq!(kb.len(), 20, "address key length");
+            let mut addr = [0u8; 20];
+            addr.copy_from_slice(kb);
+            let vb = v.value();
+            assert_eq!(vb.len(), 32, "code_hash value length");
+            let mut hash = [0u8; 32];
+            hash.copy_from_slice(vb);
+            out.push((Address(addr), hash));
+        }
+        out
+    }
+
+    fn set_bytes(&mut self, addr: &Address, bytes: &[u8]) {
+        let txn = self.db.begin_write().expect("set_bytes: begin_write");
+        {
+            let mut table = txn
+                .open_table(TABLE_BYTES_STATE)
+                .expect("set_bytes: open_table(bytes_state)");
+            table
+                .insert(addr.0.as_slice(), bytes)
+                .expect("set_bytes: insert");
+        }
+        txn.commit().expect("set_bytes: commit");
+    }
+
+    fn bytes_entries(&self) -> Vec<(Address, Vec<u8>)> {
+        let txn = self.db.begin_read().expect("bytes_entries: begin_read");
+        let table = txn
+            .open_table(TABLE_BYTES_STATE)
+            .expect("bytes_entries: open_table(bytes_state)");
+        let mut out = Vec::new();
+        for entry in table.iter().expect("bytes_entries: iter") {
+            let (k, v) = entry.expect("bytes_entries: row");
+            let kb = k.value();
+            assert_eq!(kb.len(), 20, "address key length");
+            let mut addr = [0u8; 20];
+            addr.copy_from_slice(kb);
+            out.push((Address(addr), v.value().to_vec()));
         }
         out
     }

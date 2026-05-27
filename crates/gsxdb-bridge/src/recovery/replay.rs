@@ -16,7 +16,7 @@
 use super::block::{BlockHash, GENESIS_PARENT};
 use super::store::{BlockStore, BlockStoreError};
 use crate::{BlockExecutor, ContractRegistry};
-use gsxdb_state::{Commitment, State, StateTree};
+use gsxdb_state::{Commitment, State};
 
 /// Reasons replay can fail.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,7 +115,7 @@ pub fn replay(
         // Defence in depth: also verify the post-replay state's tree
         // root agrees. Catches the (impossible by construction) case
         // where BlockReport.state_root drifts from State::tree.
-        let live_root = StateTree::from_state(state).root();
+        let live_root = state.state_root();
         if live_root != block.state_root {
             return Err(RecoveryError::StateRootMismatch {
                 height: block.height,

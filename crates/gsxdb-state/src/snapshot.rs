@@ -15,10 +15,123 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// 20 bytes address + 16 bytes canonical balance (u128 LE) = 36.
 pub const SNAPSHOT_ENTRY_BYTES: usize = 36;
 
-/// Magic header prepended to `encoded_state` so a corrupted or
-/// mistyped file fails loudly instead of silently restoring zero
-/// balances.
-const SNAPSHOT_MAGIC: &[u8; 8] = b"GSXDB\0\0\x01";
+/// Magic header prepended to `encoded_state`. `\x03` is the sectioned
+/// format carrying balances + EVM contract state (code / storage /
+/// account-code) + the reserved-address `bytes_state` registry, so a
+/// snapshot captures the full `state_root` rather than balances alone. A
+/// mismatched magic fails loudly instead of silently restoring partial state.
+const SNAPSHOT_MAGIC: &[u8; 8] = b"GSXDB\0\0\x03";
+
+/// A fully decoded snapshot body: balances + EVM contract state + bytes_state.
+struct DecodedSnapshot {
+    balances: Vec<(Address, u128)>,
+    codes: Vec<([u8; 32], Vec<u8>)>,
+    storages: Vec<crate::EvmStorageEntry>,
+    account_codes: Vec<(Address, [u8; 32])>,
+    bytes: Vec<(Address, Vec<u8>)>,
+}
+
+/// Bounds-checked cursor over a snapshot body.
+struct Reader<'a> {
+    buf: &'a [u8],
+    pos: usize,
+}
+
+impl<'a> Reader<'a> {
+    fn take(&mut self, n: usize) -> Result<&'a [u8], String> {
+        let end = self.pos.checked_add(n).ok_or("snapshot length overflow")?;
+        if end > self.buf.len() {
+            return Err(format!(
+                "snapshot truncated: need {n} bytes at offset {}",
+                self.pos
+            ));
+        }
+        let s = &self.buf[self.pos..end];
+        self.pos = end;
+        Ok(s)
+    }
+
+    fn u32_len(&mut self) -> Result<usize, String> {
+        let b = self.take(4)?;
+        Ok(u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize)
+    }
+
+    fn arr<const N: usize>(&mut self) -> Result<[u8; N], String> {
+        let mut a = [0u8; N];
+        a.copy_from_slice(self.take(N)?);
+        Ok(a)
+    }
+}
+
+/// Decode a sectioned (v2) snapshot body. Validates the magic, every
+/// section count, and rejects trailing bytes — the single source of truth
+/// for both `restore_into_state` (which applies) and `read_from_file` /
+/// `entry_count` (which only validate).
+fn decode_snapshot_body(encoded: &[u8]) -> Result<DecodedSnapshot, String> {
+    if encoded.len() < SNAPSHOT_MAGIC.len() || &encoded[..SNAPSHOT_MAGIC.len()] != SNAPSHOT_MAGIC {
+        return Err(format!("snapshot magic mismatch (expected {SNAPSHOT_MAGIC:?})"));
+    }
+    let mut r = Reader {
+        buf: encoded,
+        pos: SNAPSHOT_MAGIC.len(),
+    };
+
+    let n = r.u32_len()?;
+    let mut balances = Vec::with_capacity(n);
+    for _ in 0..n {
+        let addr = Address(r.arr::<20>()?);
+        let bal = u128::from_le_bytes(r.arr::<16>()?);
+        balances.push((addr, bal));
+    }
+
+    let n = r.u32_len()?;
+    let mut codes = Vec::with_capacity(n);
+    for _ in 0..n {
+        let hash = r.arr::<32>()?;
+        let len = r.u32_len()?;
+        let code = r.take(len)?.to_vec();
+        codes.push((hash, code));
+    }
+
+    let n = r.u32_len()?;
+    let mut storages = Vec::with_capacity(n);
+    for _ in 0..n {
+        let addr = Address(r.arr::<20>()?);
+        let slot = r.arr::<32>()?;
+        let value = r.arr::<32>()?;
+        storages.push(((addr, slot), value));
+    }
+
+    let n = r.u32_len()?;
+    let mut account_codes = Vec::with_capacity(n);
+    for _ in 0..n {
+        let addr = Address(r.arr::<20>()?);
+        let hash = r.arr::<32>()?;
+        account_codes.push((addr, hash));
+    }
+
+    let n = r.u32_len()?;
+    let mut bytes = Vec::with_capacity(n);
+    for _ in 0..n {
+        let addr = Address(r.arr::<20>()?);
+        let len = r.u32_len()?;
+        bytes.push((addr, r.take(len)?.to_vec()));
+    }
+
+    if r.pos != encoded.len() {
+        return Err(format!(
+            "snapshot has {} trailing bytes",
+            encoded.len() - r.pos
+        ));
+    }
+    Ok(DecodedSnapshot {
+        balances,
+        codes,
+        storages,
+        account_codes,
+        bytes,
+    })
+}
 
 /// A snapshot of the entire state at a specific block height.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -119,15 +232,56 @@ impl StateSnapshot {
     /// [`Self::with_state_root`] to fill it in.
     #[must_use]
     pub fn from_state(state: &State, height: u64, anchor_hash: Option<[u8; 32]>) -> Self {
-        let mut entries = state.entries();
-        entries.sort_by(|a, b| a.0 .0.cmp(&b.0 .0));
-        let mut encoded =
-            Vec::with_capacity(SNAPSHOT_MAGIC.len() + entries.len() * SNAPSHOT_ENTRY_BYTES);
+        // Each section is sorted so the byte stream is independent of map /
+        // store iteration order (idempotent round-trips, deterministic across
+        // nodes).
+        let mut balances = state.entries();
+        balances.sort_by_key(|(addr, _)| addr.0);
+        let mut codes = state.evm_code_entries();
+        codes.sort_by_key(|(hash, _)| *hash);
+        let mut storages = state.evm_storage_entries();
+        storages.sort_by_key(|((addr, slot), _)| (addr.0, *slot));
+        let mut account_codes = state.evm_account_code_entries();
+        account_codes.sort_by_key(|(addr, _)| addr.0);
+        // `bytes_state_entries` is already address-sorted (BTreeMap).
+        let bytes = state.bytes_state_entries();
+
+        let mut encoded = Vec::new();
         encoded.extend_from_slice(SNAPSHOT_MAGIC);
-        for (addr, slot) in &entries {
+
+        encoded.extend_from_slice(&(balances.len() as u32).to_le_bytes());
+        for (addr, slot) in &balances {
             encoded.extend_from_slice(&addr.0);
             encoded.extend_from_slice(&slot.canonical().to_le_bytes());
         }
+
+        encoded.extend_from_slice(&(codes.len() as u32).to_le_bytes());
+        for (hash, code) in &codes {
+            encoded.extend_from_slice(hash);
+            encoded.extend_from_slice(&(code.len() as u32).to_le_bytes());
+            encoded.extend_from_slice(code);
+        }
+
+        encoded.extend_from_slice(&(storages.len() as u32).to_le_bytes());
+        for ((addr, slot), value) in &storages {
+            encoded.extend_from_slice(&addr.0);
+            encoded.extend_from_slice(slot);
+            encoded.extend_from_slice(value);
+        }
+
+        encoded.extend_from_slice(&(account_codes.len() as u32).to_le_bytes());
+        for (addr, hash) in &account_codes {
+            encoded.extend_from_slice(&addr.0);
+            encoded.extend_from_slice(hash);
+        }
+
+        encoded.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
+        for (addr, b) in &bytes {
+            encoded.extend_from_slice(&addr.0);
+            encoded.extend_from_slice(&(b.len() as u32).to_le_bytes());
+            encoded.extend_from_slice(b);
+        }
+
         Self::new(height, Commitment([0; 32]), encoded, anchor_hash)
     }
 
@@ -151,22 +305,11 @@ impl StateSnapshot {
         let bytes = std::fs::read(path).map_err(|e| format!("read: {e}"))?;
         let snapshot: Self =
             serde_json::from_slice(&bytes).map_err(|e| format!("deserialize: {e}"))?;
-        // Cheap header check — caught here so callers don't have to
-        // pre-validate before `restore_into_state`.
-        if snapshot.encoded_state.len() < SNAPSHOT_MAGIC.len()
-            || &snapshot.encoded_state[..SNAPSHOT_MAGIC.len()] != SNAPSHOT_MAGIC
-        {
-            return Err(format!(
-                "snapshot magic mismatch (expected {:?})",
-                SNAPSHOT_MAGIC
-            ));
-        }
-        let body_len = snapshot.encoded_state.len() - SNAPSHOT_MAGIC.len();
-        if body_len % SNAPSHOT_ENTRY_BYTES != 0 {
-            return Err(format!(
-                "snapshot body length {body_len} not a multiple of {SNAPSHOT_ENTRY_BYTES}"
-            ));
-        }
+        // Structural validation — caught here so callers don't have to
+        // pre-validate before `restore_into_state`. Decodes (and discards)
+        // so a corrupt file (bad magic, short section, trailing bytes)
+        // fails loud at read time.
+        decode_snapshot_body(&snapshot.encoded_state)?;
         Ok(snapshot)
     }
 
@@ -182,30 +325,56 @@ impl StateSnapshot {
     /// Returns a string describing the failure if `encoded_state` is
     /// malformed (missing magic, non-multiple length, etc.).
     pub fn restore_into_state(&self, state: &mut State, token: &BridgeToken) -> Result<usize, String> {
-        if self.encoded_state.len() < SNAPSHOT_MAGIC.len()
-            || &self.encoded_state[..SNAPSHOT_MAGIC.len()] != SNAPSHOT_MAGIC
-        {
-            return Err("snapshot magic mismatch".to_string());
-        }
-        let body = &self.encoded_state[SNAPSHOT_MAGIC.len()..];
-        if body.len() % SNAPSHOT_ENTRY_BYTES != 0 {
-            return Err(format!(
-                "snapshot body length {} not a multiple of {SNAPSHOT_ENTRY_BYTES}",
-                body.len()
-            ));
-        }
+        let decoded = decode_snapshot_body(&self.encoded_state)?;
         let mut applied = 0usize;
-        for chunk in body.chunks_exact(SNAPSHOT_ENTRY_BYTES) {
-            let mut addr_bytes = [0u8; 20];
-            addr_bytes.copy_from_slice(&chunk[..20]);
-            let mut bal_bytes = [0u8; 16];
-            bal_bytes.copy_from_slice(&chunk[20..]);
-            let value = u128::from_le_bytes(bal_bytes);
+        for (addr, value) in &decoded.balances {
             state.apply(
                 token,
                 &StateChange::SetBalance {
-                    addr: Address(addr_bytes),
-                    to: Balance(value),
+                    addr: *addr,
+                    to: Balance(*value),
+                },
+            );
+            applied += 1;
+        }
+        // Code before account-code so the pointer always resolves to bytes.
+        for (code_hash, code) in &decoded.codes {
+            state.apply(
+                token,
+                &StateChange::SetCode {
+                    code_hash: *code_hash,
+                    code: code.clone(),
+                },
+            );
+            applied += 1;
+        }
+        for ((addr, slot), value) in &decoded.storages {
+            state.apply(
+                token,
+                &StateChange::SetStorage {
+                    addr: *addr,
+                    slot: *slot,
+                    value: *value,
+                },
+            );
+            applied += 1;
+        }
+        for (addr, code_hash) in &decoded.account_codes {
+            state.apply(
+                token,
+                &StateChange::SetAccountCode {
+                    addr: *addr,
+                    code_hash: *code_hash,
+                },
+            );
+            applied += 1;
+        }
+        for (addr, b) in &decoded.bytes {
+            state.apply(
+                token,
+                &StateChange::SetBytes {
+                    addr: *addr,
+                    bytes: b.clone(),
                 },
             );
             applied += 1;
@@ -217,16 +386,9 @@ impl StateSnapshot {
     /// Returns `None` if the body is malformed.
     #[must_use]
     pub fn entry_count(&self) -> Option<usize> {
-        if self.encoded_state.len() < SNAPSHOT_MAGIC.len()
-            || &self.encoded_state[..SNAPSHOT_MAGIC.len()] != SNAPSHOT_MAGIC
-        {
-            return None;
-        }
-        let body_len = self.encoded_state.len() - SNAPSHOT_MAGIC.len();
-        if body_len % SNAPSHOT_ENTRY_BYTES != 0 {
-            return None;
-        }
-        Some(body_len / SNAPSHOT_ENTRY_BYTES)
+        decode_snapshot_body(&self.encoded_state)
+            .ok()
+            .map(|d| d.balances.len())
     }
 
     /// Unused stub kept until `BalanceSlot` is reachable directly.
@@ -470,7 +632,102 @@ mod tests {
         let path = tmp.path().join("truncated.json");
         snap.write_to_file(&path).expect("write");
         let err = StateSnapshot::read_from_file(&path).unwrap_err();
-        assert!(err.contains("multiple"), "got: {err}");
+        assert!(err.contains("truncated"), "got: {err}");
+    }
+
+    #[test]
+    fn snapshot_round_trips_evm_contract_state() {
+        // A snapshot must capture contract code + storage + account-code,
+        // not just balances — otherwise a restored node loses contract state
+        // and its combined state_root diverges from the pre-snapshot root.
+        let mut original = State::default();
+        let token = BridgeToken::__for_bridge_only();
+        let contract = Address([9; 20]);
+        let code_hash = [0xC0; 32];
+        original.apply(
+            &token,
+            &StateChange::SetBalance {
+                addr: Address([1; 20]),
+                to: Balance(500),
+            },
+        );
+        original.apply(
+            &token,
+            &StateChange::SetCode {
+                code_hash,
+                code: vec![0x60, 0x00, 0x55],
+            },
+        );
+        original.apply(
+            &token,
+            &StateChange::SetAccountCode {
+                addr: contract,
+                code_hash,
+            },
+        );
+        original.apply(
+            &token,
+            &StateChange::SetStorage {
+                addr: contract,
+                slot: [1u8; 32],
+                value: [0xAB; 32],
+            },
+        );
+
+        let root_before = original.state_root();
+        let snapshot = StateSnapshot::from_state(&original, 5, None);
+
+        let mut restored = State::default();
+        snapshot
+            .restore_into_state(&mut restored, &token)
+            .expect("restore");
+
+        assert_eq!(
+            restored.code_by_hash(&code_hash),
+            Some([0x60, 0x00, 0x55].as_slice())
+        );
+        assert_eq!(restored.account_code_hash(&contract), Some(code_hash));
+        assert_eq!(restored.storage_at(&contract, &[1u8; 32]), [0xAB; 32]);
+        assert_eq!(restored.balance_of(&Address([1; 20])), Balance(500));
+        // The combined root matches — contract state is fully captured.
+        assert_eq!(restored.state_root(), root_before);
+    }
+
+    #[test]
+    fn snapshot_round_trips_bytes_state() {
+        // A snapshot must capture the reserved-address bytes registry (L2
+        // verifying keys / DA anchors / governance) so a restored node's
+        // combined root matches the pre-snapshot root.
+        let mut original = State::default();
+        let token = BridgeToken::__for_bridge_only();
+        let key_addr = Address([5; 20]);
+        original.apply(
+            &token,
+            &StateChange::SetBalance {
+                addr: Address([1; 20]),
+                to: Balance(42),
+            },
+        );
+        original.apply(
+            &token,
+            &StateChange::SetBytes {
+                addr: key_addr,
+                bytes: vec![0xDE, 0xAD, 0xBE, 0xEF],
+            },
+        );
+        let root_before = original.state_root();
+
+        let snapshot = StateSnapshot::from_state(&original, 7, None);
+        let mut restored = State::default();
+        snapshot
+            .restore_into_state(&mut restored, &token)
+            .expect("restore");
+
+        assert_eq!(
+            restored.read_bytes(&key_addr),
+            Some([0xDE, 0xAD, 0xBE, 0xEF].as_slice())
+        );
+        assert_eq!(restored.state_root(), root_before);
     }
 
     #[test]
