@@ -57,6 +57,17 @@ pub struct Balance(pub u128);
 ///   and any future backend.
 pub struct State {
     store: Box<dyn BalanceStore + Send + Sync>,
+    /// EVM contract bytecode, keyed by code hash. Populated on contract
+    /// creation, read by the EVM executor's `Database` adapter. EVM-only
+    /// (the Move VM has no code).
+    ///
+    /// NOT YET committed in the state root — folding EVM code + storage
+    /// into the verkle root is the consensus-critical follow-on; until
+    /// then this backs contract *execution* but is not consensus-safe.
+    evm_code: std::collections::HashMap<[u8; 32], Vec<u8>>,
+    /// EVM contract storage: `(address, 32-byte slot) -> 32-byte value`.
+    /// EVM-only. Same state-root caveat as [`Self::evm_code`].
+    evm_storage: std::collections::HashMap<(Address, [u8; 32]), [u8; 32]>,
 }
 
 impl std::fmt::Debug for State {
@@ -100,6 +111,22 @@ pub enum StateChange {
         /// New nonce.
         nonce: u64,
     },
+    /// Store EVM contract bytecode under its code hash (on contract creation).
+    SetCode {
+        /// `keccak256(code)`.
+        code_hash: [u8; 32],
+        /// Contract bytecode.
+        code: Vec<u8>,
+    },
+    /// Set an EVM contract storage slot.
+    SetStorage {
+        /// Contract address.
+        addr: Address,
+        /// 32-byte storage slot key.
+        slot: [u8; 32],
+        /// 32-byte storage value.
+        value: [u8; 32],
+    },
 }
 
 /// Capability token proving a caller is the bridge.
@@ -126,7 +153,11 @@ impl State {
     /// New `State` over the given storage backend.
     #[must_use]
     pub fn with_store(store: Box<dyn BalanceStore + Send + Sync>) -> Self {
-        Self { store }
+        Self {
+            store,
+            evm_code: std::collections::HashMap::new(),
+            evm_storage: std::collections::HashMap::new(),
+        }
     }
 
     /// Read-only balance lookup. Anyone may call this — reads are not
@@ -153,12 +184,31 @@ impl State {
         self.store.entries()
     }
 
+    /// EVM contract bytecode for `code_hash`, or `None` if unknown.
+    ///
+    /// Non-privileged read, like [`State::balance_of`]. Used by the EVM
+    /// executor's `Database` adapter.
+    #[must_use]
+    pub fn code_by_hash(&self, code_hash: &[u8; 32]) -> Option<&[u8]> {
+        self.evm_code.get(code_hash).map(Vec::as_slice)
+    }
+
+    /// EVM storage value at `(addr, slot)`. Unset slots read as zero —
+    /// the EVM's own "unset storage is zero" contract.
+    #[must_use]
+    pub fn storage_at(&self, addr: &Address, slot: &[u8; 32]) -> [u8; 32] {
+        self.evm_storage
+            .get(&(*addr, *slot))
+            .copied()
+            .unwrap_or([0u8; 32])
+    }
+
     /// Apply a validated change. Requires a [`BridgeToken`] — only the bridge
     /// can call this.
     pub fn apply(&mut self, _token: &BridgeToken, change: &StateChange) {
-        match *change {
+        match change {
             StateChange::SetBalance { addr, to } => {
-                self.store.set(&addr, BalanceSlot::new(to.0));
+                self.store.set(addr, BalanceSlot::new(to.0));
             }
             StateChange::SetAccount {
                 addr,
@@ -166,12 +216,18 @@ impl State {
                 nonce,
             } => {
                 self.store.set(
-                    &addr,
+                    addr,
                     BalanceSlot::with_nonce(
                         balance.0,
-                        crate::nonce_semantics::AccountNonce::new(nonce),
+                        crate::nonce_semantics::AccountNonce::new(*nonce),
                     ),
                 );
+            }
+            StateChange::SetCode { code_hash, code } => {
+                self.evm_code.insert(*code_hash, code.clone());
+            }
+            StateChange::SetStorage { addr, slot, value } => {
+                self.evm_storage.insert((*addr, *slot), *value);
             }
         }
     }
@@ -196,6 +252,43 @@ mod tests {
         );
 
         assert_eq!(state.balance_of(&addr), Balance(42));
+    }
+
+    #[test]
+    fn evm_code_round_trips() {
+        let mut state = State::default();
+        let token = BridgeToken::__for_bridge_only();
+        let code_hash = [7u8; 32];
+
+        assert_eq!(state.code_by_hash(&code_hash), None);
+        state.apply(
+            &token,
+            &StateChange::SetCode {
+                code_hash,
+                code: vec![0x60, 0x00, 0x55],
+            },
+        );
+        assert_eq!(
+            state.code_by_hash(&code_hash),
+            Some([0x60, 0x00, 0x55].as_slice())
+        );
+    }
+
+    #[test]
+    fn evm_storage_round_trips_and_defaults_zero() {
+        let mut state = State::default();
+        let token = BridgeToken::__for_bridge_only();
+        let addr = Address([3; 20]);
+        let slot = [1u8; 32];
+
+        // Unset slot reads as zero (the EVM's own contract).
+        assert_eq!(state.storage_at(&addr, &slot), [0u8; 32]);
+
+        let value = [9u8; 32];
+        state.apply(&token, &StateChange::SetStorage { addr, slot, value });
+        assert_eq!(state.storage_at(&addr, &slot), value);
+        // A different slot is still zero.
+        assert_eq!(state.storage_at(&addr, &[2u8; 32]), [0u8; 32]);
     }
 
     #[test]
