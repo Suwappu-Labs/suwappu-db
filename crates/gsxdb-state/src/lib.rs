@@ -228,6 +228,72 @@ impl State {
         self.evm_account_code.get(addr).copied()
     }
 
+    /// Commitment over EVM-only state (contract code + storage). Committed
+    /// in the state root but **outside** the balance dual-projection
+    /// (IQ-10): the Move VM has no code or storage, so this binds them for
+    /// consensus without entering the `EvmView`/`MoveView` projection.
+    ///
+    /// `BLAKE3` over every EVM account in address order —
+    /// `addr(20) || code_hash(32) || storage_root(32)` — where
+    /// `storage_root` is `BLAKE3` over that account's `(slot, value)` pairs
+    /// in slot order. Accounts with neither code nor storage don't
+    /// contribute; empty EVM state commits to the domain tag alone.
+    #[must_use]
+    pub fn evm_state_root(&self) -> Commitment {
+        use std::collections::{BTreeMap, BTreeSet};
+        const TAG_EVM_STATE: &[u8] = b"GSXDB-EVM-STATE_";
+        const TAG_EVM_STORAGE: &[u8] = b"GSXDB-EVM-STORAGE";
+
+        // Group storage by account, slots in canonical (sorted) order.
+        let mut storage: BTreeMap<Address, BTreeMap<[u8; 32], [u8; 32]>> = BTreeMap::new();
+        for ((addr, slot), value) in &self.evm_storage {
+            storage.entry(*addr).or_default().insert(*slot, *value);
+        }
+        // Union of accounts with code and/or storage, in address order.
+        let mut accounts: BTreeSet<Address> = BTreeSet::new();
+        accounts.extend(self.evm_account_code.keys().copied());
+        accounts.extend(storage.keys().copied());
+
+        let mut h = blake3::Hasher::new();
+        h.update(TAG_EVM_STATE);
+        for addr in &accounts {
+            h.update(&addr.0);
+            h.update(&self.evm_account_code.get(addr).copied().unwrap_or([0u8; 32]));
+            let mut sh = blake3::Hasher::new();
+            sh.update(TAG_EVM_STORAGE);
+            if let Some(slots) = storage.get(addr) {
+                for (slot, value) in slots {
+                    sh.update(slot);
+                    sh.update(value);
+                }
+            }
+            h.update(sh.finalize().as_bytes());
+        }
+        let mut out = [0u8; 32];
+        out.copy_from_slice(h.finalize().as_bytes());
+        Commitment(out)
+    }
+
+    /// The consensus state root: the balance tree (IQ-6) bound to the
+    /// EVM-state commitment (IQ-10).
+    ///
+    /// `BLAKE3("GSXDB-STATE-ROOT" || balance_tree_root || evm_state_root)`.
+    /// This is the root validators co-sign; it is a deterministic function
+    /// of all state, including contract code + storage.
+    #[must_use]
+    pub fn state_root(&self) -> Commitment {
+        const TAG_STATE_ROOT: &[u8] = b"GSXDB-STATE-ROOT";
+        let balance_root = StateTree::from_state(self).root();
+        let evm_root = self.evm_state_root();
+        let mut h = blake3::Hasher::new();
+        h.update(TAG_STATE_ROOT);
+        h.update(&balance_root.0);
+        h.update(&evm_root.0);
+        let mut out = [0u8; 32];
+        out.copy_from_slice(h.finalize().as_bytes());
+        Commitment(out)
+    }
+
     /// Apply a validated change. Requires a [`BridgeToken`] — only the bridge
     /// can call this.
     pub fn apply(&mut self, _token: &BridgeToken, change: &StateChange) {
@@ -329,6 +395,76 @@ mod tests {
         assert_eq!(state.storage_at(&addr, &slot), value);
         // A different slot is still zero.
         assert_eq!(state.storage_at(&addr, &[2u8; 32]), [0u8; 32]);
+    }
+
+    #[test]
+    fn state_root_commits_contract_storage_and_code() {
+        let token = BridgeToken::__for_bridge_only();
+        let contract = Address([2; 20]);
+
+        let mut state = State::default();
+        let r0 = state.state_root();
+
+        // A storage write changes the consensus root.
+        state.apply(
+            &token,
+            &StateChange::SetStorage {
+                addr: contract,
+                slot: [1u8; 32],
+                value: [9u8; 32],
+            },
+        );
+        let r1 = state.state_root();
+        assert_ne!(r0, r1, "storage write must change the state root");
+
+        // Deploying code changes it again.
+        state.apply(
+            &token,
+            &StateChange::SetCode {
+                code_hash: [7u8; 32],
+                code: vec![1, 2, 3],
+            },
+        );
+        state.apply(
+            &token,
+            &StateChange::SetAccountCode {
+                addr: contract,
+                code_hash: [7u8; 32],
+            },
+        );
+        assert_ne!(r1, state.state_root(), "code deploy must change the state root");
+    }
+
+    #[test]
+    fn state_root_is_deterministic_and_order_independent() {
+        let token = BridgeToken::__for_bridge_only();
+        let c = Address([4; 20]);
+
+        let mut a = State::default();
+        a.apply(&token, &StateChange::SetStorage { addr: c, slot: [1u8; 32], value: [10u8; 32] });
+        a.apply(&token, &StateChange::SetStorage { addr: c, slot: [2u8; 32], value: [20u8; 32] });
+
+        let mut b = State::default();
+        b.apply(&token, &StateChange::SetStorage { addr: c, slot: [2u8; 32], value: [20u8; 32] });
+        b.apply(&token, &StateChange::SetStorage { addr: c, slot: [1u8; 32], value: [10u8; 32] });
+
+        assert_eq!(a.state_root(), b.state_root());
+    }
+
+    #[test]
+    fn state_root_eoa_only_tracks_balances() {
+        let token = BridgeToken::__for_bridge_only();
+
+        let mut a = State::default();
+        a.apply(&token, &StateChange::SetBalance { addr: Address([1; 20]), to: Balance(100) });
+        let mut b = State::default();
+        b.apply(&token, &StateChange::SetBalance { addr: Address([1; 20]), to: Balance(100) });
+        // No contracts: empty EVM-state commitment is constant, so equal balances → equal root.
+        assert_eq!(a.state_root(), b.state_root());
+
+        let mut c = State::default();
+        c.apply(&token, &StateChange::SetBalance { addr: Address([1; 20]), to: Balance(101) });
+        assert_ne!(a.state_root(), c.state_root());
     }
 
     #[test]

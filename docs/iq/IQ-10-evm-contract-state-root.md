@@ -33,37 +33,41 @@ invariant and determinism?
 
 ## Decision
 
-**Extend the per-account leaf commitment to bind `(balance, nonce,
-code_hash, storage_root)`**, where `storage_root` is a commitment — under
-the *same* scheme as the main tree (BLAKE3 in phase-1, IPA/banderwagon
-under `production-verkle`, per IQ-6) — over that account's storage
-entries `(32-byte slot → 32-byte value)`.
+> **Revised 2026-05-27 (implementation).** The original draft extended the
+> per-account *leaf* to bind `(balance, nonce, code_hash, storage_root)`.
+> Implementing that revealed it changes the **IQ-6 inclusion-proof format**:
+> a contract leaf can no longer be verified from a `BalanceSlot` alone — the
+> proof must also carry `code_hash` + `storage_root` — reworking a tested,
+> stateless-client-facing interface. The decision below keeps the same core
+> property (EVM code + storage committed in the root, outside the
+> dual-projection) with a much smaller blast radius.
 
-- The main tree stays keyed by `Address`; only the **leaf payload** grows
-  from `BalanceSlot` to an account record `{ balance, nonce, code_hash,
-  storage_root }`.
-- `storage_root` is a **per-account storage sub-commitment**: a 256-ary
-  sub-trie (or canonical sorted-encode commitment) over the account's
-  `(slot, value)` pairs, committed with `commit_node` so phase-1 BLAKE3
-  and launch IPA both work with no second mechanism.
-- **EOAs and non-contract accounts** carry `code_hash = KECCAK_EMPTY` and
-  `storage_root = <empty-commitment>`, so their leaf is a deterministic
-  function of `(balance, nonce)` plus two constants.
+**Commit EVM state as a second sub-tree, combined into the root:**
 
-### Why per-account storage sub-root (not flatten `(addr, slot)` into the main tree)
+```
+state_root = H( "GSXDB-STATE-ROOT" || balance_tree_root || evm_state_root )
+```
 
-| | per-account sub-root (**chosen**) | flatten into main tree |
-|---|---|---|
-| Account proof scope | one account, bounded | drags address space + storage together |
-| Mirrors | Ethereum account/storage-trie split | Ethereum **Verkle** (single tree) |
-| Recompute | two-level (account + its storage) | one-level |
-| Witness | account proof + storage proof | single proof |
+- `balance_tree_root` — the **existing** `StateTree` over `Address →
+  BalanceSlot` (IQ-6), **unchanged**: leaves, proofs, and tests untouched.
+- `evm_state_root` — a new commitment over EVM-only state. For each EVM
+  account (sorted by address): `H(addr || code_hash || storage_root)`,
+  where `storage_root = H(sorted (slot || value))` over that account's
+  storage. Accounts with neither code nor storage don't contribute.
+- `H` is BLAKE3 in phase-1 (matching IQ-6's phase-1 scheme); the
+  `production-verkle` swap tracks IQ-6 as a follow-on.
 
-We choose the sub-root: it bounds a balance/existence proof to the
-account leaf without materializing all of its storage, and it keeps the
-main tree's address-keyed shape (and its IQ-6 proofs) unchanged. The cost
-is two-level recompute. **Open tension:** Ethereum's Verkle flattens; if
-gsx-db tracks that at mainnet, revisit (noted below).
+### Why two sub-trees combined (not a single extended leaf)
+
+The single-leaf design is Ethereum-faithful but reworks the
+consensus-critical balance tree **and its proof format** (every contract
+inclusion proof must carry code_hash + storage_root). The combined design
+is **additive**: the balance tree + its IQ-6 proofs are untouched, EVM
+code/storage live in a separate sub-tree, and the two are bound at the
+top. Same security (the root is a deterministic function of *all* state,
+incl. EVM code + storage); far smaller blast radius. **Open tension:**
+Ethereum Verkle uses a single flattened tree; revisit at the mainnet
+Verkle decision.
 
 ### Dual-projection (Proposition 1) is unaffected
 
@@ -75,24 +79,24 @@ balances (and nonce) only. The leaf grows, the projection does not.
 
 ### This is a state-root recipe change
 
-Like IQ-6's V1→V2, changing the leaf commitment changes every root. **No
-mainnet state exists; testnet wipes on re-genesis.** The cutover is a hard
-fork at the substrate-state-root level and must land atomically across
-validators (consistent with the substrate-cutover constraint in gsx-dag).
+Like IQ-6's V1→V2, binding the EVM sub-tree into the root changes every
+root. **No mainnet state exists; testnet wipes on re-genesis.** The cutover
+is a hard fork at the substrate-state-root level and must land atomically
+across validators (consistent with the substrate-cutover constraint in
+gsx-dag).
 
 ## Implementation surface
 
-- `tree/types.rs` — the leaf carries an account record (balance, nonce,
-  code_hash, storage_root) rather than a bare `BalanceSlot`.
-- `tree/ops.rs` — `StateTree::from_entries` (and `update`) take per-account
-  code_hash + storage; build the storage sub-commitment per contract
-  account.
-- `tree/commit.rs` / `tree/verkle_scheme.rs` — the leaf commitment folds in
-  `code_hash` + `storage_root`; the storage sub-trie reuses `commit_node`.
-- `State` — expose an iterator over `(Address, BalanceSlot, code_hash,
-  storage)` (or feed the tree from `evm_code`/`evm_account_code`/`evm_storage`)
-  so the root reflects contract state. Behind the existing BLAKE3-default /
-  `production-verkle` schemes.
+- `gsxdb-state` — `State::evm_state_root()` commits EVM-only state from
+  `evm_account_code` / `evm_code` / `evm_storage` (sorted
+  `addr || code_hash || storage_root`; `storage_root` = sorted
+  `slot || value`). `State::state_root()` returns
+  `BLAKE3("GSXDB-STATE-ROOT" || balance_tree_root || evm_state_root)` — the
+  consensus root.
+- `tree/` (IQ-6) — **unchanged**; the balance tree + its proofs are reused
+  as-is.
+- gsx-dag `GsxDbSubstrate::state_root` switches to `State::state_root()` so
+  the checkpoint commits contract state (consumption step, gsx-dag side).
 
 ## Properties to verify (10k, + 1M stress)
 
@@ -127,12 +131,9 @@ validators (consistent with the substrate-cutover constraint in gsx-dag).
 
 ## Propagation checklist
 
-- [ ] Leaf account record in `tree/types.rs`
-- [ ] `from_entries` / `update` take code_hash + storage; storage
-  sub-commitment in `tree/ops.rs`
-- [ ] Leaf commitment folds code_hash + storage_root (`commit.rs` /
-  `verkle_scheme.rs`)
-- [ ] `State` feeds contract state into the tree
+- [x] `State::evm_state_root()` over `evm_account_code` / `evm_code` / `evm_storage`
+- [x] `State::state_root()` = `H(balance_tree_root || evm_state_root)`
+- [x] Determinism + sensitivity + EOA-baseline tests in `gsxdb-state`
 - [ ] `cross_tree_root_agreement` + 1M stress extended to contract state
-- [ ] Storage proof round-trip test
+- [ ] gsx-dag `GsxDbSubstrate::state_root` → `State::state_root()` (consumption)
 - [ ] Re-genesis note in the substrate-cutover runbook
