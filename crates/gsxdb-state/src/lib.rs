@@ -68,6 +68,12 @@ pub struct State {
     /// EVM contract storage: `(address, 32-byte slot) -> 32-byte value`.
     /// EVM-only. Same state-root caveat as [`Self::evm_code`].
     evm_storage: std::collections::HashMap<(Address, [u8; 32]), [u8; 32]>,
+    /// Which contract code each account runs: `address -> code_hash`.
+    /// Empty for externally-owned accounts. Lets the EVM `Database` adapter
+    /// tell a contract from an EOA without polluting the dual-projection
+    /// `BalanceSlot` with a code hash. Same state-root caveat as
+    /// [`Self::evm_code`].
+    evm_account_code: std::collections::HashMap<Address, [u8; 32]>,
 }
 
 impl std::fmt::Debug for State {
@@ -127,6 +133,14 @@ pub enum StateChange {
         /// 32-byte storage value.
         value: [u8; 32],
     },
+    /// Point an account at the contract code it runs (on contract creation).
+    /// Pairs with [`StateChange::SetCode`], which stores the bytecode.
+    SetAccountCode {
+        /// Contract address.
+        addr: Address,
+        /// `keccak256(code)` — key into the code store.
+        code_hash: [u8; 32],
+    },
 }
 
 /// Capability token proving a caller is the bridge.
@@ -157,6 +171,7 @@ impl State {
             store,
             evm_code: std::collections::HashMap::new(),
             evm_storage: std::collections::HashMap::new(),
+            evm_account_code: std::collections::HashMap::new(),
         }
     }
 
@@ -203,6 +218,16 @@ impl State {
             .unwrap_or([0u8; 32])
     }
 
+    /// Code hash of the contract `addr` runs, or `None` for an EOA.
+    ///
+    /// Lets the EVM `Database` adapter distinguish a contract from an
+    /// externally-owned account; pair with [`State::code_by_hash`] to fetch
+    /// the bytecode.
+    #[must_use]
+    pub fn account_code_hash(&self, addr: &Address) -> Option<[u8; 32]> {
+        self.evm_account_code.get(addr).copied()
+    }
+
     /// Apply a validated change. Requires a [`BridgeToken`] — only the bridge
     /// can call this.
     pub fn apply(&mut self, _token: &BridgeToken, change: &StateChange) {
@@ -228,6 +253,9 @@ impl State {
             }
             StateChange::SetStorage { addr, slot, value } => {
                 self.evm_storage.insert((*addr, *slot), *value);
+            }
+            StateChange::SetAccountCode { addr, code_hash } => {
+                self.evm_account_code.insert(*addr, *code_hash);
             }
         }
     }
@@ -272,6 +300,18 @@ mod tests {
             state.code_by_hash(&code_hash),
             Some([0x60, 0x00, 0x55].as_slice())
         );
+
+        // The account-code pointer: which address runs this code.
+        let contract = Address([8; 20]);
+        assert_eq!(state.account_code_hash(&contract), None);
+        state.apply(
+            &token,
+            &StateChange::SetAccountCode {
+                addr: contract,
+                code_hash,
+            },
+        );
+        assert_eq!(state.account_code_hash(&contract), Some(code_hash));
     }
 
     #[test]

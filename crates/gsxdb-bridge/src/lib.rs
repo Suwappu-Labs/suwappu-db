@@ -235,6 +235,29 @@ impl<'s> Bridge<'s> {
             },
         );
     }
+
+    /// Store EVM contract bytecode under its code hash (contract-creation
+    /// write-back). Mechanism only; same authorization model as
+    /// [`Bridge::set_account`].
+    pub fn set_code(&mut self, code_hash: [u8; 32], code: Vec<u8>) {
+        self.state
+            .apply(&self.token, &StateChange::SetCode { code_hash, code });
+    }
+
+    /// Point an account at the contract code it runs (contract-creation
+    /// write-back). Pairs with [`Bridge::set_code`].
+    pub fn set_account_code(&mut self, addr: Address, code_hash: [u8; 32]) {
+        self.state
+            .apply(&self.token, &StateChange::SetAccountCode { addr, code_hash });
+    }
+
+    /// Set an EVM contract storage slot (execution write-back).
+    pub fn set_storage(&mut self, addr: Address, slot: [u8; 32], value: [u8; 32]) {
+        self.state.apply(
+            &self.token,
+            &StateChange::SetStorage { addr, slot, value },
+        );
+    }
 }
 
 #[cfg(test)]
