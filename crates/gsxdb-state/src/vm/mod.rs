@@ -11,6 +11,8 @@
 
 #[cfg(feature = "production-move-executor")]
 pub mod aptos_session;
+#[cfg(feature = "production-move-executor")]
+pub mod gas;
 pub mod executor;
 pub mod projector;
 pub mod tx;
@@ -25,5 +27,7 @@ pub use executor::{
 pub use executor::AptosMoveExecutor;
 #[cfg(feature = "production-move-executor")]
 pub use aptos_session::{canonical_coin_bytecode, canonical_coin_module_id};
+#[cfg(feature = "production-move-executor")]
+pub use gas::{BoundedGasMeter, DEFAULT_MOVE_GAS_BUDGET};
 pub use projector::{EvmProjector, EvmView, MoveProjector, MoveView};
 pub use tx::{CanonicalTransfer, EvmTx, MoveTx};

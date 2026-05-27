@@ -52,6 +52,28 @@ jobs:
         env:
           PROPTEST_CASES: 10000
 
+  move-vm-parity:
+    name: Move VM parity (production-move-executor, 10k)
+    runs-on: ubuntu-latest
+    # S9 exit gate. The real Aptos move-vm-runtime executes 0x1::coin
+    # bytecode and must preserve Proposition 1 (EVM balanceOf == Move
+    # Coin.value). Feature-gated out of the default `test`/`property-tests`
+    # matrix because it pulls aptos-core (heavy build), but enforced here
+    # so the real Move VM can't silently regress on main.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: aptos_move_vm_parity (10k cases)
+        run: cargo test --release -p gsxdb-bridge --features production-move-executor --test aptos_move_vm_parity interleaved_evm_aptos_move_preserves_invariant
+        env:
+          PROPTEST_CASES: 10000
+
   check-lane:
     name: Lane Separation Check
     runs-on: ubuntu-latest
