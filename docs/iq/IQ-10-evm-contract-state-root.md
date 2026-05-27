@@ -134,6 +134,6 @@ gsx-dag).
 - [x] `State::evm_state_root()` over `evm_account_code` / `evm_code` / `evm_storage`
 - [x] `State::state_root()` = `H(balance_tree_root || evm_state_root)`
 - [x] Determinism + sensitivity + EOA-baseline tests in `gsxdb-state`
-- [ ] `cross_tree_root_agreement` + 1M stress extended to contract state
+- [x] `cross_tree_root_agreement` + 1M stress extended to contract state (`contract_state_root_agreement`)
 - [ ] gsx-dag `GsxDbSubstrate::state_root` → `State::state_root()` (consumption)
 - [ ] Re-genesis note in the substrate-cutover runbook

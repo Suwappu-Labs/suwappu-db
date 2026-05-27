@@ -1,6 +1,8 @@
 //! **S6 EXIT GATE** — state-tree determinism + proof correctness under load.
 
-use gsxdb_state::{Address, BalanceSlot, StateTree};
+use gsxdb_state::{
+    Address, Balance, BalanceSlot, BridgeToken, State, StateChange, StateTree,
+};
 use proptest::prelude::*;
 
 const ADDR_SPACE: u8 = 16;
@@ -20,6 +22,47 @@ fn entry() -> impl Strategy<Value = Entry> {
         addr,
         slot: BalanceSlot::new(n),
     })
+}
+
+/// A 32-byte word drawn from a small space so storage slots/values overlap.
+fn small_word() -> impl Strategy<Value = [u8; 32]> {
+    (0u8..8).prop_map(|n| [n; 32])
+}
+
+/// One state mutation: a balance set, a storage write, or a contract-code
+/// deploy. `Code(addr, n)` deploys code `vec![n; 3]` under code-hash `[n; 32]`.
+#[derive(Debug, Clone)]
+enum Op {
+    Balance(Address, u128),
+    Storage(Address, [u8; 32], [u8; 32]),
+    Code(Address, u8),
+}
+
+fn op() -> impl Strategy<Value = Op> {
+    prop_oneof![
+        (small_address(), any::<u128>()).prop_map(|(a, v)| Op::Balance(a, v)),
+        (small_address(), small_word(), small_word()).prop_map(|(a, s, v)| Op::Storage(a, s, v)),
+        (small_address(), 0u8..8).prop_map(|(a, n)| Op::Code(a, n)),
+    ]
+}
+
+fn apply_op(state: &mut State, token: &BridgeToken, op: &Op) {
+    match op {
+        Op::Balance(a, v) => {
+            state.apply(token, &StateChange::SetBalance { addr: *a, to: Balance(*v) });
+        }
+        Op::Storage(a, slot, val) => {
+            state.apply(
+                token,
+                &StateChange::SetStorage { addr: *a, slot: *slot, value: *val },
+            );
+        }
+        Op::Code(a, n) => {
+            let code_hash = [*n; 32];
+            state.apply(token, &StateChange::SetCode { code_hash, code: vec![*n; 3] });
+            state.apply(token, &StateChange::SetAccountCode { addr: *a, code_hash });
+        }
+    }
 }
 
 proptest! {
@@ -174,5 +217,57 @@ proptest! {
             prop_assert!(StateTree::verify(tree_a.root(), addr, Some(*slot), &p_a));
             prop_assert!(StateTree::verify(tree_b.root(), addr, Some(*slot), &p_b));
         }
+    }
+
+    /// **IQ-10 state-root agreement under contract state.** Two `State`s
+    /// reaching the same effective state — balances, contract code, and
+    /// storage — by different write sequences produce the same
+    /// `state_root()` (balance tree + EVM-state commitment). The
+    /// combined-root analogue of `cross_tree_root_agreement`; the 1M
+    /// stress covers it via `--test state_tree`.
+    #[test]
+    fn contract_state_root_agreement(ops in prop::collection::vec(op(), 0..32)) {
+        use std::collections::BTreeMap;
+        let token = BridgeToken::__for_bridge_only();
+
+        // State A: ops applied in input (sequential) order.
+        let mut a = State::default();
+        for o in &ops {
+            apply_op(&mut a, &token, o);
+        }
+
+        // Effective (last-write-wins) state.
+        let mut bal: BTreeMap<Address, u128> = BTreeMap::new();
+        let mut code: BTreeMap<Address, u8> = BTreeMap::new();
+        let mut stor: BTreeMap<(Address, [u8; 32]), [u8; 32]> = BTreeMap::new();
+        for o in &ops {
+            match o {
+                Op::Balance(x, v) => {
+                    bal.insert(*x, *v);
+                }
+                Op::Code(x, n) => {
+                    code.insert(*x, *n);
+                }
+                Op::Storage(x, s, v) => {
+                    stor.insert((*x, *s), *v);
+                }
+            }
+        }
+
+        // State B: the effective state applied in canonical (sorted) order.
+        let mut b = State::default();
+        for (x, v) in &bal {
+            b.apply(&token, &StateChange::SetBalance { addr: *x, to: Balance(*v) });
+        }
+        for (x, n) in &code {
+            let code_hash = [*n; 32];
+            b.apply(&token, &StateChange::SetCode { code_hash, code: vec![*n; 3] });
+            b.apply(&token, &StateChange::SetAccountCode { addr: *x, code_hash });
+        }
+        for ((x, s), v) in &stor {
+            b.apply(&token, &StateChange::SetStorage { addr: *x, slot: *s, value: *v });
+        }
+
+        prop_assert_eq!(a.state_root(), b.state_root());
     }
 }
