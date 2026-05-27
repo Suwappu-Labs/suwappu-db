@@ -158,6 +158,16 @@ impl<'s> Bridge<'s> {
         self.state.balance_of(addr)
     }
 
+    /// Read-through to the `bytes_state` registry. Protocol code uses this
+    /// to read a registry blob (e.g. the authority / validator stake
+    /// registry) without holding a `&State` directly. The write side is
+    /// [`Bridge::write_bytes`]; this is the matching read, mirroring
+    /// [`Bridge::balance_of`] for balances.
+    #[must_use]
+    pub fn read_bytes(&self, addr: &Address) -> Option<&[u8]> {
+        self.state.read_bytes(addr)
+    }
+
     /// Validate an intent and, if it passes, apply it to state atomically.
     ///
     /// On `Err`, no state mutation occurs.
