@@ -71,8 +71,9 @@ impl RpcHandler {
 
     async fn get_state_root(&self) -> Value {
         let state = self.state.lock().await;
-        let tree = gsxdb_state::StateTree::from_state(&*state);
-        let root = tree.root();
+        // The combined consensus root (balances + EVM code/storage), not the
+        // balance-only tree root — RPC must report what blocks commit.
+        let root = state.state_root();
         let root_hex = root
             .0
             .iter()
