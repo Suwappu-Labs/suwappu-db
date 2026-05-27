@@ -55,6 +55,11 @@ pub struct Balance(pub u128);
 ///   ephemeral runs.
 /// - [`State::with_store`] — provide your own backend. For redb-backed runs
 ///   and any future backend.
+/// One EVM contract-storage entry — `((address, 32-byte slot), 32-byte
+/// value)`. Aliased so the bulk-accessor / store signatures stay readable
+/// (and satisfy `clippy::type_complexity`).
+pub type EvmStorageEntry = ((Address, [u8; 32]), [u8; 32]);
+
 pub struct State {
     store: Box<dyn BalanceStore + Send + Sync>,
     /// EVM contract bytecode, keyed by code hash. Populated on contract
@@ -167,11 +172,18 @@ impl State {
     /// New `State` over the given storage backend.
     #[must_use]
     pub fn with_store(store: Box<dyn BalanceStore + Send + Sync>) -> Self {
+        // Hydrate the in-memory EVM maps from the (possibly durable) store so
+        // contract code + storage + account-code pointers survive a reopen.
+        // Non-durable stores return empty (the default trait impls), giving a
+        // fresh State as before.
+        let evm_code = store.codes().into_iter().collect();
+        let evm_storage = store.storage_entries().into_iter().collect();
+        let evm_account_code = store.account_codes().into_iter().collect();
         Self {
             store,
-            evm_code: std::collections::HashMap::new(),
-            evm_storage: std::collections::HashMap::new(),
-            evm_account_code: std::collections::HashMap::new(),
+            evm_code,
+            evm_storage,
+            evm_account_code,
         }
     }
 
@@ -228,6 +240,25 @@ impl State {
         self.evm_account_code.get(addr).copied()
     }
 
+    /// All `(code_hash, code)` pairs. For snapshots; order is unspecified,
+    /// so callers that need determinism must sort.
+    #[must_use]
+    pub fn evm_code_entries(&self) -> Vec<([u8; 32], Vec<u8>)> {
+        self.evm_code.iter().map(|(k, v)| (*k, v.clone())).collect()
+    }
+
+    /// All `((addr, slot), value)` contract-storage entries. For snapshots.
+    #[must_use]
+    pub fn evm_storage_entries(&self) -> Vec<EvmStorageEntry> {
+        self.evm_storage.iter().map(|(k, v)| (*k, *v)).collect()
+    }
+
+    /// All `(addr, code_hash)` account-code pointers. For snapshots.
+    #[must_use]
+    pub fn evm_account_code_entries(&self) -> Vec<(Address, [u8; 32])> {
+        self.evm_account_code.iter().map(|(k, v)| (*k, *v)).collect()
+    }
+
     /// Commitment over EVM-only state (contract code + storage). Committed
     /// in the state root but **outside** the balance dual-projection
     /// (IQ-10): the Move VM has no code or storage, so this binds them for
@@ -258,7 +289,27 @@ impl State {
         h.update(TAG_EVM_STATE);
         for addr in &accounts {
             h.update(&addr.0);
-            h.update(&self.evm_account_code.get(addr).copied().unwrap_or([0u8; 32]));
+            // Bind the actual bytecode, not just its hash: `SetCode` accepts
+            // arbitrary bytes for a given hash, so committing only the hash
+            // would let two states run different code under an identical
+            // root. Only an account that actually points at code contributes
+            // its bytes; a code-less account commits a zero hash + empty
+            // bytes. We must NOT look up the defaulted `[0; 32]` sentinel —
+            // it can alias a genuinely-deployed code with hash `[0; 32]`,
+            // which would make a storage-only account's root depend on an
+            // unrelated deploy.
+            match self.evm_account_code.get(addr) {
+                Some(code_hash) => {
+                    h.update(code_hash);
+                    let code = self.code_by_hash(code_hash).unwrap_or(&[]);
+                    h.update(&(code.len() as u64).to_be_bytes());
+                    h.update(code);
+                }
+                None => {
+                    h.update(&[0u8; 32]);
+                    h.update(&0u64.to_be_bytes());
+                }
+            }
             let mut sh = blake3::Hasher::new();
             sh.update(TAG_EVM_STORAGE);
             if let Some(slots) = storage.get(addr) {
@@ -316,12 +367,23 @@ impl State {
             }
             StateChange::SetCode { code_hash, code } => {
                 self.evm_code.insert(*code_hash, code.clone());
+                self.store.set_code(code_hash, code);
             }
             StateChange::SetStorage { addr, slot, value } => {
-                self.evm_storage.insert((*addr, *slot), *value);
+                // Canonicalize: a zero value is EVM-equivalent to an unset
+                // slot (reads return zero), so drop it from the committed
+                // map — otherwise write-then-clear would diverge from
+                // never-write in the state root and across replay/snapshot.
+                if *value == [0u8; 32] {
+                    self.evm_storage.remove(&(*addr, *slot));
+                } else {
+                    self.evm_storage.insert((*addr, *slot), *value);
+                }
+                self.store.set_storage(addr, slot, value);
             }
             StateChange::SetAccountCode { addr, code_hash } => {
                 self.evm_account_code.insert(*addr, *code_hash);
+                self.store.set_account_code(addr, code_hash);
             }
         }
     }

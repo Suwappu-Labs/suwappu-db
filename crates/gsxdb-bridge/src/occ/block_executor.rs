@@ -40,7 +40,7 @@ use crate::bundle::CallCtx;
 use crate::occ::mv_store::{MvStore, ReadSource, TxnIdx};
 use crate::occ::txn::{ReadEntry, Txn, Validator, WriteEntry};
 use crate::{Intent, RejectReason};
-use gsxdb_state::{Address, Balance, BalanceSlot, BridgeToken, State, StateChange, StateTree};
+use gsxdb_state::{Address, Balance, BalanceSlot, BridgeToken, State, StateChange};
 use rayon::prelude::*;
 
 /// Internal helper: a bundle-step read might resolve against the
@@ -143,7 +143,7 @@ impl BlockExecutor {
                 outcomes: Vec::new(),
                 iterations: 0,
                 aborts: 0,
-                state_root: StateTree::from_state(state).root(),
+                state_root: state.state_root(),
                 collapsed_to_sequential: None,
             };
         }
@@ -290,7 +290,7 @@ impl BlockExecutor {
         // Phase-1: rebuild the tree from full state per block. S6.5 / S8
         // introduces incremental updates; the trait surface here doesn't
         // need to change.
-        let state_root = StateTree::from_state(state).root();
+        let state_root = state.state_root();
 
         BlockReport {
             outcomes,

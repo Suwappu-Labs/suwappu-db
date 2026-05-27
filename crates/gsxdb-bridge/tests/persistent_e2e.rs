@@ -99,6 +99,97 @@ fn state_persists_across_reopen() {
 }
 
 #[test]
+fn evm_contract_state_persists_across_reopen() {
+    // Contract code, storage, and the account-code pointer must survive a
+    // redb reopen alongside balances — otherwise a restarted node loses
+    // contract state and its combined state_root silently diverges.
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("state.redb");
+    let contract = Address([9; 20]);
+    let code_hash = [0xC0u8; 32];
+    let code = vec![0x60u8, 0x00, 0x55];
+    let slot = [1u8; 32];
+    let value = [0xABu8; 32];
+
+    let root_before = {
+        let store = RedbBalanceStore::open(&path).unwrap();
+        let mut state = State::with_store(Box::new(store));
+        let token = BridgeToken::__for_bridge_only();
+        seed(&mut state, Address([1; 20]), 1000);
+        state.apply(
+            &token,
+            &StateChange::SetCode {
+                code_hash,
+                code: code.clone(),
+            },
+        );
+        state.apply(
+            &token,
+            &StateChange::SetAccountCode {
+                addr: contract,
+                code_hash,
+            },
+        );
+        state.apply(
+            &token,
+            &StateChange::SetStorage {
+                addr: contract,
+                slot,
+                value,
+            },
+        );
+        state.state_root()
+    };
+
+    // A fresh State over the same redb file must hydrate the EVM maps.
+    let store = RedbBalanceStore::open(&path).unwrap();
+    let state = State::with_store(Box::new(store));
+    assert_eq!(state.code_by_hash(&code_hash), Some(code.as_slice()));
+    assert_eq!(state.account_code_hash(&contract), Some(code_hash));
+    assert_eq!(state.storage_at(&contract, &slot), value);
+    // The combined root is identical after reopen — contract state is
+    // durably bound, not lost like before.
+    assert_eq!(state.state_root(), root_before);
+}
+
+#[test]
+fn zero_storage_write_clears_durable_slot() {
+    // A zero value clears the slot durably, matching the in-memory
+    // canonicalization, so a reopened node's root agrees.
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("state.redb");
+    let contract = Address([9; 20]);
+    let slot = [1u8; 32];
+
+    {
+        let store = RedbBalanceStore::open(&path).unwrap();
+        let mut state = State::with_store(Box::new(store));
+        let token = BridgeToken::__for_bridge_only();
+        state.apply(
+            &token,
+            &StateChange::SetStorage {
+                addr: contract,
+                slot,
+                value: [7u8; 32],
+            },
+        );
+        state.apply(
+            &token,
+            &StateChange::SetStorage {
+                addr: contract,
+                slot,
+                value: [0u8; 32],
+            },
+        );
+    }
+
+    let store = RedbBalanceStore::open(&path).unwrap();
+    let state = State::with_store(Box::new(store));
+    assert_eq!(state.storage_at(&contract, &slot), [0u8; 32]);
+    assert!(state.evm_storage_entries().is_empty());
+}
+
+#[test]
 fn dual_projection_visible_through_state_slot_of() {
     let (mut state, _dir) = fresh_redb_state();
     let alice = Address([1; 20]);

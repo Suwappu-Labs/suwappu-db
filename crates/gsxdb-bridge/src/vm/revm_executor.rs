@@ -24,7 +24,7 @@ use revm::{
     database::WrapDatabaseRef,
     database_interface::DatabaseRef,
     primitives::{Address as RevmAddress, Bytes, TxKind, B256, KECCAK_EMPTY, U256},
-    state::{AccountInfo, EvmState},
+    state::{Account, AccountInfo, EvmState},
     ExecuteEvm,
 };
 
@@ -73,7 +73,19 @@ impl DatabaseRef for GsxStateDb<'_> {
     type Error = Infallible;
 
     fn basic_ref(&self, address: RevmAddress) -> Result<Option<AccountInfo>, Self::Error> {
-        Ok(Some(self.account_info(&Address(address.into_array()))))
+        let gsx = Address(address.into_array());
+        let slot = self.state.slot_of(&gsx);
+        // Distinguish a never-written account from an existing empty one:
+        // an address with no balance, no nonce, and no code does not exist,
+        // so opcodes like EXTCODEHASH / account-existence checks branch
+        // correctly instead of seeing a phantom KECCAK_EMPTY account.
+        if slot.canonical() == 0
+            && slot.nonce().value == 0
+            && self.state.account_code_hash(&gsx).is_none()
+        {
+            return Ok(None);
+        }
+        Ok(Some(self.account_info(&gsx)))
     }
 
     fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
@@ -100,14 +112,24 @@ impl DatabaseRef for GsxStateDb<'_> {
 /// Write a revm post-execution state diff back through the capability gate:
 /// balance + nonce for every touched account, contract code for created
 /// accounts, and every changed storage slot.
-fn write_back(state: &mut State, diff: EvmState) {
-    let mut bridge = Bridge::new(state);
-    for (addr, account) in diff {
+fn write_back(state: &mut State, diff: EvmState) -> Result<(), EvmError> {
+    // Pre-flight: collect the touched accounts, converting every balance to
+    // u128 first. A balance above u128::MAX reverts the whole tx (atomic)
+    // rather than saturating to u128::MAX — saturating would debit a sender
+    // without fully crediting a recipient, and a partial write-back would
+    // leave inconsistent state. The refs borrow `diff`, which outlives this.
+    let mut writes: Vec<(Address, u128, &Account)> = Vec::new();
+    for (addr, account) in &diff {
         if !account.is_touched() {
             continue;
         }
-        let gsx = Address(addr.into_array());
-        let balance = u128::try_from(account.info.balance).unwrap_or(u128::MAX);
+        let balance = u128::try_from(account.info.balance)
+            .map_err(|_| EvmError::Revert(RejectReason::BalanceOverflow))?;
+        writes.push((Address(addr.into_array()), balance, account));
+    }
+
+    let mut bridge = Bridge::new(state);
+    for (gsx, balance, account) in writes {
         bridge.set_account(gsx, Balance(balance), account.info.nonce);
 
         if account.is_created() {
@@ -129,6 +151,7 @@ fn write_back(state: &mut State, diff: EvmState) {
             }
         }
     }
+    Ok(())
 }
 
 /// Real EVM executor (monad-revm). Drop-in for [`MockEvm`](crate::vm::MockEvm).
@@ -215,7 +238,7 @@ impl RevmExecutor {
             return Err(EvmError::Revert(RejectReason::InsufficientBalance));
         }
 
-        write_back(state, diff);
+        write_back(state, diff)?;
         Ok(())
     }
 }
@@ -326,5 +349,68 @@ mod tests {
         assert_eq!(state.storage_at(&contract, &[0u8; 32]), calldata);
         // Caller's nonce advanced.
         assert_eq!(state.slot_of(&caller).nonce().value, 1);
+    }
+
+    /// A transfer whose recipient would exceed `u128::MAX` reverts (it must
+    /// NOT saturate the recipient to `u128::MAX`, which would let the sender
+    /// be debited without the recipient being fully credited). State is
+    /// untouched on the revert.
+    #[test]
+    fn real_evm_balance_overflow_reverts_untouched() {
+        let alice = addr(1);
+        let bob = addr(2);
+        let mut state = seeded(alice, 10);
+        // Seed bob just under the u128 ceiling so the incoming transfer
+        // would push his post-state balance above u128::MAX.
+        let token = BridgeToken::__for_bridge_only();
+        state.apply(
+            &token,
+            &StateChange::SetBalance {
+                addr: bob,
+                to: Balance(u128::MAX - 5),
+            },
+        );
+
+        let err = RevmExecutor
+            .execute(
+                &mut state,
+                EvmTx {
+                    from: alice,
+                    to: bob,
+                    value: 10,
+                },
+            )
+            .unwrap_err();
+
+        assert_eq!(err, EvmError::Revert(RejectReason::BalanceOverflow));
+        // Atomic revert: neither balance moved and the nonce did not advance.
+        assert_eq!(state.balance_of(&alice), Balance(10));
+        assert_eq!(state.balance_of(&bob), Balance(u128::MAX - 5));
+        assert_eq!(state.slot_of(&alice).nonce().value, 0);
+    }
+
+    /// A successful real-EVM transfer is supply-neutral: the total across
+    /// the involved accounts is identical before and after (no mint/burn).
+    #[test]
+    fn real_evm_transfer_conserves_supply() {
+        let alice = addr(1);
+        let bob = addr(2);
+        let mut state = seeded(alice, 100);
+
+        let before = state.balance_of(&alice).0 + state.balance_of(&bob).0;
+        RevmExecutor
+            .execute(
+                &mut state,
+                EvmTx {
+                    from: alice,
+                    to: bob,
+                    value: 30,
+                },
+            )
+            .unwrap();
+        let after = state.balance_of(&alice).0 + state.balance_of(&bob).0;
+
+        assert_eq!(before, 100);
+        assert_eq!(after, before, "real EVM transfer must not mint or burn");
     }
 }

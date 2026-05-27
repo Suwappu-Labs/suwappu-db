@@ -56,6 +56,35 @@ pub trait BalanceStore {
     /// iterator variant; deferred to S8 when persistence + recovery
     /// surface the question.
     fn entries(&self) -> Vec<(Address, BalanceSlot)>;
+
+    // --- EVM contract state (code / storage / account-code) ---
+    //
+    // These default to no-op / empty. A store that only durably holds
+    // balances (the in-memory test store) keeps EVM state in `State`'s
+    // in-memory maps and needs no durable copy — the maps are the source of
+    // truth and snapshots read them directly. Durable backends (redb)
+    // override these so contract code + storage survive a reopen, and
+    // `State::with_store` hydrates its maps from `codes()` /
+    // `storage_entries()` / `account_codes()`.
+
+    /// Persist EVM contract bytecode under its hash.
+    fn set_code(&mut self, _code_hash: &[u8; 32], _code: &[u8]) {}
+    /// Persist a contract storage slot. A zero `value` clears the slot.
+    fn set_storage(&mut self, _addr: &Address, _slot: &[u8; 32], _value: &[u8; 32]) {}
+    /// Persist an account's code-hash pointer.
+    fn set_account_code(&mut self, _addr: &Address, _code_hash: &[u8; 32]) {}
+    /// All durably-stored `(code_hash, code)` pairs, for hydrating `State`.
+    fn codes(&self) -> Vec<([u8; 32], Vec<u8>)> {
+        Vec::new()
+    }
+    /// All durably-stored `((addr, slot), value)` storage entries.
+    fn storage_entries(&self) -> Vec<crate::EvmStorageEntry> {
+        Vec::new()
+    }
+    /// All durably-stored `(addr, code_hash)` account-code pointers.
+    fn account_codes(&self) -> Vec<(Address, [u8; 32])> {
+        Vec::new()
+    }
 }
 
 /// `HashMap`-backed [`BalanceStore`]. Default backend for tests and the

@@ -17,7 +17,7 @@ use gsxdb_bridge::{
 use gsxdb_state::{
     dag::{BlockHash as DagBlockHash, DagBlock, DagStore},
     snapshot::{SnapshotManager, StateSnapshot},
-    Address, Balance, BridgeToken, Commitment, Metrics, State, StateChange, StateTree,
+    Address, Balance, BridgeToken, Commitment, Metrics, State, StateChange,
 };
 use std::sync::Arc;
 
@@ -115,8 +115,7 @@ fn state_snapshot_captures_block_state() {
     BlockExecutor.execute(&mut state, &intents);
 
     // Take a snapshot.
-    let tree = StateTree::from_state(&state);
-    let root = tree.root();
+    let root = state.state_root();
     let encoded = serde_json::to_vec(&root).expect("serialize root");
 
     let snapshot = StateSnapshot::new(100, root, encoded, None);
@@ -225,7 +224,7 @@ fn block_recovery_from_store() {
     }];
 
     let _report = BlockExecutor.execute(&mut state, &intents);
-    let root_before = StateTree::from_state(&state).root();
+    let root_before = state.state_root();
 
     // Store the block.
     let block = Block {
@@ -297,7 +296,7 @@ fn shadow_testnet_bootstrap() {
         record_state_metrics(&metrics, &state);
 
         // Compute post-block root.
-        let post_root = StateTree::from_state(&state).root();
+        let post_root = state.state_root();
 
         // Store block.
         let block = Block {
