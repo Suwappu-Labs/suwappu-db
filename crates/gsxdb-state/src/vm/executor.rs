@@ -538,6 +538,7 @@ impl MoveExecutor for AptosMoveExecutor {
             account_address::AccountAddress,
             identifier::Identifier as AptosIdentifier,
             language_storage::ModuleId as AptosModuleId,
+            vm_status::StatusCode,
         };
         use move_vm_runtime::{
             data_cache::{MoveVmDataCacheAdapter, TransactionDataCache},
@@ -627,13 +628,23 @@ impl MoveExecutor for AptosMoveExecutor {
                 &mut extensions,
                 &loader,
             )
-            .map_err(|_e| MoveExecutionError::Abort {
-                code: 0,
-                location: AbortLocation {
-                    module: Some(call.module.clone()),
-                    function_index: 0,
-                    instruction_index: 0,
-                },
+            .map_err(|e| {
+                // Distinguish gas exhaustion from a contract abort: now that
+                // BoundedGasMeter can fail with OUT_OF_GAS, collapsing every
+                // VM error into `Abort { code: 0 }` would make Out-Of-Gas
+                // indistinguishable from a code-0 abort for callers/telemetry.
+                if e.major_status() == StatusCode::OUT_OF_GAS {
+                    MoveExecutionError::OutOfGas
+                } else {
+                    MoveExecutionError::Abort {
+                        code: 0,
+                        location: AbortLocation {
+                            module: Some(call.module.clone()),
+                            function_index: 0,
+                            instruction_index: 0,
+                        },
+                    }
+                }
             })?;
         }
 

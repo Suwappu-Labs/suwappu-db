@@ -100,8 +100,12 @@ impl NativeGasMeter for BoundedGasMeter {
         InternalGas::from(self.remaining)
     }
 
-    fn charge_native_execution(&mut self, _amount: InternalGas) -> PartialVMResult<()> {
-        self.charge(COST_NATIVE)
+    fn charge_native_execution(&mut self, amount: InternalGas) -> PartialVMResult<()> {
+        // Charge the VM-reported gas, not a flat fee — a native whose cost
+        // scales with input or runtime work must be metered proportionally,
+        // or the bounded budget (the DoS guard this meter exists for) is
+        // defeated by an expensive native that only pays a constant.
+        self.charge(u64::from(amount))
     }
 
     fn use_heap_memory_in_native_context(&mut self, _amount: u64) -> PartialVMResult<()> {
@@ -307,10 +311,13 @@ impl GasMeter for BoundedGasMeter {
 
     fn charge_native_function(
         &mut self,
-        _amount: InternalGas,
+        amount: InternalGas,
         _ret_vals: Option<impl ExactSizeIterator<Item = impl ValueView>>,
     ) -> PartialVMResult<()> {
-        self.charge(COST_NATIVE)
+        // Post-execution: charge the native's real reported cost, floored at
+        // `COST_NATIVE` so even a zero-cost native still pays a per-call
+        // dispatch minimum (bounds native-call count).
+        self.charge(u64::from(amount).max(COST_NATIVE))
     }
 
     fn charge_native_function_before_execution(
@@ -318,7 +325,11 @@ impl GasMeter for BoundedGasMeter {
         _ty_args: impl ExactSizeIterator<Item = impl TypeView>,
         _args: impl ExactSizeIterator<Item = impl ValueView>,
     ) -> PartialVMResult<()> {
-        self.charge(COST_NATIVE)
+        // No pre-charge: `charge_native_function` charges the native's real
+        // cost (with a `COST_NATIVE` floor) after it returns. Charging here
+        // too would double-bill every native call and trigger premature
+        // OUT_OF_GAS for transactions that should fit the budget.
+        Ok(())
     }
 
     fn charge_drop_frame(
@@ -365,5 +376,31 @@ mod tests {
             DEFAULT_MOVE_GAS_BUDGET
         );
         assert!(DEFAULT_MOVE_GAS_BUDGET > 0);
+    }
+
+    /// **P1 fix:** native execution charges the VM-reported gas amount,
+    /// proportional to the native's work — not a flat `COST_NATIVE`. An
+    /// expensive native must draw the budget down by its real cost or the
+    /// DoS bound the meter exists for is meaningless. (The function /
+    /// before-execution hooks take `ValueView`/`TypeView` iterators this
+    /// module avoids; they're exercised end-to-end by the parity gate.)
+    #[test]
+    fn native_execution_charges_reported_amount() {
+        let mut gas = BoundedGasMeter::new(10_000);
+        gas.charge_native_execution(InternalGas::from(500)).unwrap();
+        assert_eq!(gas.remaining(), 9_500); // the reported 500, not COST_NATIVE
+        gas.charge_native_execution(InternalGas::from(2_000)).unwrap();
+        assert_eq!(gas.remaining(), 7_500);
+    }
+
+    /// A native execution that exceeds the remaining budget aborts with
+    /// OUT_OF_GAS — the bound the budget enforces.
+    #[test]
+    fn native_execution_exhausts_budget() {
+        let mut gas = BoundedGasMeter::new(100);
+        let err = gas
+            .charge_native_execution(InternalGas::from(1_000))
+            .unwrap_err();
+        assert_eq!(err.major_status(), StatusCode::OUT_OF_GAS);
     }
 }
