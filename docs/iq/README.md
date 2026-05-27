@@ -16,6 +16,7 @@ propagation checklist.
 | [IQ-7](IQ-7-anchor-parity.md) | Cross-chain anchor parity | Accepted (Solidity+ECDSA in S11) | S7 placeholder → S11 |
 | [IQ-8](IQ-8-recovery-store-inmemory-vs-redb.md) | Block store backend | Accepted (redb in S8.5) | S8 → S8.5 |
 | [IQ-9](IQ-9-s12-launch-hardening.md) | Snapshots + DAG + shadow E2E | Accepted | S12 |
+| [IQ-10](IQ-10-evm-contract-state-root.md) | EVM contract code + storage in the state root | Accepted (design) | real-EVM (post-S12) |
 
 IQ-5 (nonce semantics) was folded into IQ-3 Part 2 — see that doc.
 
