@@ -258,6 +258,16 @@ impl<'s> Bridge<'s> {
             &StateChange::SetStorage { addr, slot, value },
         );
     }
+
+    /// Write a reserved-address bytes-state record (L2 verifying key, DA
+    /// anchor, governance registry) — the surface gsx-dag's
+    /// `GsxDbSubstrate` needs to un-stub its L2 / DA / governance intent
+    /// arms. Mechanism only; same authorization model as
+    /// [`Bridge::set_account`].
+    pub fn write_bytes(&mut self, addr: Address, bytes: Vec<u8>) {
+        self.state
+            .apply(&self.token, &StateChange::SetBytes { addr, bytes });
+    }
 }
 
 #[cfg(test)]
