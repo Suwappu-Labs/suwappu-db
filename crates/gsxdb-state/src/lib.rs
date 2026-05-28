@@ -77,12 +77,37 @@ impl Default for State {
 /// and signature verification; `gsxdb-state` trusts these unconditionally.
 #[derive(Debug, Clone)]
 pub enum StateChange {
-    /// Set the balance of `addr` to `to`. Replaces, does not add.
+    /// Set the balance of `addr` to `to`. Replaces the balance only;
+    /// **does not preserve the existing nonce** — it constructs a
+    /// fresh `BalanceSlot` with the default (zero) nonce. Use
+    /// [`StateChange::SetAccount`] when the writer needs to land a
+    /// specific nonce (real EVM write-back) or to preserve the
+    /// existing one (protocol-side credit / debit — see
+    /// `gsxdb_bridge::Bridge::credit`).
     SetBalance {
         /// Target address.
         addr: Address,
         /// New balance.
         to: Balance,
+    },
+    /// Set both the balance and the nonce of `addr`, replacing the
+    /// whole slot.
+    ///
+    /// Two production callers need this:
+    /// - The real EVM executor's write-back path (`RevmExecutor`)
+    ///   lands a post-revm slot whose nonce advanced.
+    /// - Protocol mutations (`Bridge::credit` / `Bridge::debit`)
+    ///   read the existing slot, mutate the balance via the
+    ///   `BalanceSlot::deposit` / `withdraw` primitives, and write
+    ///   the result back via this variant — preserving the slot's
+    ///   nonce by construction. `SetBalance` would zero it.
+    SetAccount {
+        /// Target address.
+        addr: Address,
+        /// New balance.
+        balance: Balance,
+        /// New nonce.
+        nonce: u64,
     },
 }
 
@@ -143,6 +168,19 @@ impl State {
         match *change {
             StateChange::SetBalance { addr, to } => {
                 self.store.set(&addr, BalanceSlot::new(to.0));
+            }
+            StateChange::SetAccount {
+                addr,
+                balance,
+                nonce,
+            } => {
+                self.store.set(
+                    &addr,
+                    BalanceSlot::with_nonce(
+                        balance.0,
+                        crate::nonce_semantics::AccountNonce::new(nonce),
+                    ),
+                );
             }
         }
     }

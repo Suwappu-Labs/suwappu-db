@@ -997,7 +997,7 @@ dependencies = [
 
 [[package]]
 name = "gsxdb-bridge"
-version = "0.0.1"
+version = "0.1.0-pre"
 dependencies = [
  "blake3",
  "gsxdb-state",
@@ -1020,14 +1020,14 @@ dependencies = [
 
 [[package]]
 name = "gsxdb-lane"
-version = "0.0.1"
+version = "0.1.0-pre"
 dependencies = [
  "gsxdb-bridge",
 ]
 
 [[package]]
 name = "gsxdb-server"
-version = "0.0.1"
+version = "0.1.0-pre"
 dependencies = [
  "anyhow",
  "axum",
@@ -1046,7 +1046,7 @@ dependencies = [
 
 [[package]]
 name = "gsxdb-state"
-version = "0.0.1"
+version = "0.1.0-pre"
 dependencies = [
  "ark-ff",
  "ark-serialize",
@@ -1065,6 +1065,14 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "gsxdb-types"
+version = "0.1.0-pre"
+dependencies = [
+ "gsxdb-bridge",
+ "gsxdb-state",
 ]
 
 [[package]]

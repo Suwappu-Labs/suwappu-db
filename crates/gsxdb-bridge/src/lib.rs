@@ -45,7 +45,7 @@ pub use telemetry::{
 };
 pub use vm::{EvmError, MockEvm, MockMove, MoveError};
 
-use gsxdb_state::{Address, Balance, BridgeToken, State, StateChange};
+use gsxdb_state::{Address, Balance, BalanceSlot, BridgeToken, State, StateChange};
 
 /// An untrusted intent submitted from the lane.
 ///
@@ -107,10 +107,14 @@ pub enum Intent {
 /// Reasons an intent can be rejected during validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RejectReason {
-    /// Source balance is below the requested transfer amount.
+    /// Balance below the requested withdrawal: source side of a
+    /// transfer (`Bridge::submit`), or the target of a protocol
+    /// debit (`Bridge::debit`).
     InsufficientBalance,
-    /// Transfer amount overflowed `u128` arithmetic. Phase-2 will use a
-    /// 256-bit type internally.
+    /// Balance arithmetic overflowed `u128`: destination side of a
+    /// transfer (`Bridge::submit`), or the target of a protocol
+    /// credit (`Bridge::credit`). Phase-2 will widen the canonical
+    /// balance to 256-bit and this variant retires.
     AmountOverflow,
     /// `Bridge::submit` was called with `Intent::Call`. Calls require a
     /// `ContractRegistry`, which only the block executor holds. Lift the
@@ -234,6 +238,14 @@ impl<'s> Bridge<'s> {
     /// `MintInflation`, `DistributeRewards`, slashing distribution) reach
     /// this method; user transactions never do.
     ///
+    /// **Nonce preserved.** The mutation goes through
+    /// [`BalanceSlot::deposit`] on the *existing* slot and writes the
+    /// result back via [`StateChange::SetAccount`], not `SetBalance` —
+    /// so the target's account nonce survives the payout. A naive
+    /// `SetBalance` would zero it, re-enabling replay of every tx the
+    /// account previously sent (Codex P1 on the original push of this
+    /// PR).
+    ///
     /// # Errors
     ///
     /// [`RejectReason::AmountOverflow`] if the resulting balance would
@@ -242,26 +254,21 @@ impl<'s> Bridge<'s> {
         if amount.0 == 0 {
             return Ok(());
         }
-        let new = self
-            .state
-            .balance_of(&addr)
-            .0
-            .checked_add(amount.0)
-            .ok_or(RejectReason::AmountOverflow)?;
-        self.state.apply(
-            &self.token,
-            &StateChange::SetBalance {
-                addr,
-                to: Balance(new),
-            },
-        );
+        let mut slot = self.state.slot_of(&addr);
+        slot.deposit(amount.0)
+            .map_err(|_| RejectReason::AmountOverflow)?;
+        self.write_slot(addr, slot);
         Ok(())
     }
 
     /// Protocol-owned debit: remove `amount` from `addr`'s balance with no
     /// crediting counterparty (slashing burn, escrow / bond drain).
     ///
-    /// Same authorization model as [`Bridge::credit`] — mechanism only.
+    /// Same authorization model as [`Bridge::credit`]. The debit goes
+    /// through [`BalanceSlot::withdraw`] on the existing slot, so the
+    /// account's nonce is preserved (slashing must not silently reset
+    /// the victim's transaction counter — that would re-enable replay
+    /// of every previously-spent transaction).
     ///
     /// # Errors
     ///
@@ -271,18 +278,28 @@ impl<'s> Bridge<'s> {
         if amount.0 == 0 {
             return Ok(());
         }
-        let current = self.state.balance_of(&addr).0;
-        if current < amount.0 {
-            return Err(RejectReason::InsufficientBalance);
-        }
+        let mut slot = self.state.slot_of(&addr);
+        slot.withdraw(amount.0)
+            .map_err(|_| RejectReason::InsufficientBalance)?;
+        self.write_slot(addr, slot);
+        Ok(())
+    }
+
+    /// Write `slot` for `addr` through the capability gate, preserving
+    /// the balance + nonce pair as a unit. Used by the protocol-side
+    /// credit / debit paths after mutating a `BalanceSlot` in place
+    /// via [`BalanceSlot::deposit`] / [`BalanceSlot::withdraw`]. Funnels
+    /// to [`StateChange::SetAccount`] so the nonce travels with the
+    /// balance.
+    fn write_slot(&mut self, addr: Address, slot: BalanceSlot) {
         self.state.apply(
             &self.token,
-            &StateChange::SetBalance {
+            &StateChange::SetAccount {
                 addr,
-                to: Balance(current - amount.0),
+                balance: slot.as_balance(),
+                nonce: slot.nonce().value,
             },
         );
-        Ok(())
     }
 }
 
@@ -449,5 +466,71 @@ mod tests {
         // Zero is a no-op.
         bridge.debit(alice, Balance(0)).unwrap();
         assert_eq!(bridge.balance_of(&alice), Balance(70));
+    }
+
+    /// Regression for the Codex-style finding that `credit` / `debit`
+    /// previously routed through `SetBalance`, which `State::apply`
+    /// implements via `BalanceSlot::new(...)` — resetting the slot's
+    /// nonce to zero. A protocol payout (inflation, ring reward) or
+    /// slashing-burn against an already-active EOA would silently
+    /// re-enable replay of every transaction the account had
+    /// previously sent. The new code goes through
+    /// `BalanceSlot::deposit` / `withdraw` on the existing slot and
+    /// writes back via `SetAccount`, so the nonce travels with the
+    /// balance.
+    #[test]
+    fn credit_and_debit_preserve_account_nonce() {
+        use gsxdb_state::AccountNonce;
+        let alice = Address([1; 20]);
+        let mut state = State::default();
+        let token = BridgeToken::__for_bridge_only();
+
+        // Pre-seed alice at balance 1000, nonce 42 (e.g. from prior EVM
+        // activity). Using SetAccount directly so the test setup
+        // doesn't depend on the credit path it's exercising.
+        state.apply(
+            &token,
+            &StateChange::SetAccount {
+                addr: alice,
+                balance: Balance(1_000),
+                nonce: 42,
+            },
+        );
+        assert_eq!(state.slot_of(&alice).nonce(), AccountNonce::new(42));
+
+        // Credit must NOT zero the nonce.
+        let mut bridge = Bridge::new(&mut state);
+        bridge.credit(alice, Balance(500)).unwrap();
+        assert_eq!(bridge.balance_of(&alice), Balance(1_500));
+        assert_eq!(
+            state.slot_of(&alice).nonce(),
+            AccountNonce::new(42),
+            "credit must preserve the target's account nonce"
+        );
+
+        // Debit on the same account preserves nonce too.
+        let mut bridge = Bridge::new(&mut state);
+        bridge.debit(alice, Balance(200)).unwrap();
+        assert_eq!(bridge.balance_of(&alice), Balance(1_300));
+        assert_eq!(
+            state.slot_of(&alice).nonce(),
+            AccountNonce::new(42),
+            "debit must preserve the target's account nonce"
+        );
+
+        // Rejected credit (overflow) must also leave nonce intact.
+        let huge = u128::MAX - 100; // would-be balance > u128::MAX
+        let mut bridge = Bridge::new(&mut state);
+        let err = bridge.credit(alice, Balance(huge)).unwrap_err();
+        assert_eq!(err, RejectReason::AmountOverflow);
+        assert_eq!(bridge.balance_of(&alice), Balance(1_300));
+        assert_eq!(state.slot_of(&alice).nonce(), AccountNonce::new(42));
+
+        // Rejected debit (underflow) — same.
+        let mut bridge = Bridge::new(&mut state);
+        let err = bridge.debit(alice, Balance(1_000_000)).unwrap_err();
+        assert_eq!(err, RejectReason::InsufficientBalance);
+        assert_eq!(bridge.balance_of(&alice), Balance(1_300));
+        assert_eq!(state.slot_of(&alice).nonce(), AccountNonce::new(42));
     }
 }
