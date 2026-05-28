@@ -19,6 +19,12 @@ redb = "2"
 # real Verkle (polynomial commitments over banderwagon) is a launch-
 # readiness item.
 blake3 = "1"
+# keccak256 — enforced on `StateChange::SetCode` so the EVM contract
+# `code_hash` invariant (`code_hash == keccak256(code)`) cannot be
+# bypassed by snapshot-restore or any other bridge-side seeding path.
+# Same Keccak engine the EVM uses; revm pulls a matching version via
+# alloy-primitives in gsxdb-bridge.
+sha3 = "0.10"
 # Hex encoding/decoding for address serialization (S9)
 hex = "0.4"
 # Serialization for snapshots and JSON metadata (S12)

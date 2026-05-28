@@ -8,6 +8,7 @@
 
 use crate::{Address, Balance, BalanceSlot, BridgeToken, Commitment, State, StateChange};
 use serde::{Deserialize, Serialize};
+use sha3::Digest;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -23,6 +24,7 @@ pub const SNAPSHOT_ENTRY_BYTES: usize = 36;
 const SNAPSHOT_MAGIC: &[u8; 8] = b"GSXDB\0\0\x03";
 
 /// A fully decoded snapshot body: balances + EVM contract state + bytes_state.
+#[derive(Debug)]
 struct DecodedSnapshot {
     balances: Vec<(Address, u128)>,
     codes: Vec<([u8; 32], Vec<u8>)>,
@@ -90,6 +92,19 @@ fn decode_snapshot_body(encoded: &[u8]) -> Result<DecodedSnapshot, String> {
         let hash = r.arr::<32>()?;
         let len = r.u32_len()?;
         let code = r.take(len)?.to_vec();
+        // Validate `code_hash == keccak256(code)` at decode time so
+        // a corrupt or malicious snapshot fails loud with a typed
+        // error rather than panicking later in `State::apply`
+        // (which enforces the same invariant on application). The
+        // assertion in `apply` is the structural guarantee; this
+        // is the friendly failure mode for the snapshot path.
+        let computed: [u8; 32] = sha3::Keccak256::digest(&code).into();
+        if hash != computed {
+            return Err(format!(
+                "snapshot code_hash mismatch: stored {:?}, computed keccak256 {:?}",
+                hash, computed,
+            ));
+        }
         codes.push((hash, code));
     }
 
@@ -640,10 +655,14 @@ mod tests {
         // A snapshot must capture contract code + storage + account-code,
         // not just balances — otherwise a restored node loses contract state
         // and its combined state_root diverges from the pre-snapshot root.
+        use sha3::{Digest, Keccak256};
         let mut original = State::default();
         let token = BridgeToken::__for_bridge_only();
         let contract = Address([9; 20]);
-        let code_hash = [0xC0; 32];
+        let code = vec![0x60u8, 0x00, 0x55];
+        // SetCode enforces `code_hash == keccak256(code)`; compute the real
+        // hash so the snapshot path doesn't trip the invariant on restore.
+        let code_hash: [u8; 32] = Keccak256::digest(&code).into();
         original.apply(
             &token,
             &StateChange::SetBalance {
@@ -655,7 +674,7 @@ mod tests {
             &token,
             &StateChange::SetCode {
                 code_hash,
-                code: vec![0x60, 0x00, 0x55],
+                code: code.clone(),
             },
         );
         original.apply(
@@ -691,6 +710,35 @@ mod tests {
         assert_eq!(restored.balance_of(&Address([1; 20])), Balance(500));
         // The combined root matches — contract state is fully captured.
         assert_eq!(restored.state_root(), root_before);
+    }
+
+    /// Codex P2 (lib.rs:369) — friendly failure path: a snapshot
+    /// whose encoded `(code_hash, code)` pair doesn't satisfy
+    /// `code_hash == keccak256(code)` is rejected at decode time
+    /// with a typed error, rather than panicking in `State::apply`
+    /// mid-restore. The application-time assert is the structural
+    /// guarantee; this is the importable-snapshot ergonomics.
+    #[test]
+    fn snapshot_decode_rejects_mismatched_code_hash() {
+        // Hand-craft an encoded snapshot whose code section has a
+        // hash that doesn't match the code bytes. Sections: balances
+        // (0), codes (1), storages (0), account_codes (0).
+        let mut buf = Vec::new();
+        buf.extend_from_slice(SNAPSHOT_MAGIC);
+        buf.extend_from_slice(&0u32.to_le_bytes()); // balances len
+        buf.extend_from_slice(&1u32.to_le_bytes()); // codes len
+        buf.extend_from_slice(&[0u8; 32]); // wrong hash
+        let code = vec![0x60u8, 0x00, 0x55];
+        buf.extend_from_slice(&(code.len() as u32).to_le_bytes());
+        buf.extend_from_slice(&code);
+        buf.extend_from_slice(&0u32.to_le_bytes()); // storages len
+        buf.extend_from_slice(&0u32.to_le_bytes()); // account_codes len
+
+        let err = decode_snapshot_body(&buf).expect_err("bad code_hash must reject");
+        assert!(
+            err.contains("code_hash mismatch"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]
