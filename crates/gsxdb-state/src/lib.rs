@@ -46,8 +46,14 @@ pub struct Address(pub [u8; 20]);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Balance(pub u128);
 
+/// One EVM contract-storage entry — `((address, 32-byte slot), 32-byte
+/// value)`. Aliased so the bulk-accessor / store signatures stay readable
+/// (and satisfy `clippy::type_complexity`).
+pub type EvmStorageEntry = ((Address, [u8; 32]), [u8; 32]);
+
 /// Authoritative state. Owns the canonical balance map via a pluggable
-/// [`BalanceStore`] backend (in-memory, redb, or — in S8 — `RocksDB`).
+/// [`BalanceStore`] backend (in-memory, redb, or — in S8 — `RocksDB`),
+/// plus the EVM contract code / storage / account-code maps.
 ///
 /// Constructed two ways:
 ///
@@ -55,11 +61,6 @@ pub struct Balance(pub u128);
 ///   ephemeral runs.
 /// - [`State::with_store`] — provide your own backend. For redb-backed runs
 ///   and any future backend.
-/// One EVM contract-storage entry — `((address, 32-byte slot), 32-byte
-/// value)`. Aliased so the bulk-accessor / store signatures stay readable
-/// (and satisfy `clippy::type_complexity`).
-pub type EvmStorageEntry = ((Address, [u8; 32]), [u8; 32]);
-
 pub struct State {
     store: Box<dyn BalanceStore + Send + Sync>,
     /// EVM contract bytecode, keyed by code hash. Populated on contract
@@ -123,8 +124,17 @@ pub enum StateChange {
         nonce: u64,
     },
     /// Store EVM contract bytecode under its code hash (on contract creation).
+    ///
+    /// **Invariant.** `code_hash` MUST equal `keccak256(code)`. The invariant
+    /// is enforced inside [`State::apply`] — applying a `SetCode` with a
+    /// mismatched hash panics, so any bridge-side or snapshot-restore path
+    /// that wants to seed bytecode must compute the hash honestly.
+    /// Without this check the revm `Database` adapter would surface the
+    /// stored hash in `AccountInfo.code_hash` while executing different
+    /// bytes, letting `EXTCODEHASH` lie about the executable code at an
+    /// address.
     SetCode {
-        /// `keccak256(code)`.
+        /// `keccak256(code)` — see the invariant note above.
         code_hash: [u8; 32],
         /// Contract bytecode.
         code: Vec<u8>,
@@ -366,6 +376,22 @@ impl State {
                 );
             }
             StateChange::SetCode { code_hash, code } => {
+                // Codex P2 (lib.rs:369): enforce `code_hash == keccak256(code)`
+                // here so the invariant the `SetCode` variant promises cannot
+                // be bypassed by snapshot-restore or any other bridge-side
+                // seeding path. Without this, the revm `Database` adapter
+                // would happily surface the stored hash as `code_hash` while
+                // executing different bytes — `EXTCODEHASH` would lie about
+                // the executable code at an address.
+                use sha3::{Digest, Keccak256};
+                let computed: [u8; 32] = Keccak256::digest(code).into();
+                assert_eq!(
+                    *code_hash, computed,
+                    "StateChange::SetCode invariant violated: \
+                     code_hash must equal keccak256(code) \
+                     (passed {:?}, expected {:?})",
+                    code_hash, computed,
+                );
                 self.evm_code.insert(*code_hash, code.clone());
                 self.store.set_code(code_hash, code);
             }
@@ -412,22 +438,21 @@ mod tests {
 
     #[test]
     fn evm_code_round_trips() {
+        use sha3::{Digest, Keccak256};
         let mut state = State::default();
         let token = BridgeToken::__for_bridge_only();
-        let code_hash = [7u8; 32];
+        let code = vec![0x60u8, 0x00, 0x55];
+        let code_hash: [u8; 32] = Keccak256::digest(&code).into();
 
         assert_eq!(state.code_by_hash(&code_hash), None);
         state.apply(
             &token,
             &StateChange::SetCode {
                 code_hash,
-                code: vec![0x60, 0x00, 0x55],
+                code: code.clone(),
             },
         );
-        assert_eq!(
-            state.code_by_hash(&code_hash),
-            Some([0x60, 0x00, 0x55].as_slice())
-        );
+        assert_eq!(state.code_by_hash(&code_hash), Some(code.as_slice()));
 
         // The account-code pointer: which address runs this code.
         let contract = Address([8; 20]);
@@ -440,6 +465,25 @@ mod tests {
             },
         );
         assert_eq!(state.account_code_hash(&contract), Some(code_hash));
+    }
+
+    /// Codex P2 (lib.rs:369) regression: `StateChange::SetCode` with a
+    /// `code_hash` that doesn't equal `keccak256(code)` MUST panic at
+    /// `State::apply`, so a malicious / corrupt snapshot or seeding
+    /// path cannot install bytecode under a hash that `EXTCODEHASH`
+    /// would then lie about.
+    #[test]
+    #[should_panic(expected = "code_hash must equal keccak256(code)")]
+    fn set_code_panics_when_hash_does_not_match_keccak() {
+        let mut state = State::default();
+        let token = BridgeToken::__for_bridge_only();
+        state.apply(
+            &token,
+            &StateChange::SetCode {
+                code_hash: [0u8; 32], // intentionally wrong
+                code: vec![0x60, 0x00, 0x55],
+            },
+        );
     }
 
     #[test]
@@ -461,6 +505,7 @@ mod tests {
 
     #[test]
     fn state_root_commits_contract_storage_and_code() {
+        use sha3::{Digest, Keccak256};
         let token = BridgeToken::__for_bridge_only();
         let contract = Address([2; 20]);
 
@@ -480,18 +525,20 @@ mod tests {
         assert_ne!(r0, r1, "storage write must change the state root");
 
         // Deploying code changes it again.
+        let code = vec![1u8, 2, 3];
+        let code_hash: [u8; 32] = Keccak256::digest(&code).into();
         state.apply(
             &token,
             &StateChange::SetCode {
-                code_hash: [7u8; 32],
-                code: vec![1, 2, 3],
+                code_hash,
+                code,
             },
         );
         state.apply(
             &token,
             &StateChange::SetAccountCode {
                 addr: contract,
-                code_hash: [7u8; 32],
+                code_hash,
             },
         );
         assert_ne!(r1, state.state_root(), "code deploy must change the state root");

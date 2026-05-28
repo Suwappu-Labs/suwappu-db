@@ -103,11 +103,13 @@ fn evm_contract_state_persists_across_reopen() {
     // Contract code, storage, and the account-code pointer must survive a
     // redb reopen alongside balances — otherwise a restarted node loses
     // contract state and its combined state_root silently diverges.
+    use sha3::{Digest, Keccak256};
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("state.redb");
     let contract = Address([9; 20]);
-    let code_hash = [0xC0u8; 32];
     let code = vec![0x60u8, 0x00, 0x55];
+    // SetCode enforces `code_hash == keccak256(code)`.
+    let code_hash: [u8; 32] = Keccak256::digest(&code).into();
     let slot = [1u8; 32];
     let value = [0xABu8; 32];
 

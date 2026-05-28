@@ -4,6 +4,15 @@ use gsxdb_state::{
     Address, Balance, BalanceSlot, BridgeToken, State, StateChange, StateTree,
 };
 use proptest::prelude::*;
+use sha3::{Digest, Keccak256};
+
+/// Compute `keccak256(code)`. The `SetCode` invariant requires the
+/// hash that's stored to be the real Keccak256 of the bytes; tests
+/// that deploy code with synthetic hashes would panic in `State::apply`
+/// without going through this helper.
+fn code_hash_of(code: &[u8]) -> [u8; 32] {
+    Keccak256::digest(code).into()
+}
 
 const ADDR_SPACE: u8 = 16;
 
@@ -58,8 +67,9 @@ fn apply_op(state: &mut State, token: &BridgeToken, op: &Op) {
             );
         }
         Op::Code(a, n) => {
-            let code_hash = [*n; 32];
-            state.apply(token, &StateChange::SetCode { code_hash, code: vec![*n; 3] });
+            let code = vec![*n; 3];
+            let code_hash = code_hash_of(&code);
+            state.apply(token, &StateChange::SetCode { code_hash, code });
             state.apply(token, &StateChange::SetAccountCode { addr: *a, code_hash });
         }
     }
@@ -260,8 +270,9 @@ proptest! {
             b.apply(&token, &StateChange::SetBalance { addr: *x, to: Balance(*v) });
         }
         for (x, n) in &code {
-            let code_hash = [*n; 32];
-            b.apply(&token, &StateChange::SetCode { code_hash, code: vec![*n; 3] });
+            let bytes = vec![*n; 3];
+            let code_hash = code_hash_of(&bytes);
+            b.apply(&token, &StateChange::SetCode { code_hash, code: bytes });
             b.apply(&token, &StateChange::SetAccountCode { addr: *x, code_hash });
         }
         for ((x, s), v) in &stor {
