@@ -30,6 +30,8 @@
 
 pub mod block_executor;
 pub mod mv_store;
+#[cfg(feature = "production-evm-executor")]
+pub(crate) mod revm_db;
 pub mod txn;
 
 pub use block_executor::{BlockExecutor, BlockReport, TxOutcome};

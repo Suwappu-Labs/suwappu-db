@@ -488,6 +488,35 @@ fn execute_call(
     };
 
     for step in &bundle.steps {
+        // Under `production-evm-executor`, dispatch BundleStep::Evm
+        // through real revm so the speculative effect matches what
+        // the standalone RevmExecutor does outside OCC (gas-aware,
+        // nonce-advancing, balance-overflow-rejecting). The Move
+        // arm keeps the manual balance arithmetic path below — Move
+        // doesn't have an EVM-equivalent execution engine inside
+        // the OCC layer (the bundle executor's `MoveCall` runtime
+        // is the Move counterpart and lives outside OCC). MoveCall
+        // / DeployModule remain no-ops for OCC's read/write
+        // tracking, matching the pre-existing skip.
+        #[cfg(feature = "production-evm-executor")]
+        if let BundleStep::Evm(tx) = step {
+            match crate::occ::revm_db::run_evm_step(tx, state, mv, idx, &mut local) {
+                Ok(outcome) => {
+                    read_set.extend(outcome.reads);
+                    continue;
+                }
+                Err(reject) => {
+                    mv.clear_writes(idx);
+                    return Txn {
+                        idx,
+                        read_set,
+                        write_set: Vec::new(),
+                        rejected: Some(reject),
+                    };
+                }
+            }
+        }
+
         let (from, to, amount) = match step {
             BundleStep::Evm(tx) => (tx.from, tx.to, tx.value),
             BundleStep::Move(tx) => (tx.signer, tx.recipient, tx.amount),
@@ -542,12 +571,10 @@ fn execute_call(
             let v = BalanceSlot::with_nonce(from_balance, from_slot.nonce());
             local.insert(from, v);
         } else {
-            // Preserve nonces on speculative writes — see the matching
-            // comment in `execute_one` above for the rationale.
-            // BundleStep::Evm under `production-evm-executor` ideally
-            // dispatches through real revm here (which would also
-            // advance the sender's nonce); that's tracked as the
-            // OCC-revm-integration follow-up.
+            // Preserve nonces on speculative writes for the
+            // mock/non-EVM path — see the matching comment in
+            // `execute_one` above. Real revm dispatch (above, under
+            // `production-evm-executor`) advances nonces itself.
             let nf = BalanceSlot::with_nonce(new_from, from_slot.nonce());
             let nt = BalanceSlot::with_nonce(new_to, to_slot.nonce());
             local.insert(from, nf);
@@ -1074,5 +1101,370 @@ mod tests {
         assert_eq!(state.balance_of(&addr(0)), Balance(900));
         assert_eq!(state.balance_of(&addr(7)), Balance(1_050)); // +100 -50
         assert_eq!(state.balance_of(&addr(3)), Balance(1_050)); // +50
+    }
+}
+
+/// OCC tests that exercise the `production-evm-executor` dispatch
+/// path — `BundleStep::Evm` inside `execute_call` routes through
+/// real revm (via the `revm_db` MV-backed adapter) instead of the
+/// legacy manual balance arithmetic. These are the regression tests
+/// for the second half of Codex P2 (`vm/mod.rs:~19`), closing the
+/// OCC block path that was previously deferred to issue #30.
+#[cfg(all(test, feature = "production-evm-executor"))]
+mod revm_occ_tests {
+    use super::*;
+    use crate::bundle::{Bundle, BundleGenerator, CallCtx, ContractRegistry};
+    use gsxdb_state::EvmTx;
+    use std::sync::Arc;
+
+    fn addr(byte: u8) -> Address {
+        Address([byte; 20])
+    }
+
+    fn seeded_state() -> State {
+        let mut state = State::default();
+        let token = BridgeToken::__for_bridge_only();
+        for n in 0..8u8 {
+            state.apply(
+                &token,
+                &StateChange::SetBalance {
+                    addr: Address([n; 20]),
+                    to: Balance(1_000),
+                },
+            );
+        }
+        state
+    }
+
+    /// A single-step EVM bundle inside Intent::Call dispatches
+    /// through real revm: the sender's nonce advances (the legacy
+    /// manual-arithmetic path didn't bump nonces), and consolidation
+    /// lands the advanced nonce via the SetAccount write-back
+    /// established in PR #27. This is the definitive marker that
+    /// the OCC layer is actually calling revm for `BundleStep::Evm`.
+    #[test]
+    fn evm_call_routes_through_real_revm_inside_occ() {
+        let mut state = seeded_state();
+
+        let mut registry = ContractRegistry::new();
+        let gen: Arc<dyn BundleGenerator> = Arc::new(|ctx: &CallCtx| {
+            Bundle::single(BundleStep::Evm(EvmTx {
+                from: ctx.caller,
+                to: ctx.target,
+                value: ctx.value,
+                nonce: 0,
+            }))
+        });
+        registry.register(addr(7), gen);
+
+        let report = BlockExecutor.execute_with_registry(
+            &mut state,
+            &[Intent::Call {
+                caller: addr(0),
+                target: addr(7),
+                value: 100,
+                calldata: Vec::new(),
+            }],
+            &registry,
+        );
+
+        assert_eq!(report.outcomes, vec![TxOutcome::Committed]);
+        // Balances moved.
+        assert_eq!(state.balance_of(&addr(0)), Balance(900));
+        assert_eq!(state.balance_of(&addr(7)), Balance(1_100));
+        // Sender's nonce advanced via real revm — the legacy OCC
+        // arithmetic path didn't bump nonces, so this is the
+        // load-bearing assertion proving revm ran.
+        assert_eq!(
+            state.slot_of(&addr(0)).nonce().value,
+            1,
+            "real revm must advance the sender's nonce when dispatched via OCC's execute_call"
+        );
+    }
+
+    /// An EVM step inside a contract bundle that replays a stale
+    /// envelope nonce rejects the whole bundle (atomic) with
+    /// `RejectReason::InvalidNonce`, matching the bundle-executor
+    /// path. Without revm dispatch in OCC, the legacy arithmetic
+    /// would have happily run the replay.
+    #[test]
+    fn evm_call_rejects_replayed_nonce_inside_occ() {
+        // Pre-seed addr(0) at nonce 1 (e.g. from a prior real-revm
+        // execution that bumped it). A bundle that submits an Evm
+        // step with nonce=0 must reject as a stale replay.
+        let mut state = State::default();
+        let token = BridgeToken::__for_bridge_only();
+        state.apply(
+            &token,
+            &StateChange::SetAccount {
+                addr: addr(0),
+                balance: Balance(1_000),
+                nonce: 1,
+            },
+        );
+        state.apply(
+            &token,
+            &StateChange::SetAccount {
+                addr: addr(7),
+                balance: Balance(1_000),
+                nonce: 0,
+            },
+        );
+
+        let mut registry = ContractRegistry::new();
+        let gen: Arc<dyn BundleGenerator> = Arc::new(|ctx: &CallCtx| {
+            Bundle::single(BundleStep::Evm(EvmTx {
+                from: ctx.caller,
+                to: ctx.target,
+                value: ctx.value,
+                nonce: 0, // stale — state nonce is 1
+            }))
+        });
+        registry.register(addr(7), gen);
+
+        let report = BlockExecutor.execute_with_registry(
+            &mut state,
+            &[Intent::Call {
+                caller: addr(0),
+                target: addr(7),
+                value: 50,
+                calldata: Vec::new(),
+            }],
+            &registry,
+        );
+
+        assert_eq!(
+            report.outcomes,
+            vec![TxOutcome::Rejected(RejectReason::InvalidNonce)]
+        );
+        // State unchanged.
+        assert_eq!(state.balance_of(&addr(0)), Balance(1_000));
+        assert_eq!(state.balance_of(&addr(7)), Balance(1_000));
+        assert_eq!(state.slot_of(&addr(0)).nonce().value, 1);
+    }
+
+    /// A forwarder bundle (caller → contract → recipient) under
+    /// revm dispatch: each EVM step bumps the sender's nonce, and
+    /// the final consolidated state shows both the caller's nonce
+    /// and the contract's nonce advanced. This proves intra-bundle
+    /// state threading works under revm — step 2 reads the
+    /// contract's local-accumulator balance, not the snapshot.
+    #[test]
+    fn forwarder_bundle_threads_revm_writes_across_steps() {
+        let mut state = {
+            let mut s = State::default();
+            let token = BridgeToken::__for_bridge_only();
+            for n in 0..100u8 {
+                s.apply(
+                    &token,
+                    &StateChange::SetBalance {
+                        addr: Address([n; 20]),
+                        to: Balance(1_000),
+                    },
+                );
+            }
+            s
+        };
+
+        let mut registry = ContractRegistry::new();
+        let recipient = Address([99; 20]);
+        let gen: Arc<dyn BundleGenerator> = Arc::new(move |ctx: &CallCtx| {
+            // Forwarder: caller → contract → recipient. Both EVM
+            // steps, so both go through revm in this build.
+            Bundle::new()
+                .with(BundleStep::Evm(EvmTx {
+                    from: ctx.caller,
+                    to: ctx.target,
+                    value: ctx.value,
+                    nonce: 0,
+                }))
+                .with(BundleStep::Evm(EvmTx {
+                    from: ctx.target,
+                    to: recipient,
+                    value: ctx.value,
+                    nonce: 0, // contract's state nonce is 0
+                }))
+        });
+        registry.register(addr(7), gen);
+
+        let report = BlockExecutor.execute_with_registry(
+            &mut state,
+            &[Intent::Call {
+                caller: addr(0),
+                target: addr(7),
+                value: 50,
+                calldata: Vec::new(),
+            }],
+            &registry,
+        );
+
+        assert_eq!(report.outcomes, vec![TxOutcome::Committed]);
+        assert_eq!(state.balance_of(&addr(0)), Balance(950));
+        assert_eq!(state.balance_of(&addr(7)), Balance(1_000));
+        assert_eq!(state.balance_of(&recipient), Balance(1_050));
+        // Both senders' nonces advanced — proves intra-bundle local
+        // threading (step 2 saw step 1's nonce=1 in `local`, so its
+        // own envelope-nonce=0 matched the contract's still-0 state
+        // nonce and committed; final state shows nonce 1 for both).
+        assert_eq!(state.slot_of(&addr(0)).nonce().value, 1);
+        assert_eq!(state.slot_of(&addr(7)).nonce().value, 1);
+    }
+
+    /// Two disjoint EVM calls (different callers + different contract
+    /// targets + different recipients) must NOT serialize through
+    /// shared revm-read artifacts (e.g. the block beneficiary that
+    /// revm probes at gas-accounting time). The OCC validator checks
+    /// every recorded read; if revm reads the beneficiary as a
+    /// snapshot read on both txns AND either one writes to it, the
+    /// other invalidates and re-executes. For a pure value-transfer
+    /// workload at `gas_price = 0` the beneficiary balance doesn't
+    /// change, so no write lands there, and disjoint EVM calls should
+    /// converge in a single iteration just like the legacy mock-
+    /// arithmetic path did.
+    ///
+    /// Assertion: `iterations == 1` (no re-execution storm). If this
+    /// regresses, the fix is either to use a per-txn beneficiary in
+    /// the revm BlockEnv, or to drop beneficiary reads from the OCC
+    /// read set (less safe — would mask a real conflict on a future
+    /// non-zero-gas configuration).
+    #[test]
+    fn parallel_disjoint_evm_calls_do_not_serialize_through_beneficiary() {
+        let mut state = {
+            let mut s = State::default();
+            let token = BridgeToken::__for_bridge_only();
+            for n in 0..100u8 {
+                s.apply(
+                    &token,
+                    &StateChange::SetBalance {
+                        addr: Address([n; 20]),
+                        to: Balance(1_000),
+                    },
+                );
+            }
+            s
+        };
+
+        let mut registry = ContractRegistry::new();
+        // Two distinct forwarders, distinct contract addresses,
+        // distinct callers and recipients in the call below — fully
+        // disjoint at the EVM-shape participants level.
+        let recipient_a = Address([90; 20]);
+        let recipient_b = Address([91; 20]);
+        let gen_a: Arc<dyn BundleGenerator> = Arc::new(move |ctx: &CallCtx| {
+            Bundle::single(BundleStep::Evm(EvmTx {
+                from: ctx.caller,
+                to: recipient_a,
+                value: ctx.value,
+                nonce: 0,
+            }))
+        });
+        let gen_b: Arc<dyn BundleGenerator> = Arc::new(move |ctx: &CallCtx| {
+            Bundle::single(BundleStep::Evm(EvmTx {
+                from: ctx.caller,
+                to: recipient_b,
+                value: ctx.value,
+                nonce: 0,
+            }))
+        });
+        registry.register(addr(7), gen_a);
+        registry.register(addr(8), gen_b);
+
+        let report = BlockExecutor.execute_with_registry(
+            &mut state,
+            &[
+                Intent::Call {
+                    caller: addr(0),
+                    target: addr(7),
+                    value: 10,
+                    calldata: Vec::new(),
+                },
+                Intent::Call {
+                    caller: addr(1),
+                    target: addr(8),
+                    value: 20,
+                    calldata: Vec::new(),
+                },
+            ],
+            &registry,
+        );
+
+        // Both committed.
+        assert_eq!(
+            report.outcomes,
+            vec![TxOutcome::Committed, TxOutcome::Committed],
+        );
+        // Both balance moves landed.
+        assert_eq!(state.balance_of(&addr(0)), Balance(990));
+        assert_eq!(state.balance_of(&addr(1)), Balance(980));
+        assert_eq!(state.balance_of(&recipient_a), Balance(1_010));
+        assert_eq!(state.balance_of(&recipient_b), Balance(1_020));
+
+        // Load-bearing parallelism check: disjoint EVM calls must
+        // converge in a single iteration. If revm's beneficiary
+        // read serializes them, `iterations` jumps to 2+ as the
+        // second one re-executes after seeing the first's writes.
+        assert_eq!(
+            report.iterations, 1,
+            "disjoint EVM calls must not serialize via shared revm read artifacts \
+             (report = {report:?})"
+        );
+    }
+
+    /// An EVM step whose recipient would overflow `u128::MAX`
+    /// reverts the whole bundle with `BalanceOverflow`, matching
+    /// the standalone executor's atomicity guarantee. The OCC
+    /// adapter must surface the same reject and leave canonical
+    /// state untouched.
+    #[test]
+    fn evm_call_balance_overflow_reverts_inside_occ() {
+        let mut state = State::default();
+        let token = BridgeToken::__for_bridge_only();
+        state.apply(
+            &token,
+            &StateChange::SetBalance {
+                addr: addr(0),
+                to: Balance(10),
+            },
+        );
+        // Seed addr(7) (the contract) just under u128::MAX so the
+        // incoming forward would overflow.
+        state.apply(
+            &token,
+            &StateChange::SetBalance {
+                addr: addr(7),
+                to: Balance(u128::MAX - 5),
+            },
+        );
+
+        let mut registry = ContractRegistry::new();
+        let gen: Arc<dyn BundleGenerator> = Arc::new(|ctx: &CallCtx| {
+            Bundle::single(BundleStep::Evm(EvmTx {
+                from: ctx.caller,
+                to: ctx.target,
+                value: ctx.value,
+                nonce: 0,
+            }))
+        });
+        registry.register(addr(7), gen);
+
+        let report = BlockExecutor.execute_with_registry(
+            &mut state,
+            &[Intent::Call {
+                caller: addr(0),
+                target: addr(7),
+                value: 10,
+                calldata: Vec::new(),
+            }],
+            &registry,
+        );
+
+        assert_eq!(
+            report.outcomes,
+            vec![TxOutcome::Rejected(RejectReason::BalanceOverflow)]
+        );
+        // Atomic revert: balances + sender nonce untouched.
+        assert_eq!(state.balance_of(&addr(0)), Balance(10));
+        assert_eq!(state.balance_of(&addr(7)), Balance(u128::MAX - 5));
+        assert_eq!(state.slot_of(&addr(0)).nonce().value, 0);
     }
 }
