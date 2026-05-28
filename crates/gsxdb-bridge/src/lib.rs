@@ -137,6 +137,14 @@ pub enum RejectReason {
     /// rather than saturating — saturating would debit a sender without
     /// fully crediting the recipient, breaking balance conservation.
     BalanceOverflow,
+    /// The envelope-supplied EVM transaction nonce did not equal the
+    /// sender's current account nonce. Surfaced by `RevmExecutor` when
+    /// the caller submits a `tx.nonce` that does not match
+    /// `state.slot_of(&tx.from).nonce()` — i.e. a replayed or
+    /// out-of-order EVM transaction. The envelope nonce is the only
+    /// source of truth here; synthesising from state would silently
+    /// accept any replay.
+    InvalidNonce,
 }
 
 /// Wraps a mutable [`State`] reference and offers the only validated path to

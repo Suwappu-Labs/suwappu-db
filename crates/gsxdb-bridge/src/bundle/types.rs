@@ -138,6 +138,7 @@ mod tests {
             from: addr(1),
             to: addr(2),
             value: 100,
+            nonce: 0,
         }));
         assert_eq!(b.len(), 1);
         assert!(!b.is_empty());
@@ -150,6 +151,7 @@ mod tests {
                 from: addr(1),
                 to: addr(2),
                 value: 10,
+                nonce: 0,
             }))
             .with(BundleStep::Move(MoveTx {
                 signer: addr(2),

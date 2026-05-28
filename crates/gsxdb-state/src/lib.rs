@@ -77,10 +77,16 @@ impl Default for State {
 /// and signature verification; `gsxdb-state` trusts these unconditionally.
 #[derive(Debug, Clone)]
 pub enum StateChange {
-    /// Set the balance of `addr` to `to`. Replaces, does not add.
+    /// Set the balance of `addr` to `to`. Replaces the balance only;
+    /// the existing nonce is preserved.
     ///
-    /// Resets the nonce to zero — use [`StateChange::SetAccount`] to set
-    /// balance and nonce together.
+    /// Nonce preservation matters under the dual-VM stack: a Move-side
+    /// transfer (which has no concept of an EVM nonce) routes through
+    /// `Bridge::submit`, which emits `SetBalance` for both sides. If
+    /// `SetBalance` zeroed the nonce, any EVM nonce advance on those
+    /// accounts would silently revert, re-enabling replay of EVM txs.
+    /// Use [`StateChange::SetAccount`] to set balance and nonce together
+    /// (the real EVM executor's write-back path).
     SetBalance {
         /// Target address.
         addr: Address,
@@ -90,8 +96,9 @@ pub enum StateChange {
     /// Set both the balance and nonce of `addr`, replacing the whole slot.
     ///
     /// The real EVM executor uses this to write back a post-execution
-    /// account whose nonce advanced; `SetBalance` cannot express a nonce
-    /// change because it zeroes the nonce.
+    /// account whose nonce advanced. `SetBalance` preserves the existing
+    /// nonce instead of overwriting it, so when a write-back path needs
+    /// to assert a specific nonce it must use this variant.
     SetAccount {
         /// Target address.
         addr: Address,
@@ -158,7 +165,16 @@ impl State {
     pub fn apply(&mut self, _token: &BridgeToken, change: &StateChange) {
         match *change {
             StateChange::SetBalance { addr, to } => {
-                self.store.set(&addr, BalanceSlot::new(to.0));
+                // Preserve the existing nonce — the canonical balance
+                // slot is the single source of truth for both balance
+                // *and* nonce, but `SetBalance` only carries the balance.
+                // If we zeroed the nonce here, every Move-side or
+                // protocol-credit `SetBalance` would silently undo any
+                // EVM nonce advance on the same account and re-enable
+                // replay of the EVM tx that bumped it.
+                let existing_nonce = self.store.get(&addr).nonce();
+                self.store
+                    .set(&addr, BalanceSlot::with_nonce(to.0, existing_nonce));
             }
             StateChange::SetAccount {
                 addr,
@@ -223,6 +239,47 @@ mod tests {
         assert_eq!(
             slot.evm_balance().to_u128(),
             slot.move_coin_value().to_u128()
+        );
+    }
+
+    #[test]
+    fn set_balance_preserves_existing_nonce() {
+        // Codex P1 (lib.rs ~83): if an EVM tx advanced an account's
+        // nonce, a later Move-side or protocol-credit `SetBalance` on
+        // the same account must NOT zero the nonce — that would
+        // re-enable replay of the EVM tx that bumped it.
+        let mut state = State::default();
+        let token = BridgeToken::__for_bridge_only();
+        let addr = Address([9; 20]);
+
+        // Real EVM executor wrote back balance + nonce = 7 via SetAccount.
+        state.apply(
+            &token,
+            &StateChange::SetAccount {
+                addr,
+                balance: Balance(500),
+                nonce: 7,
+            },
+        );
+        assert_eq!(state.slot_of(&addr).nonce().value, 7);
+
+        // A subsequent balance-only mutation (e.g. a Move transfer
+        // crediting this account through the bridge) must leave the
+        // nonce untouched.
+        state.apply(
+            &token,
+            &StateChange::SetBalance {
+                addr,
+                to: Balance(900),
+            },
+        );
+
+        assert_eq!(state.balance_of(&addr), Balance(900));
+        assert_eq!(
+            state.slot_of(&addr).nonce().value,
+            7,
+            "SetBalance must preserve the existing account nonce so EVM \
+             replay defence remains intact under Move-side activity"
         );
     }
 

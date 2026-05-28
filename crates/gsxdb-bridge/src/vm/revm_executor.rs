@@ -82,8 +82,18 @@ impl RevmExecutor {
     /// the sender cannot cover the value) or it reverts/halts. State is
     /// untouched on error.
     pub fn execute(self, state: &mut State, tx: EvmTx) -> Result<(), EvmError> {
-        // The sender's current nonce — revm validates `tx.nonce == account.nonce`.
-        let sender_nonce = state.slot_of(&tx.from).nonce().value;
+        // Envelope-nonce validation is the EVM replay-defence boundary.
+        // The caller (signed tx envelope) asserts `tx.nonce`; revm
+        // accepts the transaction iff that equals the sender's current
+        // account nonce. We pre-check here so a replay/out-of-order tx
+        // surfaces as a typed `RejectReason::InvalidNonce` (instead of
+        // a generic revm error). revm still gets the envelope nonce
+        // below — the pre-check is defence in depth, and the executor
+        // never substitutes the state nonce for the caller's assertion.
+        let account_nonce = state.slot_of(&tx.from).nonce().value;
+        if tx.nonce != account_nonce {
+            return Err(EvmError::Revert(RejectReason::InvalidNonce));
+        }
 
         // Run revm over a read-only view, capturing the owned result + state
         // diff so the immutable borrow ends before we re-borrow mutably to
@@ -97,7 +107,7 @@ impl RevmExecutor {
                 .value(U256::from(tx.value))
                 .gas_limit(TRANSFER_GAS_LIMIT)
                 .gas_price(0)
-                .nonce(sender_nonce)
+                .nonce(tx.nonce)
                 .data(Bytes::new())
                 .build_fill();
             let out = evm
@@ -171,6 +181,7 @@ mod tests {
                     from: alice,
                     to: bob,
                     value: 30,
+                    nonce: 0,
                 },
             )
             .unwrap();
@@ -195,6 +206,7 @@ mod tests {
                     from: alice,
                     to: bob,
                     value: 30,
+                    nonce: 0,
                 },
             )
             .unwrap_err();
@@ -233,6 +245,7 @@ mod tests {
                     from: alice,
                     to: bob,
                     value: 10,
+                    nonce: 0,
                 },
             )
             .unwrap_err();
@@ -260,6 +273,7 @@ mod tests {
                     from: alice,
                     to: bob,
                     value: 30,
+                    nonce: 0,
                 },
             )
             .unwrap();
@@ -267,5 +281,114 @@ mod tests {
 
         assert_eq!(before, 100);
         assert_eq!(after, before, "real EVM transfer must not mint or burn");
+    }
+
+    /// Replaying the same EVM-transfer payload (same envelope nonce) is
+    /// rejected by the executor. Without this, an attacker could resubmit
+    /// a captured tx payload and have the sender re-debited because the
+    /// executor would silently substitute the freshly-bumped state nonce
+    /// for the caller's `nonce: 0` assertion. The envelope nonce is the
+    /// replay-defence boundary, so the second submission must surface
+    /// `RejectReason::InvalidNonce` and leave balances untouched.
+    #[test]
+    fn replayed_envelope_nonce_is_rejected() {
+        let alice = addr(1);
+        let bob = addr(2);
+        let mut state = seeded(alice, 100);
+
+        // First transfer with envelope nonce 0 succeeds and bumps Alice
+        // to nonce 1.
+        RevmExecutor
+            .execute(
+                &mut state,
+                EvmTx {
+                    from: alice,
+                    to: bob,
+                    value: 30,
+                    nonce: 0,
+                },
+            )
+            .unwrap();
+        assert_eq!(state.slot_of(&alice).nonce().value, 1);
+        let alice_after_first = state.balance_of(&alice);
+        let bob_after_first = state.balance_of(&bob);
+
+        // Replaying the exact same envelope (still nonce: 0) must reject:
+        // Alice's account nonce is now 1, so the envelope nonce 0 is
+        // stale and the executor rejects with InvalidNonce.
+        let err = RevmExecutor
+            .execute(
+                &mut state,
+                EvmTx {
+                    from: alice,
+                    to: bob,
+                    value: 30,
+                    nonce: 0,
+                },
+            )
+            .unwrap_err();
+        assert_eq!(err, EvmError::Revert(RejectReason::InvalidNonce));
+
+        // No second debit; replay was atomically rejected.
+        assert_eq!(state.balance_of(&alice), alice_after_first);
+        assert_eq!(state.balance_of(&bob), bob_after_first);
+        assert_eq!(state.slot_of(&alice).nonce().value, 1);
+    }
+
+    /// An envelope nonce higher than the sender's current account nonce
+    /// (gap nonce / future tx) is rejected. The executor does not accept
+    /// out-of-order transactions; the caller must submit in nonce order.
+    #[test]
+    fn envelope_nonce_higher_than_state_is_rejected() {
+        let alice = addr(1);
+        let bob = addr(2);
+        let mut state = seeded(alice, 100);
+
+        let err = RevmExecutor
+            .execute(
+                &mut state,
+                EvmTx {
+                    from: alice,
+                    to: bob,
+                    value: 30,
+                    nonce: 5, // Alice's state nonce is 0
+                },
+            )
+            .unwrap_err();
+
+        assert_eq!(err, EvmError::Revert(RejectReason::InvalidNonce));
+        assert_eq!(state.balance_of(&alice), Balance(100));
+        assert_eq!(state.balance_of(&bob), Balance(0));
+        assert_eq!(state.slot_of(&alice).nonce().value, 0);
+    }
+
+    /// Sequential transfers from the same sender advance through the
+    /// envelope nonce — caller submits 0, then 1, then 2 — and every
+    /// step succeeds. This is the positive-path counterpart to the
+    /// replay test: it proves the executor is not artificially blocking
+    /// in-order submissions, only out-of-order / replayed ones.
+    #[test]
+    fn sequential_envelope_nonces_advance_in_order() {
+        let alice = addr(1);
+        let bob = addr(2);
+        let mut state = seeded(alice, 100);
+
+        for n in 0u64..3 {
+            RevmExecutor
+                .execute(
+                    &mut state,
+                    EvmTx {
+                        from: alice,
+                        to: bob,
+                        value: 10,
+                        nonce: n,
+                    },
+                )
+                .unwrap_or_else(|e| panic!("nonce {n} should commit, got {e:?}"));
+        }
+
+        assert_eq!(state.balance_of(&alice), Balance(70));
+        assert_eq!(state.balance_of(&bob), Balance(30));
+        assert_eq!(state.slot_of(&alice).nonce().value, 3);
     }
 }

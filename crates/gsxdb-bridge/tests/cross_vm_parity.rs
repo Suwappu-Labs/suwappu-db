@@ -45,8 +45,18 @@ fn small_address() -> impl Strategy<Value = Address> {
 }
 
 fn evm_tx() -> impl Strategy<Value = Tx> {
-    (small_address(), small_address(), any::<u128>())
-        .prop_map(|(from, to, value)| Tx::Evm(EvmTx { from, to, value }))
+    (small_address(), small_address(), any::<u128>()).prop_map(|(from, to, value)| {
+        // MockEvm ignores `nonce`; the dual-projection invariant under
+        // the mock executors does not depend on envelope-nonce
+        // validation. `revm_move_parity` is the analogous gate that
+        // threads real envelope nonces through `RevmExecutor`.
+        Tx::Evm(EvmTx {
+            from,
+            to,
+            value,
+            nonce: 0,
+        })
+    })
 }
 
 fn move_tx() -> impl Strategy<Value = Tx> {
@@ -167,7 +177,10 @@ proptest! {
         let mut s_evm = seeded_state();
         let mut s_move = seeded_state();
 
-        let _ = MockEvm.execute(&mut s_evm, EvmTx { from, to, value: amount });
+        let _ = MockEvm.execute(
+            &mut s_evm,
+            EvmTx { from, to, value: amount, nonce: 0 },
+        );
         let _ = MockMove.execute(&mut s_move, MoveTx { signer: from, recipient: to, amount });
 
         for n in 0..ADDR_SPACE {

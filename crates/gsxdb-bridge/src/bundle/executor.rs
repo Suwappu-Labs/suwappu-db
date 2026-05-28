@@ -26,11 +26,13 @@
 use crate::bundle::types::{Bundle, BundleOutcome, BundleResult, BundleStep};
 use crate::{Bridge, Intent, RejectReason, TxOutcome};
 use gsxdb_state::{
-    Address, Balance, BridgeToken, CompiledModule, ModuleId, ModuleStore, MoveAddress,
-    MoveBalanceView, MoveCoinValue, MoveExecutor, MoveSessionState, ResourceWrite, State,
-    StateChange,
+    Address, Balance, BalanceSlot, BridgeToken, CompiledModule, ModuleId, ModuleStore, MoveAddress,
+    MoveBalanceView, MoveExecutor, MoveSessionState, ResourceWrite, State, StateChange,
 };
 use std::collections::HashMap;
+
+#[cfg(feature = "production-evm-executor")]
+use crate::vm::RevmExecutor;
 
 /// Atomic bundle executor. Stateless; one call = one bundle.
 #[derive(Debug, Default, Clone, Copy)]
@@ -57,30 +59,20 @@ impl BundleExecutor {
         // Pre-bundle snapshot: every address any step might touch.
         // We over-approximate: snapshot every address mentioned in
         // any step, regardless of whether that step ends up executing.
+        // Captures the full `BalanceSlot` (balance + nonce) so a revert
+        // restores both halves — under `production-evm-executor` an
+        // EVM step advances the sender's nonce, and the bundle's
+        // atomicity guarantee must cover that too.
         let snapshot = collect_snapshot(state, bundle);
 
         let mut step_outcomes = Vec::with_capacity(bundle.steps.len());
 
         for (idx, step) in bundle.steps.iter().enumerate() {
-            let intent = match step_to_intent(step) {
-                Some(intent) => intent,
-                None => {
-                    // MoveCall / DeployModule — caller chose the wrong
-                    // entry point. Revert and report.
-                    step_outcomes
-                        .push(TxOutcome::Rejected(RejectReason::MoveRuntimeRequired));
-                    restore_snapshot(state, &snapshot);
-                    return BundleResult {
-                        step_outcomes,
-                        outcome: BundleOutcome::Reverted { failed_step: idx },
-                    };
-                }
-            };
-            let mut bridge = Bridge::new(state);
-            match bridge.submit(intent) {
-                Ok(()) => step_outcomes.push(TxOutcome::Committed),
-                Err(reason) => {
-                    step_outcomes.push(TxOutcome::Rejected(reason.clone()));
+            let step_result = run_transfer_step(step, state);
+            match step_result {
+                StepResult::Committed => step_outcomes.push(TxOutcome::Committed),
+                StepResult::Rejected(reason) => {
+                    step_outcomes.push(TxOutcome::Rejected(reason));
                     restore_snapshot(state, &snapshot);
                     return BundleResult {
                         step_outcomes,
@@ -142,11 +134,10 @@ impl BundleExecutor {
 
         for (idx, step) in bundle.steps.iter().enumerate() {
             let outcome = match step {
-                BundleStep::Evm(_) | BundleStep::Move(_) => {
-                    let intent = step_to_intent(step).expect("transfer step has an intent");
-                    let mut bridge = Bridge::new(state);
-                    bridge.submit(intent)
-                }
+                BundleStep::Evm(_) | BundleStep::Move(_) => match run_transfer_step(step, state) {
+                    StepResult::Committed => Ok(()),
+                    StepResult::Rejected(reason) => Err(reason),
+                },
                 BundleStep::MoveCall(call) => {
                     let mut session = MoveSessionState::new(balance_view);
                     match move_executor.execute(call, module_store, &mut session) {
@@ -221,25 +212,69 @@ impl BundleExecutor {
     }
 }
 
-fn step_to_intent(step: &BundleStep) -> Option<Intent> {
+/// Outcome of running a single bundle step's transfer dispatch.
+///
+/// Kept private so the bundle executor can centralise its
+/// "real EVM under `production-evm-executor`, mock-via-bridge otherwise"
+/// choice without leaking the feature gate to callers.
+enum StepResult {
+    Committed,
+    Rejected(RejectReason),
+}
+
+/// Dispatch a transfer-shaped bundle step against `state`.
+///
+/// Under `production-evm-executor`, `BundleStep::Evm` runs through the
+/// real `RevmExecutor` — gas, envelope-nonce validation, and nonce
+/// advance all flow through revm and the bridge's `set_account`
+/// write-back. Without the feature, the legacy path lowers the step to
+/// `Intent::Transfer` and submits through the bridge so existing
+/// tests / parity gates / OCC paths keep working.
+///
+/// `BundleStep::Move` always goes through `Bridge::submit(Intent::Transfer)`
+/// — the real Move runtime path is handled by
+/// `execute_with_move_runtime` via `BundleStep::MoveCall`.
+///
+/// `MoveCall` / `DeployModule` are caller errors here (this is the
+/// transfer-only dispatch); we surface `MoveRuntimeRequired` so the
+/// outer executor reverts the bundle.
+fn run_transfer_step(step: &BundleStep, state: &mut State) -> StepResult {
     match step {
+        #[cfg(feature = "production-evm-executor")]
+        BundleStep::Evm(tx) => match RevmExecutor.execute(state, *tx) {
+            Ok(()) => StepResult::Committed,
+            Err(crate::vm::EvmError::Revert(reason)) => StepResult::Rejected(reason),
+        },
+        #[cfg(not(feature = "production-evm-executor"))]
         BundleStep::Evm(tx) => {
             let c = tx.to_canonical();
-            Some(Intent::Transfer {
+            let intent = Intent::Transfer {
                 from: c.from,
                 to: c.to,
                 amount: c.amount,
-            })
+            };
+            let mut bridge = Bridge::new(state);
+            match bridge.submit(intent) {
+                Ok(()) => StepResult::Committed,
+                Err(reason) => StepResult::Rejected(reason),
+            }
         }
         BundleStep::Move(tx) => {
             let c = tx.to_canonical();
-            Some(Intent::Transfer {
+            let intent = Intent::Transfer {
                 from: c.from,
                 to: c.to,
                 amount: c.amount,
-            })
+            };
+            let mut bridge = Bridge::new(state);
+            match bridge.submit(intent) {
+                Ok(()) => StepResult::Committed,
+                Err(reason) => StepResult::Rejected(reason),
+            }
         }
-        BundleStep::MoveCall(_) | BundleStep::DeployModule { .. } => None,
+        BundleStep::MoveCall(_) | BundleStep::DeployModule { .. } => {
+            StepResult::Rejected(RejectReason::MoveRuntimeRequired)
+        }
     }
 }
 
@@ -277,11 +312,11 @@ fn move_addr_to_evm(addr: &MoveAddress) -> Address {
     Address(out)
 }
 
-fn collect_snapshot(state: &State, bundle: &Bundle) -> HashMap<Address, Balance> {
+fn collect_snapshot(state: &State, bundle: &Bundle) -> HashMap<Address, BalanceSlot> {
     let mut snap = HashMap::new();
     for step in &bundle.steps {
         let mut record = |addr: Address| {
-            snap.entry(addr).or_insert_with(|| state.balance_of(&addr));
+            snap.entry(addr).or_insert_with(|| state.slot_of(&addr));
         };
         match step {
             BundleStep::Evm(tx) => {
@@ -315,14 +350,20 @@ fn collect_snapshot(state: &State, bundle: &Bundle) -> HashMap<Address, Balance>
     snap
 }
 
-fn restore_snapshot(state: &mut State, snap: &HashMap<Address, Balance>) {
+fn restore_snapshot(state: &mut State, snap: &HashMap<Address, BalanceSlot>) {
     let token = BridgeToken::__for_bridge_only();
-    for (addr, balance) in snap {
+    for (addr, slot) in snap {
+        // Restore the full slot via `SetAccount` so a revert undoes
+        // any nonce advance from an EVM step inside the bundle, not
+        // just the balance. Without this, a successful revm step
+        // followed by a failed Move step would leave the sender's
+        // nonce bumped even though the bundle reverted.
         state.apply(
             &token,
-            &StateChange::SetBalance {
+            &StateChange::SetAccount {
                 addr: *addr,
-                to: *balance,
+                balance: slot.as_balance(),
+                nonce: slot.nonce().value,
             },
         );
     }
@@ -369,6 +410,7 @@ mod tests {
             from: addr(0),
             to: addr(1),
             value: 100,
+            nonce: 0,
         }));
         let result = BundleExecutor.execute(&mut state, &bundle);
         assert!(result.is_committed());
@@ -400,6 +442,7 @@ mod tests {
                 from: addr(0),
                 to: addr(1),
                 value: 100,
+                nonce: 0,
             }))
             .with(BundleStep::Move(MoveTx {
                 signer: addr(1),
@@ -423,6 +466,7 @@ mod tests {
                 from: addr(0),
                 to: addr(1),
                 value: 100,
+                nonce: 0,
             }))
             .with(BundleStep::Move(MoveTx {
                 signer: addr(2),
@@ -433,6 +477,7 @@ mod tests {
                 from: addr(4),
                 to: addr(5),
                 value: 1,
+                nonce: 0,
             }));
         let result = BundleExecutor.execute(&mut state, &bundle);
 
@@ -458,6 +503,7 @@ mod tests {
             from: addr(0),
             to: addr(1),
             value: 5_000,
+            nonce: 0,
         }));
         let result = BundleExecutor.execute(&mut state, &bundle);
 
@@ -476,11 +522,13 @@ mod tests {
                 from: addr(0),
                 to: addr(1),
                 value: 100,
+                nonce: 0,
             }))
             .with(BundleStep::Evm(EvmTx {
                 from: addr(2),
                 to: addr(3),
                 value: 200,
+                nonce: 0,
             }))
             .with(BundleStep::Move(MoveTx {
                 signer: addr(4),
@@ -507,6 +555,7 @@ mod tests {
                 from: addr(0),
                 to: addr(1),
                 value: 50,
+                nonce: 0,
             }))
             .with(BundleStep::Move(MoveTx {
                 signer: addr(2),
@@ -638,6 +687,7 @@ mod tests {
                 from: addr(0),
                 to: addr(1),
                 value: 100,
+                nonce: 0,
             }));
         let mut modules = InMemoryModuleStore::new();
         let executor = MockMoveExecutor;
@@ -686,6 +736,7 @@ mod tests {
                 from: addr(0),
                 to: addr(1),
                 value: 5000, // fail
+                nonce: 0,
             }));
         let mut modules = InMemoryModuleStore::new();
         let executor = MockMoveExecutor;
@@ -727,6 +778,7 @@ mod tests {
                 from: addr(0),
                 to: addr(1),
                 value: 100,
+                nonce: 0,
             }))
             .with(BundleStep::MoveCall(transfer_call(
                 move_addr(0),
@@ -742,5 +794,145 @@ mod tests {
         // Step 1's writes reverted.
         assert_eq!(state.balance_of(&addr(0)), Balance(1000));
         assert_eq!(state.balance_of(&addr(1)), Balance(0));
+    }
+}
+
+/// Bundle-level tests that exercise the `production-evm-executor`
+/// dispatch path — `BundleStep::Evm` routes through `RevmExecutor`
+/// (real revm) instead of lowering to `Intent::Transfer`. These are
+/// the regression tests for Codex P2 (`vm/mod.rs ~19`): bundles must
+/// not silently bypass real EVM gas/nonce when the feature is on.
+#[cfg(all(test, feature = "production-evm-executor"))]
+mod revm_bundle_tests {
+    use super::*;
+    use gsxdb_state::{EvmTx, MoveTx};
+
+    fn addr(byte: u8) -> Address {
+        Address([byte; 20])
+    }
+
+    fn seeded_state() -> State {
+        let mut state = State::default();
+        let token = BridgeToken::__for_bridge_only();
+        for n in 0..8u8 {
+            state.apply(
+                &token,
+                &StateChange::SetBalance {
+                    addr: Address([n; 20]),
+                    to: Balance(1_000),
+                },
+            );
+        }
+        state
+    }
+
+    /// Under `production-evm-executor`, a single-step EVM bundle dispatches
+    /// through real revm. The sender's nonce advances (the legacy mock
+    /// path never bumped it), proving the bundle layer is actually
+    /// calling `RevmExecutor` instead of `Bridge::submit(Intent::Transfer)`.
+    #[test]
+    fn evm_bundle_step_routes_through_real_revm() {
+        let mut state = seeded_state();
+        let bundle = Bundle::single(BundleStep::Evm(EvmTx {
+            from: addr(0),
+            to: addr(1),
+            value: 100,
+            nonce: 0,
+        }));
+
+        let result = BundleExecutor.execute(&mut state, &bundle);
+
+        assert!(result.is_committed());
+        assert_eq!(state.balance_of(&addr(0)), Balance(900));
+        assert_eq!(state.balance_of(&addr(1)), Balance(1_100));
+        // Definitive marker that revm ran: the sender's nonce advanced.
+        assert_eq!(
+            state.slot_of(&addr(0)).nonce().value,
+            1,
+            "real revm must advance the sender's nonce when dispatched via the bundle path"
+        );
+    }
+
+    /// A bundle whose EVM step replays a stale envelope nonce is rejected
+    /// at that step and the whole bundle reverts. Without revm in the
+    /// bundle dispatch, this replay would silently succeed via
+    /// `Bridge::submit(Intent::Transfer)`.
+    #[test]
+    fn evm_bundle_step_rejects_replayed_nonce() {
+        let mut state = seeded_state();
+
+        // First bundle: nonce 0, succeeds, sender now at nonce 1.
+        BundleExecutor.execute(
+            &mut state,
+            &Bundle::single(BundleStep::Evm(EvmTx {
+                from: addr(0),
+                to: addr(1),
+                value: 100,
+                nonce: 0,
+            })),
+        );
+        assert_eq!(state.slot_of(&addr(0)).nonce().value, 1);
+
+        // Second bundle: replays nonce 0, must reject.
+        let result = BundleExecutor.execute(
+            &mut state,
+            &Bundle::single(BundleStep::Evm(EvmTx {
+                from: addr(0),
+                to: addr(1),
+                value: 50,
+                nonce: 0,
+            })),
+        );
+
+        assert_eq!(result.outcome, BundleOutcome::Reverted { failed_step: 0 });
+        assert!(matches!(
+            result.step_outcomes[0],
+            TxOutcome::Rejected(RejectReason::InvalidNonce)
+        ));
+        // Balances unchanged from after the first bundle.
+        assert_eq!(state.balance_of(&addr(0)), Balance(900));
+        assert_eq!(state.balance_of(&addr(1)), Balance(1_100));
+        // Nonce did not advance again.
+        assert_eq!(state.slot_of(&addr(0)).nonce().value, 1);
+    }
+
+    /// A mid-bundle revert restores the full slot — including any nonce
+    /// advance from a successful earlier EVM step. Without slot-aware
+    /// snapshots, a revert would leave the sender's nonce bumped even
+    /// though the bundle was rolled back, breaking the bundle's
+    /// atomicity guarantee under real revm.
+    #[test]
+    fn bundle_revert_restores_evm_nonce() {
+        let mut state = seeded_state();
+        let bundle = Bundle::new()
+            // Step 0: real-revm transfer succeeds, bumps Alice's nonce
+            // from 0 → 1.
+            .with(BundleStep::Evm(EvmTx {
+                from: addr(0),
+                to: addr(1),
+                value: 100,
+                nonce: 0,
+            }))
+            // Step 1: Move transfer fails (insufficient balance) →
+            // bundle reverts.
+            .with(BundleStep::Move(MoveTx {
+                signer: addr(2),
+                recipient: addr(3),
+                amount: 5_000,
+            }));
+
+        let result = BundleExecutor.execute(&mut state, &bundle);
+        assert_eq!(result.outcome, BundleOutcome::Reverted { failed_step: 1 });
+
+        // Atomic revert: every touched balance AND the EVM-bumped nonce
+        // are back to pre-bundle values.
+        for n in 0..8u8 {
+            assert_eq!(state.balance_of(&Address([n; 20])), Balance(1_000));
+        }
+        assert_eq!(
+            state.slot_of(&addr(0)).nonce().value,
+            0,
+            "bundle revert must roll back the sender's nonce advance from the EVM step"
+        );
     }
 }

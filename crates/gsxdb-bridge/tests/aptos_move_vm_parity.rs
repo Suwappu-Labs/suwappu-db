@@ -99,6 +99,7 @@ fn evm_tx() -> impl Strategy<Value = AptosTx> {
             from: Address([from; 20]),
             to: Address([to; 20]),
             value: u128::from(value),
+            nonce: 0,
         })
     })
 }

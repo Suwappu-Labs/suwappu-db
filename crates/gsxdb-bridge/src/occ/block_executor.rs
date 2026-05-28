@@ -16,16 +16,20 @@
 //!
 //! # Why we re-derive transfers from the MV writes at consolidation
 //!
-//! The MV store ends up with the post-block balance for each touched
-//! address. We could just write each `(addr, slot)` directly as a
-//! `StateChange::SetBalance`. That bypasses the bridge's intent-level
-//! validation, but at consolidation time the speculative execution has
-//! already done that validation per txn — the only role of the bridge
-//! call here is to go through the [`BridgeToken`] capability gate.
+//! The MV store ends up with the post-block `(balance, nonce)` for
+//! each touched address. We could just write each `(addr, slot)`
+//! directly. That bypasses the bridge's intent-level validation, but
+//! at consolidation time the speculative execution has already done
+//! that validation per txn — the only role of the bridge call here is
+//! to go through the [`BridgeToken`] capability gate.
 //!
 //! We use [`gsxdb_state::State::apply`] directly with a fresh token,
-//! one `SetBalance` per touched address. Phase-1 simplification; S5
-//! revisits when contract semantics matter.
+//! one `SetAccount` per touched address so the speculative-loop
+//! nonce writes survive consolidation. (`SetBalance` only carries the
+//! balance, and after the Codex-driven preservation fix it leaves the
+//! *prior state* nonce in place — that would silently drop any nonce
+//! the speculative loop committed.) Phase-1 simplification; full
+//! revm-driven OCC dispatch revisits when contract semantics matter.
 //!
 //! # Iteration cap
 //!
@@ -266,15 +270,22 @@ impl BlockExecutor {
         }
 
         // Consolidation: walk the MV store at highest version per
-        // address and apply through the bridge token.
+        // address and apply through the bridge token. Use `SetAccount`
+        // (full slot) so the MV-store-held nonce survives consolidation
+        // — `SetBalance` preserves the *prior state* nonce, which
+        // would silently drop any nonce the speculative loop wrote.
+        // When real revm dispatches into the OCC speculative path
+        // (follow-on integration), this is the path that lands its
+        // post-execution nonce on the canonical slot.
         let final_writes = mv.finalise();
         let token = BridgeToken::__for_bridge_only();
         for (addr, slot) in final_writes {
             state.apply(
                 &token,
-                &StateChange::SetBalance {
+                &StateChange::SetAccount {
                     addr,
-                    to: Balance(slot.canonical()),
+                    balance: Balance(slot.canonical()),
+                    nonce: slot.nonce().value,
                 },
             );
         }
@@ -374,16 +385,24 @@ fn execute_one(
             // overwrite the same address twice in different orders
             // depending on (from, to). The canonical resolution: a
             // self-transfer of amount X results in net zero change.
+            //
+            // Preserve the existing slot nonce on every write — Codex
+            // P1 (lib.rs ~83) calls out that balance-only writes must
+            // not zero the nonce. The OCC speculative writes share the
+            // same invariant: the per-tx speculative balance arithmetic
+            // doesn't model EVM gas or nonce semantics (real revm
+            // integration is a follow-on), but it must not destroy
+            // nonce state already on the slot.
             if from == to {
-                let new_value = BalanceSlot::new(from_balance);
+                let new_value = BalanceSlot::with_nonce(from_balance, from_slot.nonce());
                 mv.write(from, new_value, idx);
                 write_set.push(WriteEntry {
                     addr: from,
                     value: new_value,
                 });
             } else {
-                let new_from_slot = BalanceSlot::new(new_from);
-                let new_to_slot = BalanceSlot::new(new_to);
+                let new_from_slot = BalanceSlot::with_nonce(new_from, from_slot.nonce());
+                let new_to_slot = BalanceSlot::with_nonce(new_to, to_slot.nonce());
                 mv.write(from, new_from_slot, idx);
                 mv.write(to, new_to_slot, idx);
                 write_set.push(WriteEntry {
@@ -520,11 +539,17 @@ fn execute_call(
         let new_from = from_balance - amount;
 
         if from == to {
-            let v = BalanceSlot::new(from_balance);
+            let v = BalanceSlot::with_nonce(from_balance, from_slot.nonce());
             local.insert(from, v);
         } else {
-            let nf = BalanceSlot::new(new_from);
-            let nt = BalanceSlot::new(new_to);
+            // Preserve nonces on speculative writes — see the matching
+            // comment in `execute_one` above for the rationale.
+            // BundleStep::Evm under `production-evm-executor` ideally
+            // dispatches through real revm here (which would also
+            // advance the sender's nonce); that's tracked as the
+            // OCC-revm-integration follow-up.
+            let nf = BalanceSlot::with_nonce(new_from, from_slot.nonce());
+            let nt = BalanceSlot::with_nonce(new_to, to_slot.nonce());
             local.insert(from, nf);
             local.insert(to, nt);
         }
@@ -597,15 +622,16 @@ fn execute_transfer_into(
     let new_from = from_balance - amount;
 
     if from == to {
-        let v = BalanceSlot::new(from_balance);
+        let v = BalanceSlot::with_nonce(from_balance, from_slot.nonce());
         mv.write(from, v, idx);
         write_set.push(WriteEntry {
             addr: from,
             value: v,
         });
     } else {
-        let nf = BalanceSlot::new(new_from);
-        let nt = BalanceSlot::new(new_to);
+        // Preserve nonces on speculative writes — see `execute_one`.
+        let nf = BalanceSlot::with_nonce(new_from, from_slot.nonce());
+        let nt = BalanceSlot::with_nonce(new_to, to_slot.nonce());
         mv.write(from, nf, idx);
         mv.write(to, nt, idx);
         write_set.push(WriteEntry {
@@ -659,6 +685,67 @@ mod tests {
         assert_eq!(report.iterations, 0);
         assert_eq!(report.aborts, 0);
         assert_eq!(state.balance_of(&addr(0)), Balance(1_000));
+    }
+
+    /// Codex P1 (lib.rs ~83) regression at the OCC layer: a block of
+    /// transfers must not clobber the sender's or recipient's account
+    /// nonce. The OCC speculative writes are slot-typed (`BalanceSlot`
+    /// = balance + nonce); without explicit nonce preservation the
+    /// `BalanceSlot::new(...)` path would zero nonces, and the
+    /// consolidation step would write `SetBalance` losing any MV-store
+    /// nonce information regardless.
+    #[test]
+    fn block_consolidation_preserves_account_nonces() {
+        let mut state = State::default();
+        let token = BridgeToken::__for_bridge_only();
+        // Seed addr(0) with balance 1000 and nonce 7 (e.g. from a
+        // prior real-revm execution that bumped it), addr(1) with
+        // balance 500 and nonce 3.
+        state.apply(
+            &token,
+            &StateChange::SetAccount {
+                addr: addr(0),
+                balance: Balance(1_000),
+                nonce: 7,
+            },
+        );
+        state.apply(
+            &token,
+            &StateChange::SetAccount {
+                addr: addr(1),
+                balance: Balance(500),
+                nonce: 3,
+            },
+        );
+
+        // Run a block that debits addr(0) and credits addr(1).
+        let report = BlockExecutor.execute(
+            &mut state,
+            &[Intent::Transfer {
+                from: addr(0),
+                to: addr(1),
+                amount: 100,
+            }],
+        );
+        assert_eq!(report.outcomes, vec![TxOutcome::Committed]);
+
+        // Balances moved.
+        assert_eq!(state.balance_of(&addr(0)), Balance(900));
+        assert_eq!(state.balance_of(&addr(1)), Balance(600));
+        // Nonces survived consolidation. The OCC speculative loop
+        // mirrored the existing slot nonce into its MV writes, and
+        // consolidation used `SetAccount` to land the slot's full
+        // state. Pre-fix, both would read back as 0.
+        assert_eq!(
+            state.slot_of(&addr(0)).nonce().value,
+            7,
+            "sender's nonce must survive OCC consolidation"
+        );
+        assert_eq!(
+            state.slot_of(&addr(1)).nonce().value,
+            3,
+            "recipient's nonce must survive OCC consolidation"
+        );
     }
 
     #[test]
@@ -879,11 +966,13 @@ mod tests {
                     from: ctx.caller,
                     to: ctx.target,
                     value: ctx.value,
+                    nonce: 0,
                 }))
                 .with(BundleStep::Evm(EvmTx {
                     from: ctx.target,
                     to: recipient,
                     value: ctx.value,
+                    nonce: 0,
                 }))
         });
         registry.register(addr(7), gen);
@@ -918,6 +1007,7 @@ mod tests {
                     from: ctx.caller,
                     to: ctx.target,
                     value: 100,
+                    nonce: 0,
                 }))
                 .with(BundleStep::Move(MoveTx {
                     signer: ctx.target,
@@ -959,6 +1049,7 @@ mod tests {
                     from: ctx.caller,
                     to: ctx.target,
                     value: ctx.value,
+                    nonce: 0,
                 }))
                 .with(BundleStep::Move(MoveTx {
                     signer: ctx.target,

@@ -24,7 +24,11 @@
 //! # Encoding
 //!
 //! - **Keys** — raw 20-byte address (`Address::0`)
-//! - **Values** — canonical balance as 16-byte big-endian `u128`
+//! - **Values** — 24 bytes: canonical balance as 16-byte big-endian
+//!   `u128` followed by the account nonce as 8-byte big-endian `u64`.
+//!   Legacy 16-byte values (balance only, written before nonce
+//!   persistence) decode as nonce = 0 for forward compatibility with
+//!   existing on-disk databases.
 //!
 //! # Failure model
 //!
@@ -32,6 +36,7 @@
 //! impl satisfies it by panicking on redb errors with explicit messages.
 //! Real fault tolerance lands in S8 when the fallible trait variant arrives.
 
+use crate::nonce_semantics::AccountNonce;
 use crate::store::BalanceStore;
 use crate::{Address, BalanceSlot};
 use redb::{Database, ReadableTable, ReadableTableMetadata, TableDefinition};
@@ -59,7 +64,13 @@ pub const ALL_TABLES: &[TableDefinition<&[u8], &[u8]>] = &[
     TABLE_MOVE_RESOURCES,
 ];
 
-const VALUE_LEN: usize = 16; // u128 big-endian
+const BALANCE_LEN: usize = 16; // u128 big-endian
+const NONCE_LEN: usize = 8; // u64 big-endian
+const VALUE_LEN: usize = BALANCE_LEN + NONCE_LEN;
+/// Legacy (Phase-1) value length: balance only, no nonce. Decoded as
+/// `nonce = 0` so existing on-disk databases continue to work after the
+/// codec change.
+const LEGACY_VALUE_LEN: usize = BALANCE_LEN;
 
 /// `redb`-backed [`BalanceStore`].
 ///
@@ -104,19 +115,34 @@ impl RedbBalanceStore {
     }
 
     fn encode_value(slot: BalanceSlot) -> [u8; VALUE_LEN] {
-        slot.canonical().to_be_bytes()
+        let mut out = [0u8; VALUE_LEN];
+        out[..BALANCE_LEN].copy_from_slice(&slot.canonical().to_be_bytes());
+        out[BALANCE_LEN..].copy_from_slice(&slot.nonce().value.to_be_bytes());
+        out
     }
 
     fn decode_value(bytes: &[u8]) -> BalanceSlot {
-        assert_eq!(
-            bytes.len(),
-            VALUE_LEN,
-            "balance value: expected {VALUE_LEN} bytes, got {}",
-            bytes.len()
-        );
-        let mut buf = [0u8; VALUE_LEN];
-        buf.copy_from_slice(bytes);
-        BalanceSlot::new(u128::from_be_bytes(buf))
+        match bytes.len() {
+            VALUE_LEN => {
+                let mut balance_buf = [0u8; BALANCE_LEN];
+                balance_buf.copy_from_slice(&bytes[..BALANCE_LEN]);
+                let mut nonce_buf = [0u8; NONCE_LEN];
+                nonce_buf.copy_from_slice(&bytes[BALANCE_LEN..]);
+                BalanceSlot::with_nonce(
+                    u128::from_be_bytes(balance_buf),
+                    AccountNonce::new(u64::from_be_bytes(nonce_buf)),
+                )
+            }
+            LEGACY_VALUE_LEN => {
+                // Forward-compatible decode of pre-nonce on-disk values.
+                let mut buf = [0u8; LEGACY_VALUE_LEN];
+                buf.copy_from_slice(bytes);
+                BalanceSlot::new(u128::from_be_bytes(buf))
+            }
+            n => panic!(
+                "balance value: expected {VALUE_LEN} or {LEGACY_VALUE_LEN} bytes, got {n}",
+            ),
+        }
     }
 }
 
@@ -313,6 +339,63 @@ mod tests {
 
         let store = RedbBalanceStore::open(&path).unwrap();
         assert_eq!(store.get(&a), slot);
+    }
+
+    /// Codex P1 (lib.rs ~173): production-backed runs must round-trip the
+    /// canonical-slot nonce. The original codec serialised only `u128`
+    /// balance and reconstructed via `BalanceSlot::new(...)`, which
+    /// reset the nonce to 0 after every reopen — making every real EVM
+    /// execution against a redb-backed state silently replayable.
+    #[test]
+    fn nonce_round_trips_across_reopen() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("state.redb");
+        let a = addr(11);
+        let slot = BalanceSlot::with_nonce(987_654, AccountNonce::new(42));
+
+        {
+            let mut store = RedbBalanceStore::open(&path).unwrap();
+            store.set(&a, slot);
+        }
+
+        let store = RedbBalanceStore::open(&path).unwrap();
+        let got = store.get(&a);
+        assert_eq!(got.canonical(), 987_654);
+        assert_eq!(
+            got.nonce().value,
+            42,
+            "nonce must survive the redb encode → reopen → decode cycle"
+        );
+    }
+
+    /// Legacy 16-byte values written by the pre-nonce codec decode as
+    /// `nonce = 0`, so existing on-disk databases keep working after
+    /// the codec is extended. The first nonce-bearing write overwrites
+    /// the legacy row with the 24-byte format.
+    #[test]
+    fn legacy_balance_only_value_decodes_with_zero_nonce() {
+        use redb::Database;
+
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("state.redb");
+        let a = addr(13);
+
+        // Hand-write a 16-byte legacy value to bypass the new codec.
+        {
+            let db = Database::create(&path).unwrap();
+            let txn = db.begin_write().unwrap();
+            {
+                let mut t = txn.open_table(TABLE_STATE).unwrap();
+                t.insert(a.0.as_slice(), 12345u128.to_be_bytes().as_slice())
+                    .unwrap();
+            }
+            txn.commit().unwrap();
+        }
+
+        let store = RedbBalanceStore::open(&path).unwrap();
+        let slot = store.get(&a);
+        assert_eq!(slot.canonical(), 12345);
+        assert_eq!(slot.nonce().value, 0);
     }
 
     #[test]

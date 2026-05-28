@@ -152,6 +152,7 @@ mod tests {
                     from: ctx.target,
                     to: recipient,
                     value: ctx.value,
+                    nonce: 0,
                 }))
             } else {
                 Bundle::new()
@@ -184,6 +185,7 @@ mod tests {
                 from: addr(1),
                 to: addr(2),
                 value: 1,
+                nonce: 0,
             }))
         });
 

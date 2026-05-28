@@ -30,6 +30,7 @@ use gsxdb_state::{
     State, StateChange,
 };
 use proptest::prelude::*;
+use std::collections::HashMap;
 
 /// Restrict the address space so transactions overlap and touch the same
 /// accounts often, instead of every tx hitting a fresh (trivially-equal)
@@ -54,8 +55,19 @@ fn small_address() -> impl Strategy<Value = Address> {
 }
 
 fn evm_tx() -> impl Strategy<Value = Tx> {
-    (small_address(), small_address(), 0u128..MAX_VALUE)
-        .prop_map(|(from, to, value)| Tx::Evm(EvmTx { from, to, value }))
+    (small_address(), small_address(), 0u128..MAX_VALUE).prop_map(|(from, to, value)| {
+        // The `nonce` field is overwritten in the test body to track
+        // per-sender envelope nonces — real revm validates `tx.nonce ==
+        // account.nonce` and would reject every tx after the first
+        // from any given sender otherwise. The strategy only supplies
+        // a placeholder.
+        Tx::Evm(EvmTx {
+            from,
+            to,
+            value,
+            nonce: 0,
+        })
+    })
 }
 
 fn move_tx() -> impl Strategy<Value = Tx> {
@@ -87,12 +99,28 @@ fn seeded_state() -> State {
     state
 }
 
-fn execute(state: &mut State, tx: Tx) {
+/// Dispatch a single tx, threading the per-sender envelope nonce for
+/// real-revm EVM steps. Move steps are untouched (Move has its own
+/// sequence-number semantics on the Move-projection side).
+///
+/// Real revm rejects any EVM tx whose envelope nonce is not equal to
+/// the sender's current state nonce. The proptest can't tell the
+/// strategy what nonce to use (the nonce depends on prior executions
+/// against this same state), so we maintain a tracker here. After a
+/// successful EVM tx, the sender's tracker bumps by 1; the underlying
+/// state nonce also advances and the next iteration will use the
+/// matching envelope nonce.
+fn execute(state: &mut State, tx: Tx, evm_nonces: &mut HashMap<Address, u64>) {
     match tx {
-        // Errors (insufficient balance) revert with no state change — ignore
-        // them, exactly as the mock-based gate does.
-        Tx::Evm(t) => {
-            let _ = RevmExecutor.execute(state, t);
+        // Errors (insufficient balance, invalid nonce, etc.) revert with
+        // no state change — ignore them, exactly as the mock-based gate
+        // does. The dual-projection invariant must still hold on the
+        // rejected-state path.
+        Tx::Evm(mut t) => {
+            t.nonce = *evm_nonces.entry(t.from).or_insert(0);
+            if RevmExecutor.execute(state, t).is_ok() {
+                *evm_nonces.get_mut(&t.from).expect("inserted above") += 1;
+            }
         }
         Tx::Move(t) => {
             let _ = MockMove.execute(state, t);
@@ -128,9 +156,10 @@ proptest! {
         ops in prop::collection::vec(mixed_tx(), 0..24),
     ) {
         let mut state = seeded_state();
+        let mut evm_nonces: HashMap<Address, u64> = HashMap::new();
         assert_dual_projection(&state);
         for op in ops {
-            execute(&mut state, op);
+            execute(&mut state, op, &mut evm_nonces);
             assert_dual_projection(&state);
         }
     }
@@ -143,8 +172,9 @@ proptest! {
         ops in prop::collection::vec(evm_tx(), 0..24),
     ) {
         let mut state = seeded_state();
+        let mut evm_nonces: HashMap<Address, u64> = HashMap::new();
         for op in ops {
-            execute(&mut state, op);
+            execute(&mut state, op, &mut evm_nonces);
             assert_dual_projection(&state);
         }
     }

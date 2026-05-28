@@ -139,6 +139,7 @@ mod tests {
                     from: alice,
                     to: bob,
                     value: 30,
+                    nonce: 0,
                 },
             )
             .unwrap();
@@ -181,6 +182,7 @@ mod tests {
                     from: alice,
                     to: bob,
                     value: 30,
+                    nonce: 0,
                 },
             )
             .unwrap_err();
@@ -227,6 +229,7 @@ mod tests {
                     from: alice,
                     to: bob,
                     value: 25,
+                    nonce: 0,
                 },
             )
             .unwrap();

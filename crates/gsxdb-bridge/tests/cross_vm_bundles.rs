@@ -14,6 +14,18 @@
 //!   PROPTEST_CASES=10000 cargo test --release --test cross_vm_bundles \
 //!       bundle_atomicity
 //! ```
+//!
+//! This proptest exercises the *mock-path* bundle dispatch, which
+//! ignores envelope nonces. Under `production-evm-executor` the
+//! bundle path dispatches through `RevmExecutor` and would reject
+//! every post-first EVM tx from any sender with `InvalidNonce`
+//! (degenerate runs that pass atomicity trivially), so the test is
+//! compiled out under that feature. The unit tests in
+//! `bundle::executor::revm_bundle_tests` (in the gsxdb-bridge lib)
+//! cover real-revm bundle dispatch end-to-end, and `revm_move_parity`
+//! threads per-sender nonces for the cross-VM real-revm exit gate.
+
+#![cfg(not(feature = "production-evm-executor"))]
 
 use gsxdb_bridge::{Bundle, BundleExecutor, BundleStep, RejectReason, TxOutcome};
 use gsxdb_state::{
@@ -30,8 +42,24 @@ fn small_address() -> impl Strategy<Value = Address> {
 }
 
 fn evm_step() -> impl Strategy<Value = BundleStep> {
-    (small_address(), small_address(), 0u128..(SEED_BALANCE * 4))
-        .prop_map(|(from, to, value)| BundleStep::Evm(EvmTx { from, to, value }))
+    (small_address(), small_address(), 0u128..(SEED_BALANCE * 4)).prop_map(
+        |(from, to, value)| {
+            // Without `production-evm-executor`, the bundle path lowers
+            // `BundleStep::Evm` to `Intent::Transfer` and the bridge
+            // ignores envelope nonce. With the feature on, the bundle
+            // dispatches through `RevmExecutor` and real envelope
+            // nonces would matter; this proptest runs against the
+            // mock-path bundle dispatch by design, so a placeholder
+            // nonce is correct here. `revm_move_parity` is the
+            // real-revm exit gate.
+            BundleStep::Evm(EvmTx {
+                from,
+                to,
+                value,
+                nonce: 0,
+            })
+        },
+    )
 }
 
 fn move_step() -> impl Strategy<Value = BundleStep> {
@@ -210,6 +238,7 @@ proptest! {
             from,
             to,
             value: invalid_amount,
+            nonce: 0,
         }));
         let mut state = seeded_state();
         let pre = snapshot(&state);
