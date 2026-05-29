@@ -41,7 +41,15 @@ const COST_CALL: u64 = 8; // function calls
 const COST_GLOBAL: u64 = 10; // borrow_global / exists / move_from / move_to
 const COST_DEPENDENCY: u64 = 10; // module dependency load
 const COST_NATIVE: u64 = 50; // native function dispatch
-const COST_LOAD_RESOURCE: u64 = 100; // resource load from storage
+const COST_LOAD_RESOURCE: u64 = 100; // resource load from storage (base)
+
+// Size-proportional surcharges (per KiB, rounded up) layered on top of the
+// flat base costs above. A flat fee lets a transaction load or allocate large
+// blobs for a constant price — a resource-size DoS gap (ambarish + Codex
+// review on #25). These bound VM work by data size.
+const COST_PER_KIB_HEAP: u64 = 1; // native-context heap memory
+const COST_PER_KIB_RESOURCE: u64 = 5; // resource load from storage
+const COST_PER_KIB_CONST: u64 = 1; // LdConst payload
 
 /// A [`GasMeter`] that bounds total VM work against a fixed budget.
 #[derive(Debug, Clone)]
@@ -74,6 +82,15 @@ impl BoundedGasMeter {
                 Err(PartialVMError::new(StatusCode::OUT_OF_GAS))
             }
         }
+    }
+
+    /// Charge proportional to `bytes` (rounded up to whole KiB) at
+    /// `per_kib_cost`, never below `floor`. Closes the size-based DoS gaps a
+    /// flat per-op fee leaves open (heap / resource / const loads).
+    fn charge_bytes(&mut self, bytes: u64, per_kib_cost: u64, floor: u64) -> PartialVMResult<()> {
+        let kib = bytes.saturating_add(1023) / 1024;
+        let cost = kib.saturating_mul(per_kib_cost).max(floor);
+        self.charge(cost)
     }
 }
 
@@ -108,8 +125,10 @@ impl NativeGasMeter for BoundedGasMeter {
         self.charge(u64::from(amount))
     }
 
-    fn use_heap_memory_in_native_context(&mut self, _amount: u64) -> PartialVMResult<()> {
-        self.charge(COST_BASE)
+    fn use_heap_memory_in_native_context(&mut self, amount: u64) -> PartialVMResult<()> {
+        // Proportional to heap requested: a native that accounts for large
+        // memory must pay for it (was a flat COST_BASE — DoS gap, #25 review).
+        self.charge_bytes(amount, COST_PER_KIB_HEAP, COST_BASE)
     }
 }
 
@@ -159,8 +178,9 @@ impl GasMeter for BoundedGasMeter {
         self.charge(COST_CALL)
     }
 
-    fn charge_ld_const(&mut self, _size: NumBytes) -> PartialVMResult<()> {
-        self.charge(COST_BASE)
+    fn charge_ld_const(&mut self, size: NumBytes) -> PartialVMResult<()> {
+        // Loading a large constant costs more than a tiny one (#25 review).
+        self.charge_bytes(u64::from(size), COST_PER_KIB_CONST, COST_BASE)
     }
 
     fn charge_ld_const_after_deserialization(
@@ -266,9 +286,12 @@ impl GasMeter for BoundedGasMeter {
 
     fn charge_vec_pack(
         &mut self,
-        _args: impl ExactSizeIterator<Item = impl ValueView>,
+        args: impl ExactSizeIterator<Item = impl ValueView>,
     ) -> PartialVMResult<()> {
-        self.charge(COST_AGGREGATE)
+        // Proportional to element count: packing a large vector is more work
+        // than a small one (was flat COST_AGGREGATE — #25 review).
+        let cost = COST_AGGREGATE.saturating_add((args.len() as u64).saturating_mul(COST_BASE));
+        self.charge(cost)
     }
 
     fn charge_vec_len(&mut self) -> PartialVMResult<()> {
@@ -304,9 +327,12 @@ impl GasMeter for BoundedGasMeter {
         _addr: AccountAddress,
         _ty: impl TypeView,
         _val: Option<impl ValueView>,
-        _bytes_loaded: NumBytes,
+        bytes_loaded: NumBytes,
     ) -> PartialVMResult<()> {
-        self.charge(COST_LOAD_RESOURCE)
+        // Base load cost + per-KiB surcharge: a large resource load is more
+        // expensive than a small one (was flat COST_LOAD_RESOURCE — #25 review).
+        let kib = u64::from(bytes_loaded).saturating_add(1023) / 1024;
+        self.charge(COST_LOAD_RESOURCE.saturating_add(kib.saturating_mul(COST_PER_KIB_RESOURCE)))
     }
 
     fn charge_native_function(
