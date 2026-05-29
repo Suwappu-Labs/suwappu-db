@@ -67,18 +67,20 @@ pub struct State {
     /// creation, read by the EVM executor's `Database` adapter. EVM-only
     /// (the Move VM has no code).
     ///
-    /// NOT YET committed in the state root — folding EVM code + storage
-    /// into the verkle root is the consensus-critical follow-on; until
-    /// then this backs contract *execution* but is not consensus-safe.
+    /// Committed in the consensus state root (IQ-10): [`Self::evm_state_root`]
+    /// is a deterministic commitment over code + storage + account-code that
+    /// [`Self::state_root`] folds in, so contract state is consensus-safe — a
+    /// change here moves the root, and two states with different contract
+    /// state cannot share a root.
     evm_code: std::collections::HashMap<[u8; 32], Vec<u8>>,
     /// EVM contract storage: `(address, 32-byte slot) -> 32-byte value`.
-    /// EVM-only. Same state-root caveat as [`Self::evm_code`].
+    /// EVM-only. Committed in the state root via [`Self::evm_state_root`].
     evm_storage: std::collections::HashMap<(Address, [u8; 32]), [u8; 32]>,
     /// Which contract code each account runs: `address -> code_hash`.
     /// Empty for externally-owned accounts. Lets the EVM `Database` adapter
     /// tell a contract from an EOA without polluting the dual-projection
-    /// `BalanceSlot` with a code hash. Same state-root caveat as
-    /// [`Self::evm_code`].
+    /// `BalanceSlot` with a code hash. Committed in the state root via
+    /// [`Self::evm_state_root`].
     evm_account_code: std::collections::HashMap<Address, [u8; 32]>,
 }
 

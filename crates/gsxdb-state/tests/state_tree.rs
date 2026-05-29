@@ -75,6 +75,65 @@ fn apply_op(state: &mut State, token: &BridgeToken, op: &Op) {
     }
 }
 
+/// IQ-10 (ambarish review on #28): EVM contract code + storage are
+/// committed in the consensus `state_root`, so:
+///   (a) writing contract storage CHANGES the published root,
+///   (b) re-executing the same writes (block replay) reproduces the exact
+///       root validators co-sign, and
+///   (c) two states differing only in EVM storage have DIFFERENT roots.
+/// (c) is the consensus-break guard ambarish flagged: two nodes cannot
+/// diverge on contract storage yet agree on the same published root.
+#[test]
+fn evm_code_and_storage_are_committed_in_state_root_and_replay_matches() {
+    let token = BridgeToken::__for_bridge_only();
+    let a = Address([7u8; 20]);
+    let slot = [1u8; 32];
+
+    // Baseline: balance only, no contract state.
+    let mut base = State::default();
+    apply_op(&mut base, &token, &Op::Balance(a, 100));
+    let root_base = base.state_root();
+
+    // Same balance + a deployed contract that writes a storage slot.
+    let writes = |s: &mut State| {
+        apply_op(s, &token, &Op::Balance(a, 100));
+        apply_op(s, &token, &Op::Code(a, 5));
+        apply_op(s, &token, &Op::Storage(a, slot, [9u8; 32]));
+    };
+    let mut s1 = State::default();
+    writes(&mut s1);
+    let root1 = s1.state_root();
+
+    // (a) contract code + storage must move the published root.
+    assert_ne!(
+        root1, root_base,
+        "contract code + storage did not change the state root (EVM state not committed)"
+    );
+
+    // (b) block replay: the same writes on a fresh state reproduce the
+    //     exact root — a non-deterministic root (e.g. HashMap iteration
+    //     order) would fail here.
+    let mut replay = State::default();
+    writes(&mut replay);
+    assert_eq!(
+        replay.state_root(),
+        root1,
+        "replayed root != original — state_root is not a deterministic function of EVM state"
+    );
+
+    // (c) differ by a single storage byte → different root. Rules out the
+    //     "different storage, same root" consensus break.
+    let mut s2 = State::default();
+    apply_op(&mut s2, &token, &Op::Balance(a, 100));
+    apply_op(&mut s2, &token, &Op::Code(a, 5));
+    apply_op(&mut s2, &token, &Op::Storage(a, slot, [8u8; 32]));
+    assert_ne!(
+        s2.state_root(),
+        root1,
+        "different EVM storage produced the same state root — consensus break"
+    );
+}
+
 proptest! {
     #![proptest_config(ProptestConfig {
         cases: 256,
