@@ -162,6 +162,17 @@ jobs:
           url."https://x-access-token:${{ secrets.GSX_REVM_TOKEN }}@github.com/GlobalSettlementNetwork/gsx-revm".insteadOf
           "https://github.com/GlobalSettlementNetwork/gsx-revm"
 
+      - name: Check GSX_REVM_TOKEN reaches the job (length only — no value leaked)
+        env:
+          TOK: ${{ secrets.GSX_REVM_TOKEN }}
+        run: |
+          if [ -z "$TOK" ]; then
+            echo "::error::GSX_REVM_TOKEN is EMPTY/unset in this job. Add it as a gsx-db repo secret (a PAT with Contents:Read on GlobalSettlementNetwork/gsx-revm)."
+            exit 1
+          fi
+          echo "GSX_REVM_TOKEN present (length ${#TOK})."
+          echo "If the gsx-revm fetch still 404s below, the token IS set but lacks read access / org approval to gsx-revm."
+
       - name: test gsxdb-bridge (production-evm-executor)
         run: cargo test -p gsxdb-bridge --features production-evm-executor --lib --test revm_move_parity
 
