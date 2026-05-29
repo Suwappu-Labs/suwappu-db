@@ -19,4 +19,10 @@ ignore = [
     # fxhash is unmaintained; pulled transitively via Aptos
     # move-vm-runtime. Hot-path non-cryptographic hash.
     "RUSTSEC-2025-0057",
+    # tracing-subscriber 0.2.x (ANSI log-poisoning, low-sev); pulled deep
+    # via ark-relations -> ark-r1cs-std -> ark-bn254 -> revm-precompile ->
+    # revm -> gsx-revm (production-evm-executor only). gsx-db never logs
+    # untrusted bytes through it; not directly bumpable (arkworks dep).
+    # Drops when arkworks upgrades to tracing-subscriber >=0.3.20.
+    "RUSTSEC-2025-0055",
 ]

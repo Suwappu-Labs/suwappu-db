@@ -11,6 +11,9 @@ on:
 
 env:
   RUST_BACKTRACE: 1
+  # See ci.yml: fetch git deps via the git CLI so the GSX_REVM_TOKEN
+  # credential (url.insteadOf) is honored for the private gsx-revm dep.
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
 
 jobs:
   clippy-strict:
@@ -25,6 +28,12 @@ jobs:
           components: clippy
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Authenticate to private gsx-revm dependency
+        run: >
+          git config --global
+          url."https://x-access-token:${{ secrets.GSX_REVM_TOKEN }}@github.com/GlobalSettlementNetwork/gsx-revm".insteadOf
+          "https://github.com/GlobalSettlementNetwork/gsx-revm"
 
       # Workspace lints already declare `clippy::all = deny`; this CI
       # job promotes any remaining warning to an error so PRs can't

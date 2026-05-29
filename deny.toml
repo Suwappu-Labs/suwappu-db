@@ -28,6 +28,14 @@ ignore = [
     # interpreter's hot path. Aptos can swap to rustc-hash but hasn't.
     # Will drop once Aptos migrates upstream.
     "RUSTSEC-2025-0057",
+    # tracing-subscriber 0.2.x — ANSI escape-sequence log poisoning,
+    # low severity. Pulled deep via ark-relations -> ark-r1cs-std ->
+    # ark-bn254 -> revm-precompile -> revm -> gsx-revm, and only under
+    # the `production-evm-executor` feature. gsx-db does not depend on
+    # tracing-subscriber 0.2.x directly and never routes untrusted input
+    # through it. Not directly bumpable (transitive arkworks dep). Drops
+    # when arkworks upgrades to tracing-subscriber >=0.3.20.
+    "RUSTSEC-2025-0055",
 ]
 
 [licenses]
@@ -98,4 +106,10 @@ allow-git = [
     # multipoint). Not on crates.io. Pinned by rev in gsxdb-state's
     # Cargo.toml. Pulled in only with `production-verkle`.
     "https://github.com/crate-crypto/rust-verkle",
+    # EVM: GlobalSettlementNetwork/gsx-revm — the org's monad-revm fork
+    # (revm 34 + Monad MONAD_NINE spec + 0x1000 staking precompile) that
+    # backs the real EVM executor. Private repo, not on crates.io; CI
+    # authenticates via the GSX_REVM_TOKEN credential step. Pulled in
+    # only with `production-evm-executor`.
+    "https://github.com/GlobalSettlementNetwork/gsx-revm",
 ]

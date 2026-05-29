@@ -8,6 +8,12 @@ on:
 
 env:
   RUST_BACKTRACE: 1
+  # Force cargo to fetch git dependencies through the git CLI so the
+  # credential injected by the "Authenticate to private gsx-revm
+  # dependency" step (url.insteadOf with GSX_REVM_TOKEN) is honored.
+  # gsx-revm is a private repo; without this, every cargo job fails at
+  # dependency-resolution time even when the feature that pulls it is off.
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
 
 jobs:
   test:
@@ -21,6 +27,12 @@ jobs:
           toolchain: 1.88
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Authenticate to private gsx-revm dependency
+        run: >
+          git config --global
+          url."https://x-access-token:${{ secrets.GSX_REVM_TOKEN }}@github.com/GlobalSettlementNetwork/gsx-revm".insteadOf
+          "https://github.com/GlobalSettlementNetwork/gsx-revm"
 
       - name: Run tests
         run: cargo test --workspace
@@ -41,6 +53,12 @@ jobs:
           toolchain: 1.88
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Authenticate to private gsx-revm dependency
+        run: >
+          git config --global
+          url."https://x-access-token:${{ secrets.GSX_REVM_TOKEN }}@github.com/GlobalSettlementNetwork/gsx-revm".insteadOf
+          "https://github.com/GlobalSettlementNetwork/gsx-revm"
 
       - name: Run property tests
         run: cargo test --workspace --release
@@ -69,12 +87,30 @@ jobs:
   deny:
     name: Cargo Deny
     runs-on: ubuntu-latest
+    # Runs cargo-deny natively (not the containerized action) so the
+    # git credential for the private gsx-revm dependency, injected on the
+    # host runner below, is available to `cargo metadata`. The action
+    # runs in its own container where the host git-config isn't visible.
     steps:
       - uses: actions/checkout@v4
 
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          log-level: warn
+          toolchain: 1.88
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Authenticate to private gsx-revm dependency
+        run: >
+          git config --global
+          url."https://x-access-token:${{ secrets.GSX_REVM_TOKEN }}@github.com/GlobalSettlementNetwork/gsx-revm".insteadOf
+          "https://github.com/GlobalSettlementNetwork/gsx-revm"
+
+      - name: Install cargo-deny
+        run: cargo install --locked cargo-deny
+
+      - name: cargo deny check
+        run: cargo deny check
 
   revm-executor:
     name: revm EVM executor (production-evm-executor)
@@ -91,6 +127,12 @@ jobs:
           toolchain: 1.88
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Authenticate to private gsx-revm dependency
+        run: >
+          git config --global
+          url."https://x-access-token:${{ secrets.GSX_REVM_TOKEN }}@github.com/GlobalSettlementNetwork/gsx-revm".insteadOf
+          "https://github.com/GlobalSettlementNetwork/gsx-revm"
 
       - name: test gsxdb-bridge (production-evm-executor)
         run: cargo test -p gsxdb-bridge --features production-evm-executor --lib --test revm_move_parity
