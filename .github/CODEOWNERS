@@ -1,42 +1,60 @@
-# CODEOWNERS — auto-requests review from listed maintainers on PRs
-# touching the paths below. Human-readable version of this map lives
-# in MAINTAINERS.md.
+# CODEOWNERS — Tier-1 / Tier-2 review model.
 #
-# Syntax: <path-pattern>  <@handle> [<@handle> ...]
-# Later rules override earlier ones for the same path.
+# Goal: concentrate the scarce non-author approver on the small set of
+# CONSENSUS-CRITICAL paths where a bad merge is unrecoverable, and let
+# everything else clear on CI + Codex + a single LGTM. This keeps the
+# reviewer off the critical path of docs / tooling / devnet / EVM-glue.
+#
+# This file only GATES merges when the `main` ruleset sets
+# `require_code_owner_review: true`. Until then it is advisory
+# (auto-requests review). Flipping that on is the governance step that
+# makes Tier-1 below mandatory.
+#
+# Syntax: <path-pattern>  <@handle> [<@handle> ...]; either listed owner
+# satisfies the rule. Both maintainers are listed on every Tier-1 path so
+# the *other* one is always an eligible non-author reviewer (the branch
+# ruleset forbids self-approval), and so neither maintainer's own Tier-1
+# PR deadlocks. Later rules override earlier ones for the same path.
+#
+# NOTE: there is intentionally NO `*` catch-all. Paths not listed here
+# have no code owner and therefore do NOT require code-owner review —
+# that is the Tier-2 velocity path (CI + Codex + one approval).
 
-# Default owner for everything.
-*                                                @tomagsx
+# === Tier-1: consensus / crypto / parity / recovery — REQUIRED owner ===
+
+# State-tree commitment (state root) + DAG soundness + snapshot/recovery.
+/crates/gsxdb-state/src/tree/                    @SteveMieskoski @tomagsx
+/crates/gsxdb-state/src/dag.rs                   @SteveMieskoski @tomagsx
+/crates/gsxdb-state/src/snapshot.rs              @SteveMieskoski @tomagsx
+/crates/gsxdb-bridge/src/recovery/               @SteveMieskoski @tomagsx
 
 # Lane separation — the type-system invariant gate.
-/scripts/check-lane-separation.sh                @tomagsx
-/deny.toml                                       @tomagsx
-/crates/gsxdb-lane/                              @tomagsx
-/crates/gsxdb-bridge/                            @tomagsx
+/scripts/check-lane-separation.sh                @SteveMieskoski @tomagsx
+/deny.toml                                       @SteveMieskoski @tomagsx
+/crates/gsxdb-lane/                              @SteveMieskoski @tomagsx
 
 # Cryptography surfaces — Verkle, signatures, key custody.
-/crates/gsxdb-state/src/tree/                    @tomagsx
-/crates/gsxdb-bridge/src/anchor/credential.rs    @tomagsx
-/crates/gsxdb-bridge/src/anchor/signing.rs       @tomagsx
-/docs/spec/key-custody.md                        @tomagsx
+/crates/gsxdb-bridge/src/anchor/credential.rs    @SteveMieskoski @tomagsx
+/crates/gsxdb-bridge/src/anchor/signing.rs       @SteveMieskoski @tomagsx
+/docs/spec/key-custody.md                        @SteveMieskoski @tomagsx
 
 # Anchor parity — Rust ↔ Solidity cross-impl boundary.
-/crates/gsxdb-bridge/src/anchor/                 @tomagsx
-/contracts/                                      @tomagsx
-/docs/iq/IQ-7-anchor-parity.md                   @tomagsx
+/crates/gsxdb-bridge/src/anchor/                 @SteveMieskoski @tomagsx
+/contracts/                                      @SteveMieskoski @tomagsx
+/docs/iq/IQ-7-anchor-parity.md                   @SteveMieskoski @tomagsx
 
-# Recovery + DAG soundness.
-/crates/gsxdb-bridge/src/recovery/               @tomagsx
-/crates/gsxdb-state/src/dag.rs                   @tomagsx
-/crates/gsxdb-state/src/snapshot.rs              @tomagsx
+# Security policy + audit ledgers.
+/SECURITY.md                                     @SteveMieskoski @tomagsx
+/docs/audit/                                     @SteveMieskoski @tomagsx
 
-# Security policy + audit ledgers — maintainer-only.
-/SECURITY.md                                     @tomagsx
-/docs/audit/                                     @tomagsx
+# Repo policy + CI/governance — changes to the rules themselves.
+/.github/                                        @SteveMieskoski @tomagsx
+/CONTRIBUTING.md                                 @SteveMieskoski @tomagsx
+/GOVERNANCE.md                                   @SteveMieskoski @tomagsx
+/MAINTAINERS.md                                  @SteveMieskoski @tomagsx
+/CODEOWNERS                                      @SteveMieskoski @tomagsx
 
-# CI workflows + repo policy.
-/.github/                                        @tomagsx
-/CONTRIBUTING.md                                 @tomagsx
-/GOVERNANCE.md                                   @tomagsx
-/MAINTAINERS.md                                  @tomagsx
-/CODEOWNERS                                      @tomagsx
+# === Tier-2 (everything else): no code owner → CI + Codex + 1 LGTM. ===
+# e.g. the bulk of gsxdb-bridge execution glue, gsxdb-server, gsxdb-types,
+# examples, non-spec docs. Deliberately not listed so they don't queue
+# behind a Tier-1 reviewer. A bad merge here is cheap to revert.
