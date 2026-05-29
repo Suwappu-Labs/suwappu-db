@@ -57,6 +57,22 @@ impl<'a> Reader<'a> {
         Ok(u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize)
     }
 
+    /// Bound an untrusted section count against the bytes left in the
+    /// buffer before allocating, so a corrupt or malicious length field
+    /// can't drive a huge `Vec::with_capacity` (a memory-amplification
+    /// DoS) before the data is proven present. `min_entry` is the smallest
+    /// possible encoded size of one entry in this section.
+    fn checked_count(&self, n: usize, min_entry: usize, label: &str) -> Result<usize, String> {
+        let remaining = self.buf.len() - self.pos;
+        let max = remaining / min_entry.max(1);
+        if n > max {
+            return Err(format!(
+                "snapshot {label} count {n} exceeds {max} possible in {remaining} remaining bytes"
+            ));
+        }
+        Ok(n)
+    }
+
     fn arr<const N: usize>(&mut self) -> Result<[u8; N], String> {
         let mut a = [0u8; N];
         a.copy_from_slice(self.take(N)?);
@@ -78,6 +94,7 @@ fn decode_snapshot_body(encoded: &[u8]) -> Result<DecodedSnapshot, String> {
     };
 
     let n = r.u32_len()?;
+    let n = r.checked_count(n, 36, "balances")?; // addr(20) + bal(16)
     let mut balances = Vec::with_capacity(n);
     for _ in 0..n {
         let addr = Address(r.arr::<20>()?);
@@ -86,6 +103,7 @@ fn decode_snapshot_body(encoded: &[u8]) -> Result<DecodedSnapshot, String> {
     }
 
     let n = r.u32_len()?;
+    let n = r.checked_count(n, 36, "codes")?; // hash(32) + len(4) + min code(0)
     let mut codes = Vec::with_capacity(n);
     for _ in 0..n {
         let hash = r.arr::<32>()?;
@@ -108,6 +126,7 @@ fn decode_snapshot_body(encoded: &[u8]) -> Result<DecodedSnapshot, String> {
     }
 
     let n = r.u32_len()?;
+    let n = r.checked_count(n, 84, "storages")?; // addr(20) + slot(32) + value(32)
     let mut storages = Vec::with_capacity(n);
     for _ in 0..n {
         let addr = Address(r.arr::<20>()?);
@@ -117,6 +136,7 @@ fn decode_snapshot_body(encoded: &[u8]) -> Result<DecodedSnapshot, String> {
     }
 
     let n = r.u32_len()?;
+    let n = r.checked_count(n, 52, "account_codes")?; // addr(20) + hash(32)
     let mut account_codes = Vec::with_capacity(n);
     for _ in 0..n {
         let addr = Address(r.arr::<20>()?);
