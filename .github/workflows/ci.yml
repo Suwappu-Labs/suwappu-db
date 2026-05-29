@@ -21,6 +21,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Don't persist the workflow GITHUB_TOKEN as an
+          # http.<github>.extraheader — it would shadow the GSX_REVM_TOKEN
+          # credential below when cargo fetches the private gsx-revm dep
+          # from this repo's working directory (the extraheader wins over
+          # the url.insteadOf token). The repo token has no gsx-revm access.
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -47,6 +54,13 @@ jobs:
     # main before anyone notices. Now runs on every PR and push.
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Don't persist the workflow GITHUB_TOKEN as an
+          # http.<github>.extraheader — it would shadow the GSX_REVM_TOKEN
+          # credential below when cargo fetches the private gsx-revm dep
+          # from this repo's working directory (the extraheader wins over
+          # the url.insteadOf token). The repo token has no gsx-revm access.
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -93,6 +107,13 @@ jobs:
     # runs in its own container where the host git-config isn't visible.
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Don't persist the workflow GITHUB_TOKEN as an
+          # http.<github>.extraheader — it would shadow the GSX_REVM_TOKEN
+          # credential below when cargo fetches the private gsx-revm dep
+          # from this repo's working directory (the extraheader wins over
+          # the url.insteadOf token). The repo token has no gsx-revm access.
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -121,6 +142,13 @@ jobs:
     # executor can't silently regress on main.
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Don't persist the workflow GITHUB_TOKEN as an
+          # http.<github>.extraheader — it would shadow the GSX_REVM_TOKEN
+          # credential below when cargo fetches the private gsx-revm dep
+          # from this repo's working directory (the extraheader wins over
+          # the url.insteadOf token). The repo token has no gsx-revm access.
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
         with:

@@ -21,6 +21,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # See ci.yml: don't persist the GITHUB_TOKEN extraheader; it
+          # would shadow the GSX_REVM_TOKEN credential when cargo fetches
+          # the private gsx-revm dependency.
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -47,6 +52,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # See ci.yml: don't persist the GITHUB_TOKEN extraheader; it
+          # would shadow the GSX_REVM_TOKEN credential when cargo fetches
+          # the private gsx-revm dependency.
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
         with:
