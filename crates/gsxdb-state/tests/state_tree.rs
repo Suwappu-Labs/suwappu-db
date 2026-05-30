@@ -45,6 +45,7 @@ enum Op {
     Balance(Address, u128),
     Storage(Address, [u8; 32], [u8; 32]),
     Code(Address, u8),
+    Bytes(Address, u8),
 }
 
 fn op() -> impl Strategy<Value = Op> {
@@ -52,6 +53,7 @@ fn op() -> impl Strategy<Value = Op> {
         (small_address(), any::<u128>()).prop_map(|(a, v)| Op::Balance(a, v)),
         (small_address(), small_word(), small_word()).prop_map(|(a, s, v)| Op::Storage(a, s, v)),
         (small_address(), 0u8..8).prop_map(|(a, n)| Op::Code(a, n)),
+        (small_address(), 0u8..8).prop_map(|(a, n)| Op::Bytes(a, n)),
     ]
 }
 
@@ -71,6 +73,9 @@ fn apply_op(state: &mut State, token: &BridgeToken, op: &Op) {
             let code_hash = code_hash_of(&code);
             state.apply(token, &StateChange::SetCode { code_hash, code });
             state.apply(token, &StateChange::SetAccountCode { addr: *a, code_hash });
+        }
+        Op::Bytes(a, n) => {
+            state.apply(token, &StateChange::SetBytes { addr: *a, bytes: vec![*n; 4] });
         }
     }
 }
@@ -309,6 +314,7 @@ proptest! {
         let mut bal: BTreeMap<Address, u128> = BTreeMap::new();
         let mut code: BTreeMap<Address, u8> = BTreeMap::new();
         let mut stor: BTreeMap<(Address, [u8; 32]), [u8; 32]> = BTreeMap::new();
+        let mut bytes: BTreeMap<Address, u8> = BTreeMap::new();
         for o in &ops {
             match o {
                 Op::Balance(x, v) => {
@@ -319,6 +325,9 @@ proptest! {
                 }
                 Op::Storage(x, s, v) => {
                     stor.insert((*x, *s), *v);
+                }
+                Op::Bytes(x, n) => {
+                    bytes.insert(*x, *n);
                 }
             }
         }
@@ -336,6 +345,9 @@ proptest! {
         }
         for ((x, s), v) in &stor {
             b.apply(&token, &StateChange::SetStorage { addr: *x, slot: *s, value: *v });
+        }
+        for (x, n) in &bytes {
+            b.apply(&token, &StateChange::SetBytes { addr: *x, bytes: vec![*n; 4] });
         }
 
         prop_assert_eq!(a.state_root(), b.state_root());

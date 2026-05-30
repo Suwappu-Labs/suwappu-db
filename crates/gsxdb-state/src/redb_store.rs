@@ -54,6 +54,8 @@ pub const TABLE_EVM_CODE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("
 /// Table holding `Address` (20 B) → contract `code_hash` (32 B) pointer.
 pub const TABLE_EVM_ACCOUNT_CODE: TableDefinition<&[u8], &[u8]> =
     TableDefinition::new("evm_account_code");
+/// Table holding `Address` (20 B) → reserved-address `bytes_state` record.
+pub const TABLE_BYTES_STATE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("bytes_state");
 
 /// All tables the database is opened with. Order is irrelevant.
 pub const ALL_TABLES: &[TableDefinition<&[u8], &[u8]>] = &[
@@ -64,6 +66,7 @@ pub const ALL_TABLES: &[TableDefinition<&[u8], &[u8]>] = &[
     TABLE_MOVE_RESOURCES,
     TABLE_EVM_CODE,
     TABLE_EVM_ACCOUNT_CODE,
+    TABLE_BYTES_STATE,
 ];
 
 const VALUE_LEN: usize = 16; // u128 big-endian
@@ -307,6 +310,36 @@ impl BalanceStore for RedbBalanceStore {
             let mut hash = [0u8; 32];
             hash.copy_from_slice(vb);
             out.push((Address(addr), hash));
+        }
+        out
+    }
+
+    fn set_bytes(&mut self, addr: &Address, bytes: &[u8]) {
+        let txn = self.db.begin_write().expect("set_bytes: begin_write");
+        {
+            let mut table = txn
+                .open_table(TABLE_BYTES_STATE)
+                .expect("set_bytes: open_table(bytes_state)");
+            table
+                .insert(addr.0.as_slice(), bytes)
+                .expect("set_bytes: insert");
+        }
+        txn.commit().expect("set_bytes: commit");
+    }
+
+    fn bytes_entries(&self) -> Vec<(Address, Vec<u8>)> {
+        let txn = self.db.begin_read().expect("bytes_entries: begin_read");
+        let table = txn
+            .open_table(TABLE_BYTES_STATE)
+            .expect("bytes_entries: open_table(bytes_state)");
+        let mut out = Vec::new();
+        for entry in table.iter().expect("bytes_entries: iter") {
+            let (k, v) = entry.expect("bytes_entries: row");
+            let kb = k.value();
+            assert_eq!(kb.len(), 20, "address key length");
+            let mut addr = [0u8; 20];
+            addr.copy_from_slice(kb);
+            out.push((Address(addr), v.value().to_vec()));
         }
         out
     }

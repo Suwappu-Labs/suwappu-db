@@ -192,6 +192,36 @@ fn zero_storage_write_clears_durable_slot() {
 }
 
 #[test]
+fn bytes_state_persists_across_reopen() {
+    // A reserved-address bytes record (L2 key / DA anchor / governance) must
+    // survive a redb reopen so the restarted node's combined root matches.
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("state.redb");
+    let key_addr = Address([5; 20]);
+    let record = vec![0xDEu8, 0xAD, 0xBE, 0xEF];
+
+    let root_before = {
+        let store = RedbBalanceStore::open(&path).unwrap();
+        let mut state = State::with_store(Box::new(store));
+        let token = BridgeToken::__for_bridge_only();
+        seed(&mut state, Address([1; 20]), 100);
+        state.apply(
+            &token,
+            &StateChange::SetBytes {
+                addr: key_addr,
+                bytes: record.clone(),
+            },
+        );
+        state.state_root()
+    };
+
+    let store = RedbBalanceStore::open(&path).unwrap();
+    let state = State::with_store(Box::new(store));
+    assert_eq!(state.read_bytes(&key_addr), Some(record.as_slice()));
+    assert_eq!(state.state_root(), root_before);
+}
+
+#[test]
 fn dual_projection_visible_through_state_slot_of() {
     let (mut state, _dir) = fresh_redb_state();
     let alice = Address([1; 20]);

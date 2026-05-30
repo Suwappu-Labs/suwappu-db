@@ -85,6 +85,15 @@ pub trait BalanceStore {
     fn account_codes(&self) -> Vec<(Address, [u8; 32])> {
         Vec::new()
     }
+
+    /// Persist a `bytes_state` record (reserved-address registry blob —
+    /// L2 verifying key, DA anchor, governance). Default no-op; durable
+    /// backends override (see [`set_code`](BalanceStore::set_code)).
+    fn set_bytes(&mut self, _addr: &Address, _bytes: &[u8]) {}
+    /// All durably-stored `(addr, bytes)` records, for hydrating `State`.
+    fn bytes_entries(&self) -> Vec<(Address, Vec<u8>)> {
+        Vec::new()
+    }
 }
 
 /// `HashMap`-backed [`BalanceStore`]. Default backend for tests and the

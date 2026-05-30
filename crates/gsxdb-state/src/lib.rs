@@ -82,6 +82,12 @@ pub struct State {
     /// `BalanceSlot` with a code hash. Committed in the state root via
     /// [`Self::evm_state_root`].
     evm_account_code: std::collections::HashMap<Address, [u8; 32]>,
+    /// Reserved-address bytes registry (`address -> bytes`). Backs the
+    /// gsx-dag substrate's L2 verifying-key / DA-anchor / governance
+    /// records that `SetBalance` cannot express. `BTreeMap` for canonical
+    /// (address-ordered) iteration in the state-root commitment. Committed
+    /// in the state root via [`State::bytes_state_root`].
+    bytes_state: std::collections::BTreeMap<Address, Vec<u8>>,
 }
 
 impl std::fmt::Debug for State {
@@ -158,6 +164,14 @@ pub enum StateChange {
         /// `keccak256(code)` — key into the code store.
         code_hash: [u8; 32],
     },
+    /// Set a reserved-address bytes-state record (L2 verifying key, DA
+    /// anchor, governance registry). Replaces any existing value.
+    SetBytes {
+        /// Reserved address the record is keyed by.
+        addr: Address,
+        /// Opaque record bytes.
+        bytes: Vec<u8>,
+    },
 }
 
 /// Capability token proving a caller is the bridge.
@@ -184,18 +198,20 @@ impl State {
     /// New `State` over the given storage backend.
     #[must_use]
     pub fn with_store(store: Box<dyn BalanceStore + Send + Sync>) -> Self {
-        // Hydrate the in-memory EVM maps from the (possibly durable) store so
-        // contract code + storage + account-code pointers survive a reopen.
-        // Non-durable stores return empty (the default trait impls), giving a
-        // fresh State as before.
+        // Hydrate the in-memory EVM + bytes maps from the (possibly durable)
+        // store so contract code/storage/account-code and bytes_state records
+        // survive a reopen. Non-durable stores return empty (the default trait
+        // impls), giving a fresh State as before.
         let evm_code = store.codes().into_iter().collect();
         let evm_storage = store.storage_entries().into_iter().collect();
         let evm_account_code = store.account_codes().into_iter().collect();
+        let bytes_state = store.bytes_entries().into_iter().collect();
         Self {
             store,
             evm_code,
             evm_storage,
             evm_account_code,
+            bytes_state,
         }
     }
 
@@ -252,6 +268,16 @@ impl State {
         self.evm_account_code.get(addr).copied()
     }
 
+    /// Read the bytes-state record at `addr`, or `None` if unset.
+    ///
+    /// Non-privileged read (like [`State::balance_of`]). Backs the gsx-dag
+    /// substrate's reserved-address registries (L2 keys, DA anchors,
+    /// governance) via the `Substrate::read_bytes` adapter method.
+    #[must_use]
+    pub fn read_bytes(&self, addr: &Address) -> Option<&[u8]> {
+        self.bytes_state.get(addr).map(Vec::as_slice)
+    }
+
     /// All `(code_hash, code)` pairs. For snapshots; order is unspecified,
     /// so callers that need determinism must sort.
     #[must_use]
@@ -269,6 +295,13 @@ impl State {
     #[must_use]
     pub fn evm_account_code_entries(&self) -> Vec<(Address, [u8; 32])> {
         self.evm_account_code.iter().map(|(k, v)| (*k, *v)).collect()
+    }
+
+    /// All `(addr, bytes)` reserved-address records. For snapshots; the
+    /// `BTreeMap` already yields address-sorted order.
+    #[must_use]
+    pub fn bytes_state_entries(&self) -> Vec<(Address, Vec<u8>)> {
+        self.bytes_state.iter().map(|(k, v)| (*k, v.clone())).collect()
     }
 
     /// Commitment over EVM-only state (contract code + storage). Committed
@@ -337,21 +370,43 @@ impl State {
         Commitment(out)
     }
 
-    /// The consensus state root: the balance tree (IQ-6) bound to the
-    /// EVM-state commitment (IQ-10).
+    /// Commitment over the bytes-state registry (`address -> bytes`).
     ///
-    /// `BLAKE3("GSXDB-STATE-ROOT" || balance_tree_root || evm_state_root)`.
-    /// This is the root validators co-sign; it is a deterministic function
-    /// of all state, including contract code + storage.
+    /// `BLAKE3` over entries in address order:
+    /// `addr(20) || len(8 BE) || bytes`. (`BTreeMap` provides the order;
+    /// the length prefix keeps the encoding unambiguous.)
+    #[must_use]
+    pub fn bytes_state_root(&self) -> Commitment {
+        const TAG_BYTES_STATE: &[u8] = b"GSXDB-BYTES-STATE";
+        let mut h = blake3::Hasher::new();
+        h.update(TAG_BYTES_STATE);
+        for (addr, bytes) in &self.bytes_state {
+            h.update(&addr.0);
+            h.update(&(bytes.len() as u64).to_be_bytes());
+            h.update(bytes);
+        }
+        let mut out = [0u8; 32];
+        out.copy_from_slice(h.finalize().as_bytes());
+        Commitment(out)
+    }
+
+    /// The consensus state root: the balance tree (IQ-6) bound to the
+    /// EVM-state commitment (IQ-10) and the bytes-state registry.
+    ///
+    /// `BLAKE3("GSXDB-STATE-ROOT" || balance_root || evm_state_root || bytes_state_root)`.
+    /// The root validators co-sign — a deterministic function of all state:
+    /// balances, contract code + storage, and reserved-address records.
     #[must_use]
     pub fn state_root(&self) -> Commitment {
         const TAG_STATE_ROOT: &[u8] = b"GSXDB-STATE-ROOT";
         let balance_root = StateTree::from_state(self).root();
         let evm_root = self.evm_state_root();
+        let bytes_root = self.bytes_state_root();
         let mut h = blake3::Hasher::new();
         h.update(TAG_STATE_ROOT);
         h.update(&balance_root.0);
         h.update(&evm_root.0);
+        h.update(&bytes_root.0);
         let mut out = [0u8; 32];
         out.copy_from_slice(h.finalize().as_bytes());
         Commitment(out)
@@ -412,6 +467,10 @@ impl State {
             StateChange::SetAccountCode { addr, code_hash } => {
                 self.evm_account_code.insert(*addr, *code_hash);
                 self.store.set_account_code(addr, code_hash);
+            }
+            StateChange::SetBytes { addr, bytes } => {
+                self.bytes_state.insert(*addr, bytes.clone());
+                self.store.set_bytes(addr, bytes);
             }
         }
     }
@@ -576,6 +635,32 @@ mod tests {
         let mut c = State::default();
         c.apply(&token, &StateChange::SetBalance { addr: Address([1; 20]), to: Balance(101) });
         assert_ne!(a.state_root(), c.state_root());
+    }
+
+    #[test]
+    fn bytes_state_round_trips() {
+        let mut state = State::default();
+        let token = BridgeToken::__for_bridge_only();
+        let addr = Address([5; 20]);
+
+        assert_eq!(state.read_bytes(&addr), None);
+        state.apply(&token, &StateChange::SetBytes { addr, bytes: vec![1, 2, 3, 4] });
+        assert_eq!(state.read_bytes(&addr), Some([1, 2, 3, 4].as_slice()));
+    }
+
+    #[test]
+    fn state_root_commits_bytes_state() {
+        let token = BridgeToken::__for_bridge_only();
+        let addr = Address([6; 20]);
+
+        let mut state = State::default();
+        let r0 = state.state_root();
+        state.apply(&token, &StateChange::SetBytes { addr, bytes: vec![9, 9, 9] });
+        assert_ne!(
+            r0,
+            state.state_root(),
+            "bytes-state write must change the state root"
+        );
     }
 
     #[test]

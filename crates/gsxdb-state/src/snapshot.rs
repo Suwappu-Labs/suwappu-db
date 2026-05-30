@@ -16,20 +16,21 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// 20 bytes address + 16 bytes canonical balance (u128 LE) = 36.
 pub const SNAPSHOT_ENTRY_BYTES: usize = 36;
 
-/// Magic header prepended to `encoded_state`. `\x02` is the sectioned
-/// format that also carries EVM contract state (code / storage /
-/// account-code), so a snapshot captures the full `state_root` rather than
-/// balances alone. A mismatched magic fails loudly instead of silently
-/// restoring partial state.
-const SNAPSHOT_MAGIC: &[u8; 8] = b"GSXDB\0\0\x02";
+/// Magic header prepended to `encoded_state`. `\x03` is the sectioned
+/// format carrying balances + EVM contract state (code / storage /
+/// account-code) + the reserved-address `bytes_state` registry, so a
+/// snapshot captures the full `state_root` rather than balances alone. A
+/// mismatched magic fails loudly instead of silently restoring partial state.
+const SNAPSHOT_MAGIC: &[u8; 8] = b"GSXDB\0\0\x03";
 
-/// A fully decoded snapshot body: balances + EVM contract state.
+/// A fully decoded snapshot body: balances + EVM contract state + bytes_state.
 #[derive(Debug)]
 struct DecodedSnapshot {
     balances: Vec<(Address, u128)>,
     codes: Vec<([u8; 32], Vec<u8>)>,
     storages: Vec<crate::EvmStorageEntry>,
     account_codes: Vec<(Address, [u8; 32])>,
+    bytes: Vec<(Address, Vec<u8>)>,
 }
 
 /// Bounds-checked cursor over a snapshot body.
@@ -144,6 +145,14 @@ fn decode_snapshot_body(encoded: &[u8]) -> Result<DecodedSnapshot, String> {
         account_codes.push((addr, hash));
     }
 
+    let n = r.u32_len()?;
+    let mut bytes = Vec::with_capacity(n);
+    for _ in 0..n {
+        let addr = Address(r.arr::<20>()?);
+        let len = r.u32_len()?;
+        bytes.push((addr, r.take(len)?.to_vec()));
+    }
+
     if r.pos != encoded.len() {
         return Err(format!(
             "snapshot has {} trailing bytes",
@@ -155,6 +164,7 @@ fn decode_snapshot_body(encoded: &[u8]) -> Result<DecodedSnapshot, String> {
         codes,
         storages,
         account_codes,
+        bytes,
     })
 }
 
@@ -268,6 +278,8 @@ impl StateSnapshot {
         storages.sort_by_key(|((addr, slot), _)| (addr.0, *slot));
         let mut account_codes = state.evm_account_code_entries();
         account_codes.sort_by_key(|(addr, _)| addr.0);
+        // `bytes_state_entries` is already address-sorted (BTreeMap).
+        let bytes = state.bytes_state_entries();
 
         let mut encoded = Vec::new();
         encoded.extend_from_slice(SNAPSHOT_MAGIC);
@@ -296,6 +308,13 @@ impl StateSnapshot {
         for (addr, hash) in &account_codes {
             encoded.extend_from_slice(&addr.0);
             encoded.extend_from_slice(hash);
+        }
+
+        encoded.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
+        for (addr, b) in &bytes {
+            encoded.extend_from_slice(&addr.0);
+            encoded.extend_from_slice(&(b.len() as u32).to_le_bytes());
+            encoded.extend_from_slice(b);
         }
 
         Self::new(height, Commitment([0; 32]), encoded, anchor_hash)
@@ -381,6 +400,16 @@ impl StateSnapshot {
                 &StateChange::SetAccountCode {
                     addr: *addr,
                     code_hash: *code_hash,
+                },
+            );
+            applied += 1;
+        }
+        for (addr, b) in &decoded.bytes {
+            state.apply(
+                token,
+                &StateChange::SetBytes {
+                    addr: *addr,
+                    bytes: b.clone(),
                 },
             );
             applied += 1;
@@ -730,6 +759,43 @@ mod tests {
             err.contains("code_hash mismatch"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn snapshot_round_trips_bytes_state() {
+        // A snapshot must capture the reserved-address bytes registry (L2
+        // verifying keys / DA anchors / governance) so a restored node's
+        // combined root matches the pre-snapshot root.
+        let mut original = State::default();
+        let token = BridgeToken::__for_bridge_only();
+        let key_addr = Address([5; 20]);
+        original.apply(
+            &token,
+            &StateChange::SetBalance {
+                addr: Address([1; 20]),
+                to: Balance(42),
+            },
+        );
+        original.apply(
+            &token,
+            &StateChange::SetBytes {
+                addr: key_addr,
+                bytes: vec![0xDE, 0xAD, 0xBE, 0xEF],
+            },
+        );
+        let root_before = original.state_root();
+
+        let snapshot = StateSnapshot::from_state(&original, 7, None);
+        let mut restored = State::default();
+        snapshot
+            .restore_into_state(&mut restored, &token)
+            .expect("restore");
+
+        assert_eq!(
+            restored.read_bytes(&key_addr),
+            Some([0xDE, 0xAD, 0xBE, 0xEF].as_slice())
+        );
+        assert_eq!(restored.state_root(), root_before);
     }
 
     #[test]
