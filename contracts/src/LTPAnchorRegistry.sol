@@ -37,7 +37,7 @@ contract LTPAnchorRegistry {
         uint64 height;          // Block height
         bytes32 stateRoot;      // State-tree commitment
         bytes32 parent;         // Hash of previous anchor (GENESIS = 0)
-        bytes32 mac;            // BLAKE3 keyed-hash MAC
+        bytes32 mac;            // Reserved (was BLAKE3 MAC placeholder — C2: verification removed)
     }
 
     /// Hash of genesis anchor (parent of first anchor on each chain)
@@ -114,8 +114,9 @@ contract LTPAnchorRegistry {
         address signer = recoverSigner(anchor, signature);
         require(isApprovedSigner[signer], "LTPAnchorRegistry: Unauthorized signer");
 
-        // 2. Verify MAC
-        require(verifyMac(anchor), "LTPAnchorRegistry: MAC mismatch");
+        // 2. MAC check removed (C2): chainKey is a public mapping, so keccak256(key, ...)
+        // provides zero security — any caller can compute the expected MAC. Security
+        // comes from the ECDSA signer allowlist (step 1) alone.
 
         // 3. Verify parent chain link
         bytes32 expectedParent = hashAnchorMemory(lastAnchor[anchor.chainId]);
@@ -149,11 +150,13 @@ contract LTPAnchorRegistry {
 
     /**
      * @notice Verify an anchor without accepting it.
+     *         Returns true if the anchor's height is monotonically greater than
+     *         the last accepted height for its chain. Does not verify MAC (removed, C2).
      * @param anchor The anchor to verify
-     * @return True iff the anchor is valid
+     * @return True iff anchor height is valid for this chain
      */
     function verifyAnchor(Anchor calldata anchor) external view returns (bool) {
-        return verifyMac(anchor);
+        return anchor.height > lastHeightAccepted[anchor.chainId];
     }
 
     /**
