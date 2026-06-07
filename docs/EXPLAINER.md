@@ -1,4 +1,4 @@
-# GSX-DB, explained in plain English
+# Suwappu DB, explained in plain English
 
 Read this first if you have zero context. No jargon, no acronyms left
 unexplained. If you want the technical version, go to
@@ -6,7 +6,7 @@ unexplained. If you want the technical version, go to
 
 ## The big picture: what problem is this solving?
 
-There's a new cryptocurrency chain being built called **GSX**. It's
+There's a new cryptocurrency chain being built called **SUWAPPU**. It's
 designed for banks and regulated institutions to settle real-world
 things like tokenized stocks, stablecoins, and central-bank digital
 currency.
@@ -24,7 +24,7 @@ Banks have very specific needs:
 That last one is the killer. Every other chain that tried this has
 lost billions of dollars when their two systems disagreed.
 
-**GSX-DB is the database engine underneath this chain.** It's the
+**Suwappu DB is the database engine underneath this chain.** It's the
 part that stores who owns what, processes transactions, and makes
 sure nothing impossible can happen.
 
@@ -54,7 +54,7 @@ When a Move app asks the same question, the database shows it the
 only one number.** Other chains have a bridge between two databases.
 We have one database with two windows.
 
-This is the whole reason GSX-DB exists. Other dual-VM chains lost
+This is the whole reason Suwappu DB exists. Other dual-VM chains lost
 billions because their bridge broke. We removed the bridge.
 
 ---
@@ -63,9 +63,9 @@ billions because their bridge broke. We removed the bridge.
 
 ```mermaid
 flowchart LR
-    Lane["gsxdb-lane<br/>Untrusted input"]
-    Bridge["gsxdb-bridge<br/>The bouncer"]
-    State["gsxdb-state<br/>The vault"]
+    Lane["suwappudb-lane<br/>Untrusted input"]
+    Bridge["suwappudb-bridge<br/>The bouncer"]
+    State["suwappudb-state<br/>The vault"]
     Lane -- "Hey can I do this transaction?" --> Bridge
     Bridge -- "Approved, here's the magic key" --> State
     Lane -.X cannot directly touch.-> State
@@ -74,11 +74,11 @@ flowchart LR
 The code is split into three Rust packages that act like three rooms
 with locked doors:
 
-1. **The lobby (`gsxdb-lane`)** — anyone can send transaction
+1. **The lobby (`suwappudb-lane`)** — anyone can send transaction
    requests here. It's untrusted.
-2. **The bouncer (`gsxdb-bridge`)** — the only one who can open the
+2. **The bouncer (`suwappudb-bridge`)** — the only one who can open the
    vault. Validates every transaction before applying it.
-3. **The vault (`gsxdb-state`)** — holds the real money. Has a
+3. **The vault (`suwappudb-state`)** — holds the real money. Has a
    special lock that requires a "BridgeToken" key. **Only the
    bouncer crate can make BridgeTokens.** The compiler enforces
    this — it's physically impossible for lane code to forge one.
@@ -177,10 +177,10 @@ them down to 200 bytes.
 
 ```mermaid
 flowchart LR
-    GSX[GSX chain]
-    GSX -- "I claim my state is X<br/>at height 100" --> ETH[Ethereum L1]
-    GSX -- "same claim" --> BSC[BSC]
-    GSX -- "same claim" --> Pol[Polygon]
+    SUWAPPU[SUWAPPU chain]
+    SUWAPPU -- "I claim my state is X<br/>at height 100" --> ETH[Ethereum L1]
+    SUWAPPU -- "same claim" --> BSC[BSC]
+    SUWAPPU -- "same claim" --> Pol[Polygon]
     Audit[Auditor]
     Audit -- "verify" --> ETH
     Audit -- "verify" --> BSC
@@ -188,7 +188,7 @@ flowchart LR
     Audit -- "do they all agree?" --> Done[YES → trusted]
 ```
 
-GSX posts a tiny commitment (~1.6KB) to multiple other chains every
+SUWAPPU posts a tiny commitment (~1.6KB) to multiple other chains every
 block. An auditor or regulator can independently check that the
 chain didn't lie by reading the same commitment from any of those
 other chains. If they all match, the chain is honest. If one
@@ -222,32 +222,32 @@ fees, mempool. Those are separate sprints after S12.
 
 ---
 
-## Where GSX-DB fits in the larger picture
+## Where Suwappu DB fits in the larger picture
 
 ```mermaid
 flowchart TB
     Users[Banks, RWA platforms, CBDC issuers]
     Apps[Frontends: cbdc-studio, RWA frontend]
     Backend[gsn-backend Go services]
-    GSX[GSX chain]
+    SUWAPPU[SUWAPPU chain]
     Cons[Consensus: MonadBFT or Mysticeti]
     Exec[Execution: revm + Move VM]
-    DB[gsx-db: the state substrate]
+    DB[suwappu-db: the state substrate]
     Anchor[LTP anchor protocol]
     L1s[(Ethereum, BSC, etc.)]
 
-    Users --> Apps --> Backend --> GSX
-    GSX --> Cons --> Exec --> DB
+    Users --> Apps --> Backend --> SUWAPPU
+    SUWAPPU --> Cons --> Exec --> DB
     DB --> Anchor --> L1s
 
     style DB fill:#cef
 ```
 
-GSX-DB is **one piece** of a much larger system. There are 34
-repositories in the GlobalSettlementNetwork org. GSX-DB is the
+Suwappu DB is **one piece** of a much larger system. There are 34
+repositories in the suwappu org. Suwappu DB is the
 database layer. Above it:
 
-- **Consensus** (`gsxbft-consensus-only-demo`) — decides what blocks
+- **Consensus** (`suwappubft-consensus-only-demo`) — decides what blocks
   happen and in what order
 - **Execution** (`gsx-revm`) — actually runs the smart contracts
 - **Backend** (`gsn-backend`) — APIs for wallets and apps
@@ -257,7 +257,7 @@ database layer. Above it:
 
 Today, there are **two chains already live** in the GSN ecosystem
 (a Besu testnet and an OP-Stack rollup), but they use stock
-implementations, not GSX-DB. GSX-DB is the substrate the new
+implementations, not Suwappu DB. Suwappu DB is the substrate the new
 DAG-based chain will use when it launches.
 
 ---
@@ -268,7 +268,7 @@ Most chain databases let any code touch them. Most dual-VM chains
 have a bridge between two databases. Most chains use weak
 primitives early and "promise" to upgrade later.
 
-GSX-DB does the opposite:
+Suwappu DB does the opposite:
 
 - **The compiler itself** enforces that only the bouncer touches
   state

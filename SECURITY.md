@@ -35,17 +35,17 @@ Include:
 
 In-scope:
 
-- gsx-db itself (this repository).
+- suwappu-db itself (this repository).
 - The `LTPAnchorRegistry` Solidity contract and its parity model.
 - The published JSON-RPC surface (`/v1/rpc`).
 - Any binary or container image published under
-  `GlobalSettlementNetwork/gsx-db` GitHub Releases or ECR Public.
+  `suwappu/suwappu-db` GitHub Releases or ECR Public.
 
 Out of scope (track upstream):
 
 - `aptos-core` (Move VM), `crate-crypto/rust-verkle`,
   `crate-crypto/banderwagon` — report to those projects directly.
-- `gsx-dag`, `gsx-lattice-protocol` — sibling repos with their own
+- `suwappu-dag`, `suwappu-lattice-protocol` — sibling repos with their own
   `SECURITY.md`.
 - Third-party deployments that customise the stack — work with
   the operator.

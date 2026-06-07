@@ -32,10 +32,10 @@ pub struct Commitment(pub [u8; 32]);
 ### Commitment scheme
 
 ```
-empty_commitment        = BLAKE3("GSXDB-TREE/EMPTY")
+empty_commitment        = BLAKE3("SUWAPPUDB-TREE/EMPTY")
 commit(Empty)           = empty_commitment
-commit(Leaf(slot))      = BLAKE3("GSXDB-TREE/LEAF_" | slot.canonical().to_be_bytes())
-commit(Internal(kids))  = BLAKE3("GSXDB-TREE/INT__"
+commit(Leaf(slot))      = BLAKE3("SUWAPPUDB-TREE/LEAF_" | slot.canonical().to_be_bytes())
+commit(Internal(kids))  = BLAKE3("SUWAPPUDB-TREE/INT__"
                                  | for (byte, child) in sorted(kids):
                                      byte (1 byte) | commit(child) (32 bytes))
 ```

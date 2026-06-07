@@ -46,8 +46,8 @@ case "$cmd" in
 
     init-repo)
         # Creates the GitHub repository and pushes main.
-        # Uses GH_REPO env var or defaults to GlobalSettlementNetwork/gsx-db.
-        repo="${GH_REPO:-GlobalSettlementNetwork/gsx-db}"
+        # Uses GH_REPO env var or defaults to suwappu/suwappu-db.
+        repo="${GH_REPO:-suwappu/suwappu-db}"
 
         if git remote get-url origin >/dev/null 2>&1; then
             echo "init-repo: origin already set to $(git remote get-url origin)" >&2

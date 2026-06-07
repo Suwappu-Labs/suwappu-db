@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 
 # Record IQ: $ARGUMENTS
 
-You are recording a new IQ (Investigation Question) for GSX-DB. IQs are numbered architectural decisions that propagate to the spec, the research doc, the relevant ADR, and `CLAUDE.md`.
+You are recording a new IQ (Investigation Question) for Suwappu DB. IQs are numbered architectural decisions that propagate to the spec, the research doc, the relevant ADR, and `CLAUDE.md`.
 
 ## Phase 1: Determine the IQ number
 

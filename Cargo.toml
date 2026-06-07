@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/gsxdb-state",
-    "crates/gsxdb-bridge",
-    "crates/gsxdb-lane", "crates/gsxdb-server",
-    "crates/gsxdb-types",
+    "crates/suwappudb-state",
+    "crates/suwappudb-bridge",
+    "crates/suwappudb-lane", "crates/suwappudb-server",
+    "crates/suwappudb-types",
 ]
 
 [workspace.package]
@@ -17,8 +17,8 @@ version = "0.1.0-pre"
 edition = "2021"
 rust-version = "1.78"
 license = "Apache-2.0"
-repository = "https://github.com/GlobalSettlementNetwork/gsx-db"
-# Not publishing to crates.io; gsxdb-* crates are internal. Required so
+repository = "https://github.com/suwappu/suwappu-db"
+# Not publishing to crates.io; suwappudb-* crates are internal. Required so
 # cargo-deny `allow-wildcard-paths` treats workspace-internal `version = "*"`
 # deps as paths rather than crates.io references.
 publish = false

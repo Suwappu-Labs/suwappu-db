@@ -1,4 +1,4 @@
-# GSX-DB Hardening Improvement Plan
+# Suwappu DB Hardening Improvement Plan
 
 **Audience:** core engineering, security review, audit firms preparing scope for the
 S9–S12 milestones.
@@ -6,7 +6,7 @@ S9–S12 milestones.
 **Scope:** load-bearing hardening practices that comparable chains (Sui, Aptos,
 Monad, Solana, Ethereum, Avalanche, Hedera, Canton, Hyperledger Besu) and the
 cross-chain message-passing peers of LTP (Cosmos IBC, LayerZero V2, Wormhole,
-Chainlink CCIP) have adopted in production, mapped against what GSX-DB does
+Chainlink CCIP) have adopted in production, mapped against what Suwappu DB does
 today. Each recommendation cites a post-mortem, audit report, or design paper
 where the practice is described as load-bearing — not industry folklore.
 
@@ -21,19 +21,19 @@ formal design output.
 
 ---
 
-## 0. GSX-DB Substrate, Restated
+## 0. Suwappu DB Substrate, Restated
 
 ```mermaid
 flowchart LR
   subgraph Ingress
     L1[Ethereum L1<br/>LTPAnchorRegistry]
   end
-  subgraph Bridge["gsxdb-bridge"]
+  subgraph Bridge["suwappudb-bridge"]
     A[anchor/log + dispatcher]
     B[bundle/executor]
     R[recovery]
   end
-  subgraph State["gsxdb-state"]
+  subgraph State["suwappudb-state"]
     DAG[Mysticeti-shape DAG]
     VRK[256-ary Verkle tree<br/>BLAKE3 → IPA-banderwagon]
     PBM[Polymorphic balance map]
@@ -61,7 +61,7 @@ their phase-1 closed.
 
 ## 1. Cryptographic Posture
 
-GSX-DB ships dual-VM, capability-gated mutation, ML-KEM-768 sealed envelopes,
+Suwappu DB ships dual-VM, capability-gated mutation, ML-KEM-768 sealed envelopes,
 ML-DSA-65 signatures, and a 7-of-9 super-node attestation quorum for LTP. The
 gaps are operational: what happens when a single signing key is compromised,
 how fast can we rotate, and how does hybrid PQC actually compose on-chain.
@@ -75,7 +75,7 @@ ANSSI both recommend hybrid mode for the entire migration window
 ([NIST IR 8547 transition draft](https://nvlpubs.nist.gov/nistpubs/ir/2024/NIST.IR.8547.ipd.pdf),
 [SoK on hybrid PQC strategies](https://eprint.iacr.org/2025/2052.pdf)).
 
-**What GSX-DB does today:** S11 (queued) plans Solidity `LTPAnchorRegistry`
+**What Suwappu DB does today:** S11 (queued) plans Solidity `LTPAnchorRegistry`
 with ECDSA + ML-DSA-65 hybrid. This is correct. The risk is *how* hybrid
 verification is wired.
 
@@ -98,7 +98,7 @@ Hyperledger Besu integrates this via the `--security-module` plugin slot for
 external key managers
 ([Besu QBFT docs](https://besu.hyperledger.org/private-networks/how-to/configure/consensus/qbft)).
 
-**What GSX-DB does today:** key custody is not specified in the substrate spec.
+**What Suwappu DB does today:** key custody is not specified in the substrate spec.
 For a 30–50 PoA Authority Ring with regulated institutions, this gap will block
 any compliance review.
 
@@ -116,11 +116,11 @@ and still flagged a clean upgrade path as load-bearing — the go-ipa banderwago
 library carries an explicit warning that callers must not reach into internals
 ([crate-crypto/go-ipa README](https://github.com/crate-crypto/go-ipa)).
 
-**What GSX-DB does today:** S10 swaps BLAKE3 → IPA over banderwagon. The hash
+**What Suwappu DB does today:** S10 swaps BLAKE3 → IPA over banderwagon. The hash
 function is a placeholder.
 
 **Load-bearing recommendation:** wrap the hash primitive in a `CommitmentScheme`
-trait inside `crates/gsxdb-state/src/tree/`. Make the BLAKE3 path a feature flag,
+trait inside `crates/suwappudb-state/src/tree/`. Make the BLAKE3 path a feature flag,
 keep both schemes compiled into the binary during S10–S12, and ship a property
 test that proves both schemes produce the same tree shape for the same write
 set. Audit firms charge less when the upgrade path is in a trait, not a
@@ -142,15 +142,15 @@ a special type that batches writes, deferring the read of the global until
 commit
 ([Aptos: Aggregators — sequential workloads in parallel](https://medium.com/aptoslabs/aggregators-how-sequential-workloads-are-executed-in-parallel-on-the-aptos-blockchain-e7992c70cefb)).
 
-**What GSX-DB does today:** the polymorphic balance map shares state between
+**What Suwappu DB does today:** the polymorphic balance map shares state between
 the two VMs. The single-slot contention pattern that hurt Aptos pre-AIP-47 is
 exactly the pattern we will produce the first time a Move module increments a
 shared fee accumulator on every swap.
 
 **Load-bearing recommendation:** before S12 (shadow E2E), inventory every Move
-module that GSX is likely to deploy at launch (fee accumulator, supply counter,
+module that SUWAPPU is likely to deploy at launch (fee accumulator, supply counter,
 oracle nonce) and require those slots to use an `Aggregator`-shape type in
-`crates/gsxdb-state/src/balance_slot.rs`. Without this, Block-STM will see a
+`crates/suwappudb-state/src/balance_slot.rs`. Without this, Block-STM will see a
 visible re-execution storm under load and operators will mis-attribute the
 slowdown to the DAG.
 
@@ -162,14 +162,14 @@ that worst-case is at most ~30% over sequential. That bound holds only when the
 collapses to sequential. The Aptos production scheduler has this; many third-
 party Block-STM clones do not.
 
-**What GSX-DB does today:** unclear from the spec whether the OCC layer in
-`crates/gsxdb-bridge/src/occ/` ever collapses to sequential.
+**What Suwappu DB does today:** unclear from the spec whether the OCC layer in
+`crates/suwappudb-bridge/src/occ/` ever collapses to sequential.
 
-**Load-bearing recommendation:** instrument `crates/gsxdb-bridge/src/occ/` so
+**Load-bearing recommendation:** instrument `crates/suwappudb-bridge/src/occ/` so
 that when the abort rate on any single slot crosses a threshold inside one
 block (recommend: 25% of in-flight txs touch the same write key with at least
 one abort), the scheduler degrades to sequential for that block and emits a
-metric `gsx_occ_collapse_to_sequential_total{reason="hot_slot"}`. Without this
+metric `suwappu_occ_collapse_to_sequential_total{reason="hot_slot"}`. Without this
 metric, every operator will eventually mis-diagnose a contention storm as a DAG
 liveness bug. Property-test it.
 
@@ -182,13 +182,13 @@ account
 ([Halborn post-mortem](https://www.halborn.com/blog/post/explained-the-wormhole-hack-february-2022),
 [Kudelski analysis](https://kudelskisecurity.com/research/quick-analysis-of-the-wormhole-attack)).
 
-**What GSX-DB does today:** the bridge crate (`gsxdb-bridge`) is the
+**What Suwappu DB does today:** the bridge crate (`suwappudb-bridge`) is the
 capability-gated mint surface. If we introduce *any* "legacy verify" or
 "unchecked variant" function, we are one PR away from a Wormhole.
 
 **Load-bearing recommendation:** add a `#[deny(deprecated)]` lint at the crate
-level for `gsxdb-bridge` and forbid `#[allow(deprecated)]` overrides in PR
-review. Make this an explicit rule in `crates/gsxdb-bridge/Cargo.toml` and call
+level for `suwappudb-bridge` and forbid `#[allow(deprecated)]` overrides in PR
+review. Make this an explicit rule in `crates/suwappudb-bridge/Cargo.toml` and call
 it out in the audit scope document — auditors look for this.
 
 ---
@@ -207,13 +207,13 @@ manifested only under certain execution patterns
 The upstream paper's [latency-limit analysis](https://arxiv.org/pdf/2310.14821)
 assumes leaders are live and gossip is healthy.
 
-**What GSX-DB does today:** GSX runs a Mysticeti-shape DAG. The spec does not
+**What Suwappu DB does today:** SUWAPPU runs a Mysticeti-shape DAG. The spec does not
 yet specify how a stuck-leader probe is emitted.
 
 **Load-bearing recommendation:** every block must emit a
-`gsx_dag_commit_rule_observations` metric with labels for `rule="single"`,
+`suwappu_dag_commit_rule_observations` metric with labels for `rule="single"`,
 `rule="indirect"`, and `rule="timeout"`. Add a property test in
-`crates/gsxdb-state/src/dag.rs` that no two correct nodes ever disagree on the
+`crates/suwappudb-state/src/dag.rs` that no two correct nodes ever disagree on the
 commit rule applied to the same anchor. This is the property Sui added between
 v1 and v2.
 
@@ -224,8 +224,8 @@ the chain halts rather than committing a forked successor set. Mysticeti's
 [design](https://decentralizedthoughts.github.io/2026-03-06-mysticeti-revolutionizing-consensus-on-sui/)
 is explicit that reconfiguration is a special-case commit, not a regular block.
 
-**What GSX-DB does today:** the dual-ring (PoA + PoS) rotation procedure is
-specified at a high level but not implemented in `gsxdb-state` yet.
+**What Suwappu DB does today:** the dual-ring (PoA + PoS) rotation procedure is
+specified at a high level but not implemented in `suwappudb-state` yet.
 
 **Load-bearing recommendation:** when S9–S12 lands, the rotation handler must
 write an `epoch_transition_pending` marker into the Verkle tree *before*
@@ -242,7 +242,7 @@ governance vote
 Ethereum's automated slashing for double-signs is justified by the validator
 being anonymous and economic; the Authority Ring is the opposite.
 
-**What GSX-DB does today:** not specified.
+**What Suwappu DB does today:** not specified.
 
 **Load-bearing recommendation:** the PoA Authority Ring should *not* have
 automatic slashing on the first equivocation. Instead, equivocation must be
@@ -268,7 +268,7 @@ against a single high-stake validator
 Before stake-weighted QoS landed, the [February 2023 Turbine outage](https://www.helius.dev/blog/solana-outages-complete-history)
 showed how a single bad-deduplication path inside gossip can stall consensus.
 
-**What GSX-DB does today:** the spec discusses SCION transport but not the
+**What Suwappu DB does today:** the spec discusses SCION transport but not the
 gossip-layer peer-selection policy.
 
 **Load-bearing recommendation:** specify in a new `docs/spec/gossip-policy.md`
@@ -287,8 +287,8 @@ with stake
 [Solana stake-weighted QoS guide](https://solana.com/developers/guides/advanced/stake-weighted-qos)).
 The attacker could not get past the entry-point rate limiter without staking.
 
-**What GSX-DB does today:** RPC and bridge ingress rate limits live in
-`crates/gsxdb-server/src/rpc.rs` but are not described as stake-weighted.
+**What Suwappu DB does today:** RPC and bridge ingress rate limits live in
+`crates/suwappudb-server/src/rpc.rs` but are not described as stake-weighted.
 
 **Load-bearing recommendation:** the inter-validator transport layer should
 enforce a per-source-pubkey concurrent-stream limit that is a function of that
@@ -314,8 +314,8 @@ on-chain* by validators inside their normal block contributions, so that a node
 sync-ing from a snapshot can verify the snapshot's hash against a quorum of
 on-chain commitments.
 
-**What GSX-DB does today:** snapshot logic exists at
-`crates/gsxdb-state/src/snapshot.rs`. The spec
+**What Suwappu DB does today:** snapshot logic exists at
+`crates/suwappudb-state/src/snapshot.rs`. The spec
 (`docs/spec/recovery.md`) does not require the snapshot hash to be quorum-
 signed and posted to the anchor log.
 
@@ -336,7 +336,7 @@ node operation out of the protocol layer entirely
 state to be retrievable for regulatory audit, *at least one named entity per
 jurisdiction* must contractually operate one.
 
-**What GSX-DB does today:** not specified.
+**What Suwappu DB does today:** not specified.
 
 **Load-bearing recommendation:** add an `ArchiveNodePolicy` section to
 `docs/spec/recovery.md` listing the minimum number of archive nodes per
@@ -347,7 +347,7 @@ proving the archive is intact. The audit firms will ask.
 ### 5.3 State-bloat mitigation already covered by Verkle — no extra rec
 
 Switching from a Merkle Patricia tree to a 256-ary Verkle tree with IPA already
-puts GSX-DB ahead of every chain on this list except Ethereum (in roadmap).
+puts Suwappu DB ahead of every chain on this list except Ethereum (in roadmap).
 **No additional recommendation.**
 
 ---
@@ -368,9 +368,9 @@ released
 This is explicitly cited as the load-bearing reason CCIP has not had a
 catastrophic bridge loss.
 
-**What GSX-DB does today:** the LTP attestation quorum (7-of-9 super-nodes) is
+**What Suwappu DB does today:** the LTP attestation quorum (7-of-9 super-nodes) is
 specified, but the verification code that *consumes* attestations on the
-GSX side lives in a single Rust crate (`gsxdb-bridge/src/anchor/`). One bug in
+SUWAPPU side lives in a single Rust crate (`suwappudb-bridge/src/anchor/`). One bug in
 that crate compromises every cross-chain transfer.
 
 **Load-bearing recommendation:** before any non-trivial value moves through
@@ -389,13 +389,13 @@ The LayerZero design *allows* a 1-of-N security stack; KelpDAO chose it; one
 verifier was compromised; everyone lost. The lesson is in the configuration,
 not the protocol.
 
-**What GSX-DB does today:** the 7-of-9 quorum is in the academic paper. The
+**What Suwappu DB does today:** the 7-of-9 quorum is in the academic paper. The
 risk is that an operator-configurable corridor is later allowed to set its own
 threshold.
 
 **Load-bearing recommendation:** the per-corridor threshold for LTP must be
 upper-bounded *and* lower-bounded by chain governance. Make the minimum quorum
-size 5 of 9 (a hard constant in `gsxdb-bridge/src/anchor/types.rs`) regardless
+size 5 of 9 (a hard constant in `suwappudb-bridge/src/anchor/types.rs`) regardless
 of what a corridor operator wants to configure. Add a property test that any
 corridor with `quorum < 5` fails to load.
 
@@ -407,8 +407,8 @@ Cosmos IBC's misbehaviour predicate
 freezes the client on the destination chain the moment two valid headers for
 the same height arrive. The freeze is automatic, no governance vote needed.
 
-**What GSX-DB does today:** the anchor log
-(`crates/gsxdb-bridge/src/anchor/log.rs`) accepts L1 anchors. There is no
+**What Suwappu DB does today:** the anchor log
+(`crates/suwappudb-bridge/src/anchor/log.rs`) accepts L1 anchors. There is no
 documented behaviour for what happens if two L1 anchors with the same height
 and different roots both validate.
 
@@ -427,7 +427,7 @@ this less load-bearing, but the *bond sizing* discipline is universal: a
 bridge with $X TVL must have a quorum where the combined slashable bond
 exceeds X. Otherwise the attack is rational.
 
-**What GSX-DB does today:** super-node bond is not specified.
+**What Suwappu DB does today:** super-node bond is not specified.
 
 **Load-bearing recommendation:** specify in `docs/spec/` that the combined
 slashable bond of any LTP super-node quorum must equal or exceed the maximum
@@ -462,7 +462,7 @@ escalate quadratically up to the full balance
 is explicitly designed to punish coordinated attacks more than single-validator
 mistakes.
 
-**What GSX-DB does today:** unspecified.
+**What Suwappu DB does today:** unspecified.
 
 **Load-bearing recommendation:** the Validator Ring slashing curve in
 `docs/spec/` must escalate quadratically with the fraction of stake slashed
@@ -496,15 +496,15 @@ mainnet.** None of these are exotic; every other chain on this list has them.
 
 ```mermaid
 flowchart TB
-  subgraph "Mandatory Metrics (Prom-exposed by gsxdb-server)"
-    M1[gsx_occ_abort_rate by slot]
-    M2[gsx_dag_commit_rule_observations]
-    M3[gsx_anchor_quorum_size by corridor]
-    M4[gsx_bridge_misbehaviour_total]
-    M5[gsx_verkle_root_mismatch_total]
-    M6[gsx_snapshot_root_quorum_signed]
-    M7[gsx_gossip_active_set_resample_lag]
-    M8[gsx_validator_bond_vs_corridor_tvl_ratio]
+  subgraph "Mandatory Metrics (Prom-exposed by suwappudb-server)"
+    M1[suwappu_occ_abort_rate by slot]
+    M2[suwappu_dag_commit_rule_observations]
+    M3[suwappu_anchor_quorum_size by corridor]
+    M4[suwappu_bridge_misbehaviour_total]
+    M5[suwappu_verkle_root_mismatch_total]
+    M6[suwappu_snapshot_root_quorum_signed]
+    M7[suwappu_gossip_active_set_resample_lag]
+    M8[suwappu_validator_bond_vs_corridor_tvl_ratio]
   end
   M1 -- alert: rate > 0.25 --> P[PagerDuty]
   M4 -- alert: any --> P
@@ -512,7 +512,7 @@ flowchart TB
   M8 -- alert: ratio < 1 --> P
 ```
 
-`crates/gsxdb-bridge/src/telemetry.rs` already exists; expand it.
+`crates/suwappudb-bridge/src/telemetry.rs` already exists; expand it.
 
 ### 8.2 Single-shot critical alerts beat dashboards
 
@@ -544,10 +544,10 @@ has the Dedaub gas-cost audit
 and ongoing crate-crypto reviews. Each of these chains spent its audit budget
 on the *novel* surface, not the well-studied one.
 
-**Load-bearing recommendation:** the audit scope for GSX-DB launch must
+**Load-bearing recommendation:** the audit scope for Suwappu DB launch must
 prioritise, in this order: (1) the LTP anchor and bridge dispatcher
-(`crates/gsxdb-bridge/`) including the hybrid signature path; (2) the
-polymorphic balance map (`crates/gsxdb-state/src/balance_slot.rs`) which is
+(`crates/suwappudb-bridge/`) including the hybrid signature path; (2) the
+polymorphic balance map (`crates/suwappudb-state/src/balance_slot.rs`) which is
 genuinely novel; (3) the Move-VM integration (S9). De-prioritise re-auditing
 revm, banderwagon, and Block-STM — those have been audited upstream.
 
@@ -614,12 +614,12 @@ recovery posture after slash) we say so and move on.
 
 | # | Recommendation | Status | Landed in |
 |---|---|---|---|
-| H2 | `CommitmentScheme` trait | ✅ landed | `crates/gsxdb-state/src/tree/commit.rs` |
-| H5 | OCC sequential-collapse circuit breaker | ✅ landed + tested | `crates/gsxdb-bridge/src/occ/block_executor.rs`, `tests/occ_circuit_breaker.rs` |
-| H6 | Hard-coded `5/9` minimum quorum | ✅ landed | `crates/gsxdb-bridge/src/anchor/dispatcher.rs` (`LTP_QUORUM_MIN_NUMERATOR`) |
-| H13 | 8 Prometheus metrics + 5 single-shot alerts | ✅ landed | `crates/gsxdb-state/src/metrics.rs`, `crates/gsxdb-bridge/src/telemetry.rs`, [`docs/spec/observability.md`](spec/observability.md) |
+| H2 | `CommitmentScheme` trait | ✅ landed | `crates/suwappudb-state/src/tree/commit.rs` |
+| H5 | OCC sequential-collapse circuit breaker | ✅ landed + tested | `crates/suwappudb-bridge/src/occ/block_executor.rs`, `tests/occ_circuit_breaker.rs` |
+| H6 | Hard-coded `5/9` minimum quorum | ✅ landed | `crates/suwappudb-bridge/src/anchor/dispatcher.rs` (`LTP_QUORUM_MIN_NUMERATOR`) |
+| H13 | 8 Prometheus metrics + 5 single-shot alerts | ✅ landed | `crates/suwappudb-state/src/metrics.rs`, `crates/suwappudb-bridge/src/telemetry.rs`, [`docs/spec/observability.md`](spec/observability.md) |
 | H11 | HSM custody profile | spec written | [`docs/spec/key-custody.md`](spec/key-custody.md) |
-| — | `#[deny(deprecated)]` lint at bridge crate | ✅ landed | `crates/gsxdb-bridge/src/lib.rs` (rec 2.3) |
+| — | `#[deny(deprecated)]` lint at bridge crate | ✅ landed | `crates/suwappudb-bridge/src/lib.rs` (rec 2.3) |
 | H1 | Hybrid sig AND-gate | pending S11 | needs Solidity contract |
 | H3 | Misbehaviour predicate | pending S11 | needs IBC-style relayer |
 | H4 | Aggregator-slot inventory | pending S9 | needs real Move VM |

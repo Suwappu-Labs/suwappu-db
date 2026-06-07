@@ -1,10 +1,10 @@
-# GSX-DB — Claude Code project context
+# Suwappu DB — Claude Code project context
 
 This file is loaded automatically at the start of every Claude Code session in this repo. It is the entry point for orienting Claude Code on conventions, current sprint state, load-bearing invariants, and how to collaborate.
 
 ## Project
 
-GSX-DB is the storage and validation engine underneath the Global Settlement Network. Phase 1 lands the dual-VM database (EVM + Move) on a custom Verkle-rooted state lane with cross-parity against `LTPAnchorRegistry`.
+Suwappu DB is the storage and validation engine underneath the Suwappu. Phase 1 lands the dual-VM database (EVM + Move) on a custom Verkle-rooted state lane with cross-parity against `LTPAnchorRegistry`.
 
 Phase 1 timeline: 17 weeks (8 sprints). Started 2026-04-23. Target close: Q1 2027.
 
@@ -12,11 +12,11 @@ Phase 1 timeline: 17 weeks (8 sprints). Started 2026-04-23. Target close: Q1 202
 
 These are non-negotiable. Code that weakens them does not ship.
 
-1. **Lane separation** — `gsxdb-lane` (data ingest) cannot directly mutate `gsxdb-state` (authoritative state). All mutations go through `gsxdb-bridge`. Enforced by `scripts/check-lane-separation.sh` and `deny.toml`. The `lane-auditor` subagent reviews every change to those paths.
+1. **Lane separation** — `suwappudb-lane` (data ingest) cannot directly mutate `suwappudb-state` (authoritative state). All mutations go through `suwappudb-bridge`. Enforced by `scripts/check-lane-separation.sh` and `deny.toml`. The `lane-auditor` subagent reviews every change to those paths.
 
-2. **Proposition 1 (dual-VM consistency)** — at every checkpoint, `EVM balanceOf(addr) == Move Coin.value(addr)` for every address. Enforced by the property test in `gsxdb-state/tests/dual_vm_parity.rs` (10k+ iterations).
+2. **Proposition 1 (dual-VM consistency)** — at every checkpoint, `EVM balanceOf(addr) == Move Coin.value(addr)` for every address. Enforced by the property test in `suwappudb-state/tests/dual_vm_parity.rs` (10k+ iterations).
 
-3. **Cross-parity** — Solidity `LTPAnchorRegistry` and Rust `gsxdb-anchor` must accept and reject the same inputs in the same way for all 36 entity-state-machine pairs. The `parity-checker` subagent reviews every change to anchor validation, FSM, or record layout.
+3. **Cross-parity** — Solidity `LTPAnchorRegistry` and Rust `suwappudb-anchor` must accept and reject the same inputs in the same way for all 36 entity-state-machine pairs. The `parity-checker` subagent reviews every change to anchor validation, FSM, or record layout.
 
 4. **No git rebase, ever** — repo convention. Use `git merge` or `git pull --no-rebase`.
 
@@ -58,7 +58,7 @@ Between sessions, you resume via:
 | S9     | 18+    | ✅ Closed    | Real Aptos Move VM via `move-vm-runtime` (IQ-3/4/5); `aptos_move_vm_parity` 10k cross-VM proptest passing under `production-move-executor`. |
 | S10    | 18+    | ✅ Closed    | Real Verkle commitments via banderwagon + per-step IPA witnesses (IQ-6); `verkle_parity` exit-gate 10k cases on commit-determinism + 32 cases on the full prove/verify path under `production-verkle`. Compact multipoint IPA witness (~200 B target) is an explicit follow-on. |
 | S11    | 18+    | ✅ Closed    | Solidity `LTPAnchorRegistry` + ECDSA parity (IQ-7) — `VerifierConfig`, `AnchorLog (anchor, credential)` storage, `EcdsaSecp256k1Signer`, `dispatch_with_signer`, Foundry deploy script + ABI publication, cross-impl differential test verifying 16 Rust-signed vectors via Solidity `recoverSigner`. Sp1 producer + ML-DSA-65 hybrid follow when zkVM / PQ decisions land. |
-| S12    | 18+    | ✅ Closed    | DAG store traversal (children index + ancestors/descendants/tips), snapshot capture+restore (sorted-encode for byte-idempotent round-trips), Prometheus exporter with summary-quantile output, shadow-testnet E2E gated on `GSXDB_SHADOW_RPC`; `dag_snapshot_exit_gate` 10k proptest passing in 1.12s under release (IQ-9). |
+| S12    | 18+    | ✅ Closed    | DAG store traversal (children index + ancestors/descendants/tips), snapshot capture+restore (sorted-encode for byte-idempotent round-trips), Prometheus exporter with summary-quantile output, shadow-testnet E2E gated on `SUWAPPUDB_SHADOW_RPC`; `dag_snapshot_exit_gate` 10k proptest passing in 1.12s under release (IQ-9). |
 
 Update this table when a sprint closes.
 
@@ -102,7 +102,7 @@ For IQ-driven branches: `iq/<short-slug>`.
 
 ### Migrations
 
-The state schema is content-addressed and self-validating; no Alembic-style migrations. RocksDB CFs are added at startup if missing (`gsxdb-state::ensure_cfs()`).
+The state schema is content-addressed and self-validating; no Alembic-style migrations. RocksDB CFs are added at startup if missing (`suwappudb-state::ensure_cfs()`).
 
 ## Specialist subagents
 
@@ -110,8 +110,8 @@ Invoke these proactively per the rules below.
 
 | Trigger | Subagent | Why |
 |---|---|---|
-| Changes to `gsxdb-lane`, `gsxdb-bridge`, `scripts/check-lane-separation.sh`, `deny.toml` | `lane-auditor` | Lane-separation invariant |
-| Changes to `gsxdb-verkle`, signature paths, KEM | `crypto-reviewer` | Cryptographic correctness + side-channels |
+| Changes to `suwappudb-lane`, `suwappudb-bridge`, `scripts/check-lane-separation.sh`, `deny.toml` | `lane-auditor` | Lane-separation invariant |
+| Changes to `suwappudb-verkle`, signature paths, KEM | `crypto-reviewer` | Cryptographic correctness + side-channels |
 | Changes to anchor validation, FSM, `AnchorRecord` layout | `parity-checker` | Solidity ↔ Rust parity |
 | Driving a full sprint end-to-end | `sprint-runner` | Multi-day autonomous run |
 

@@ -5,7 +5,7 @@
 
 ---
 
-## 7.4 State substrate: GSX-DB
+## 7.4 State substrate: Suwappu DB
 
 Construction 1 of §7.3 leaves three implementation primitives
 unspecified: (i) the polymorphic balance map of §7.2 as a concrete
@@ -13,28 +13,28 @@ type with a verifiable dual-projection property; (ii) the intent
 queue Q with the property that no producer outside the bridge can
 enqueue; and (iii) the joint state commitment `(Σ_EVM, Σ_Move)` over
 which the Authority Ring co-signs at each checkpoint. We instantiate
-all three in **GSX-DB**, a Rust workspace of four crates that runs
+all three in **Suwappu DB**, a Rust workspace of four crates that runs
 as the state and execution substrate underneath the consensus
 layer of §6.
 
 ### 7.4.1 Workspace and lane separation
 
-GSX-DB exposes four crates in a strict dependency lattice:
+Suwappu DB exposes four crates in a strict dependency lattice:
 
 ```text
-gsxdb-lane  →  gsxdb-bridge  →  gsxdb-state
+suwappudb-lane  →  suwappudb-bridge  →  suwappudb-state
        \________________↗
         forbidden — no direct lane → state path
 ```
 
-The forbidden edge is enforced two ways. First, `gsxdb-state`
+The forbidden edge is enforced two ways. First, `suwappudb-state`
 exposes only one mutation entry point, `State::apply(&BridgeToken,
 &StateChange)`, where `BridgeToken` is a zero-sized type whose sole
 constructor is `__for_bridge_only()` and lives behind a crate
-boundary callable only from `gsxdb-bridge`. Lane code attempting to
+boundary callable only from `suwappudb-bridge`. Lane code attempting to
 synthesize a `BridgeToken` fails to compile. Second, a build-time
 script `scripts/check-lane-separation.sh` rejects any source path in
-`gsxdb-lane` that resolves to a symbol in `gsxdb-state`.
+`suwappudb-lane` that resolves to a symbol in `suwappudb-state`.
 
 We refer to this composition as the **lane-separation invariant**:
 the type system makes incorrect data-plane mutations
@@ -60,7 +60,7 @@ impl BalanceSlot {
 
 A single `u128` carries the canonical value; the two projections
 expose the EVM and Move view shapes without serializing through a
-bridge. There exists no API surface in `gsxdb-state` by which
+bridge. There exists no API surface in `suwappudb-state` by which
 `evm_balance().to_u128()` and `move_coin_value().to_u128()` can
 return distinct values, and the compiler enforces this property
 without runtime checks.
@@ -86,7 +86,7 @@ test (Table 4): `redb_preserves_dual_projection` (S2),
 ### 7.4.3 Cross-VM intent queue
 
 The queue $Q$ of Construction 1 is realized as the `Intent::Call`
-variant of the `gsxdb-bridge::Intent` enum, dispatched at block
+variant of the `suwappudb-bridge::Intent` enum, dispatched at block
 execution time through a `ContractRegistry` keyed by callee
 address. Cross-VM writes lift into the registry, which serializes
 their effects into a `Bundle` of `BundleStep`s; bundles execute
@@ -96,7 +96,7 @@ step. We verify two properties of this design:
 - **Bundle atomicity.** A bundle in which any step fails leaves
   state indistinguishable from the bundle never having been
   scheduled. Tested at 10,000 cases by
-  `crates/gsxdb-bridge/tests/cross_vm_bundles.rs::bundle_atomicity`.
+  `crates/suwappudb-bridge/tests/cross_vm_bundles.rs::bundle_atomicity`.
 
 - **Cross-VM canonical equivalence.** A logically identical
   operation issued in EVM-shape or Move-shape produces the same
@@ -130,7 +130,7 @@ Determinism is the contract on which the recovery argument of
 We commit to the canonical state at every block via a 256-ary
 trie keyed by address bytes, depth 20, with domain-separated leaf
 and internal commitments. Phase-1 ships hash-based commitments
-(BLAKE3 with the `GSXDB-TREE/{EMPTY,LEAF_,INT__}` tag schedule);
+(BLAKE3 with the `SUWAPPUDB-TREE/{EMPTY,LEAF_,INT__}` tag schedule);
 the launch-readiness commitment is IPA over the banderwagon curve,
 which is a swap of the `commit_node` function with no impact on
 tree shape, traversal, or proof structure. The witness-size
@@ -141,7 +141,7 @@ tree root `StateTree::from_state(Σ).root()` is a deterministic
 function of $\Sigma$, independent of insertion order.*
 
 Tested at 10,000 cases by
-`crates/gsxdb-state/tests/state_tree.rs::cross_tree_root_agreement`.
+`crates/suwappudb-state/tests/state_tree.rs::cross_tree_root_agreement`.
 
 The state root is the artifact the Authority Ring co-signs at the
 checkpoint boundary $t \equiv 0 \pmod C$ of Construction 1. The
@@ -169,7 +169,7 @@ recording $(\text{height}, \text{parent}, \text{state\_root},
 produces the identical post-state.*
 
 Tested at 10,000 cases by
-`crates/gsxdb-bridge/tests/recovery.rs::recover_matches_live_state`.
+`crates/suwappudb-bridge/tests/recovery.rs::recover_matches_live_state`.
 Tampered `state_root` is detected by the same test
 (`tampered_state_root_caught`).
 
@@ -191,20 +191,20 @@ companion LTP paper's ML-DSA-65 on the post-quantum surface), with
 no change to the `Anchor`, `AnchorLog`, or `parity_check` types.
 Solidity parity fixtures for the on-chain `LTPAnchorRegistry`
 described in [LTP Academic, 2026, §7] are pre-positioned in
-`crates/gsxdb-bridge/tests/solidity_anchor_parity.rs` and cover the
+`crates/suwappudb-bridge/tests/solidity_anchor_parity.rs` and cover the
 36 entity-state-machine pairs of LTP §7.3.
 
 ### 7.4.8 Summary table
 
-| Paper section | GSX-DB construct | Module path |
+| Paper section | Suwappu DB construct | Module path |
 |---|---|---|
-| §7.2 balance map | `BalanceSlot` + projections | `gsxdb-state::balance_slot` |
-| §7.3 intent queue $Q$ | `Intent::Call` + `Bundle` | `gsxdb-bridge::bundle` |
-| §7.3 checkpoint commit | `StateTree::from_state` | `gsxdb-state::tree` |
-| §6 deterministic execution | OCC `BlockExecutor` | `gsxdb-bridge::occ` |
-| §10 outbound anchor | `AnchorDispatcher` | `gsxdb-bridge::anchor` |
-| §11 crash recovery | `replay`, `BlockStore` | `gsxdb-bridge::recovery` |
-| §7 lane separation | `BridgeToken` capability | `gsxdb-state::lib` |
+| §7.2 balance map | `BalanceSlot` + projections | `suwappudb-state::balance_slot` |
+| §7.3 intent queue $Q$ | `Intent::Call` + `Bundle` | `suwappudb-bridge::bundle` |
+| §7.3 checkpoint commit | `StateTree::from_state` | `suwappudb-state::tree` |
+| §6 deterministic execution | OCC `BlockExecutor` | `suwappudb-bridge::occ` |
+| §10 outbound anchor | `AnchorDispatcher` | `suwappudb-bridge::anchor` |
+| §11 crash recovery | `replay`, `BlockStore` | `suwappudb-bridge::recovery` |
+| §7 lane separation | `BridgeToken` capability | `suwappudb-state::lib` |
 
 ---
 

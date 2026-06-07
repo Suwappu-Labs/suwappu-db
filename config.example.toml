@@ -1,11 +1,11 @@
-# GSX-DB Server Configuration Example
-# Copy to /etc/gsxdb/config.toml or set CONFIG_PATH env var to point to your config
+# Suwappu DB Server Configuration Example
+# Copy to /etc/suwappudb/config.toml or set CONFIG_PATH env var to point to your config
 
 # State database path (redb)
-state_db_path = "/data/gsxdb/state.redb"
+state_db_path = "/data/suwappudb/state.redb"
 
 # Block database path (redb)
-block_db_path = "/data/gsxdb/blocks.redb"
+block_db_path = "/data/suwappudb/blocks.redb"
 
 # RPC server port
 rpc_port = 8660
@@ -16,7 +16,7 @@ metrics_port = 9660
 # Anchor chain registrations
 # Each [[anchor]] section registers a chain for cross-chain parity checks
 
-# GSX L1 (GSN settlement layer)
+# SUWAPPU L1 (GSN settlement layer)
 [[anchor]]
 chain_id = 103115120
 # 32-byte hex key for HMAC anchor authentication

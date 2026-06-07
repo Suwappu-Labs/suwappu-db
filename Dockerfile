@@ -1,4 +1,4 @@
-# Multi-stage build for gsxdb-server.
+# Multi-stage build for suwappudb-server.
 #
 # C8: Rust toolchain bumped 1.78 → 1.88 to match the workspace
 # `rust-version` in Cargo.toml. The C2 release workflow builds the
@@ -18,8 +18,8 @@ WORKDIR /build
 COPY Cargo.lock Cargo.toml ./
 COPY crates ./crates
 
-# Build gsxdb-server in release mode
-RUN cargo build --release -p gsxdb-server
+# Build suwappudb-server in release mode
+RUN cargo build --release -p suwappudb-server
 
 # Stage 2: Runtime
 FROM debian:bookworm-slim
@@ -32,16 +32,16 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Create data directory
-RUN mkdir -p /data/gsxdb
+RUN mkdir -p /data/suwappudb
 
 # Copy binary from builder
-COPY --from=builder /build/target/release/gsxdb-server /usr/local/bin/gsxdb-server
+COPY --from=builder /build/target/release/suwappudb-server /usr/local/bin/suwappudb-server
 
 # Create app directory
 WORKDIR /app
 
 # Default configuration file location
-ENV CONFIG_PATH=/etc/gsxdb/config.toml
+ENV CONFIG_PATH=/etc/suwappudb/config.toml
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
@@ -51,4 +51,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 EXPOSE 8660 9660
 
 # Run the server
-ENTRYPOINT ["gsxdb-server"]
+ENTRYPOINT ["suwappudb-server"]

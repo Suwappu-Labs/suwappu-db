@@ -1,4 +1,4 @@
-# GSX-DB — Backend handoff
+# Suwappu DB — Backend handoff
 
 For an engineer joining cold. Honest, current as of phase-1 close +
 S8.5 partial landing (2026-05-08). Read top to bottom; pin the
@@ -28,13 +28,13 @@ the call.
 
 ## 2. Repo
 
-`https://github.com/GlobalSettlementNetwork/gsx-db` (private)
+`https://github.com/suwappu/suwappu-db` (private)
 
 ## 3. Get it running in 10 minutes
 
 ```bash
-git clone git@github.com:GlobalSettlementNetwork/gsx-db.git
-cd gsx-db
+git clone git@github.com:suwappu/suwappu-db.git
+cd suwappu-db
 
 # Need: rustc 1.75+ via rustup, no other deps
 rustup toolchain install stable
@@ -57,7 +57,7 @@ Each is a property test running 10,000 cases. **Don't break these.**
 
 | # | Invariant | Test |
 |---|---|---|
-| 1 | Only `gsxdb-bridge` can mutate state (capability gate) | `scripts/check-lane-separation.sh` |
+| 1 | Only `suwappudb-bridge` can mutate state (capability gate) | `scripts/check-lane-separation.sh` |
 | 2 | EVM `balanceOf` == Move `Coin::value` for any address (structurally) | `redb_preserves_dual_projection` |
 | 3 | Same logical op via EVM-shape vs Move-shape ⇒ same canonical state | `interleaved_evm_move_preserves_invariant` |
 | 4 | Block execution is deterministic regardless of thread schedule | `parallel_equals_sequential` |
@@ -70,14 +70,14 @@ Each is a property test running 10,000 cases. **Don't break these.**
 
 | Path | What | Status |
 |---|---|---|
-| `crates/gsxdb-state/` | Canonical state, BalanceSlot, BalanceStore, StateTree | working |
-| `crates/gsxdb-bridge/` | Capability gate, OCC scheduler, bundles, anchors, recovery | working |
-| `crates/gsxdb-lane/` | Untrusted ingest layer | placeholder |
-| `crates/gsxdb-bridge/src/vm/` | `MockEvm`, `MockMove` | **mocked** — not real VMs |
-| `crates/gsxdb-bridge/src/anchor/` | Multi-chain anchor log + parity | **in-memory + HMAC**, not Solidity |
-| `crates/gsxdb-bridge/src/recovery/` | Block store + replay | in-memory + redb (S8.5) |
-| `crates/gsxdb-state/src/tree/` | 256-ary trie, BLAKE3 commitments | **BLAKE3, not real Verkle** |
-| `crates/gsxdb-state/src/redb_store.rs` | Persistent state via redb | working (dev backend per IQ-1) |
+| `crates/suwappudb-state/` | Canonical state, BalanceSlot, BalanceStore, StateTree | working |
+| `crates/suwappudb-bridge/` | Capability gate, OCC scheduler, bundles, anchors, recovery | working |
+| `crates/suwappudb-lane/` | Untrusted ingest layer | placeholder |
+| `crates/suwappudb-bridge/src/vm/` | `MockEvm`, `MockMove` | **mocked** — not real VMs |
+| `crates/suwappudb-bridge/src/anchor/` | Multi-chain anchor log + parity | **in-memory + HMAC**, not Solidity |
+| `crates/suwappudb-bridge/src/recovery/` | Block store + replay | in-memory + redb (S8.5) |
+| `crates/suwappudb-state/src/tree/` | 256-ary trie, BLAKE3 commitments | **BLAKE3, not real Verkle** |
+| `crates/suwappudb-state/src/redb_store.rs` | Persistent state via redb | working (dev backend per IQ-1) |
 | `docs/architecture/` | Diagrams + walkthrough | start here for the visual tour |
 | `docs/spec/` | Per-component specs | precise truth, read for the component you're touching |
 | `docs/iq/` | Decision docs | read these before changing any swap point |
@@ -160,8 +160,8 @@ doc is low; cost of an undocumented architectural choice is high.
 1. `docs/architecture/README.md` — high-level architecture
 2. `docs/architecture/overview.md` — three-crate split + capability gate
 3. `docs/architecture/data-flow.md` — end-to-end pipeline with sequence diagrams
-4. `crates/gsxdb-state/src/lib.rs` — read top to bottom
-5. `crates/gsxdb-bridge/src/lib.rs` — read top to bottom
+4. `crates/suwappudb-state/src/lib.rs` — read top to bottom
+5. `crates/suwappudb-bridge/src/lib.rs` — read top to bottom
 
 After those five, you'll have enough context to be useful in review
 and to pick something to own.
@@ -184,8 +184,8 @@ cargo fmt --all -- --check
 ```bash
 PROPTEST_CASES=10000 cargo test --workspace --release  # all invariants
 ./scripts/cross-parity.sh                              # S7 only, 10k
-PROPTEST_CASES=10000 cargo test -p gsxdb-state --test state_tree
-PROPTEST_CASES=10000 cargo test -p gsxdb-bridge --test recovery
+PROPTEST_CASES=10000 cargo test -p suwappudb-state --test state_tree
+PROPTEST_CASES=10000 cargo test -p suwappudb-bridge --test recovery
 ```
 
 ### Verify everything
@@ -199,7 +199,7 @@ bash scripts/bootstrap.sh     # build + test + lane-sep + smoke
 ### Crate boundaries
 
 ```
-gsxdb-lane → gsxdb-bridge → gsxdb-state
+suwappudb-lane → suwappudb-bridge → suwappudb-state
         \________________↗
          (forbidden — lane cannot import state directly)
 ```
@@ -208,28 +208,28 @@ gsxdb-lane → gsxdb-bridge → gsxdb-state
 
 | Sprint | Test name | File |
 |---|---|---|
-| S2 | `redb_preserves_dual_projection` | `crates/gsxdb-state/src/redb_store.rs` |
-| S3 | `interleaved_evm_move_preserves_invariant` | `crates/gsxdb-bridge/tests/cross_vm_parity.rs` |
-| S4 | `parallel_equals_sequential` | `crates/gsxdb-bridge/tests/block_executor.rs` |
-| S5 | `bundle_atomicity` | `crates/gsxdb-bridge/tests/cross_vm_bundles.rs` |
-| S6 | `cross_tree_root_agreement` | `crates/gsxdb-state/tests/state_tree.rs` |
-| S7 | `cross_chain_parity_holds` | `crates/gsxdb-bridge/tests/cross_parity.rs` |
-| S8 | `recover_matches_live_state` | `crates/gsxdb-bridge/tests/recovery.rs` |
+| S2 | `redb_preserves_dual_projection` | `crates/suwappudb-state/src/redb_store.rs` |
+| S3 | `interleaved_evm_move_preserves_invariant` | `crates/suwappudb-bridge/tests/cross_vm_parity.rs` |
+| S4 | `parallel_equals_sequential` | `crates/suwappudb-bridge/tests/block_executor.rs` |
+| S5 | `bundle_atomicity` | `crates/suwappudb-bridge/tests/cross_vm_bundles.rs` |
+| S6 | `cross_tree_root_agreement` | `crates/suwappudb-state/tests/state_tree.rs` |
+| S7 | `cross_chain_parity_holds` | `crates/suwappudb-bridge/tests/cross_parity.rs` |
+| S8 | `recover_matches_live_state` | `crates/suwappudb-bridge/tests/recovery.rs` |
 
 ### Common types and where they live
 
 | Type | Crate | Module |
 |---|---|---|
-| `Address`, `Balance`, `BridgeToken`, `State` | gsxdb-state | `lib.rs` |
-| `BalanceSlot`, `EvmBalance`, `MoveCoinValue` | gsxdb-state | `balance_slot` |
-| `BalanceStore`, `InMemoryBalanceStore`, `RedbBalanceStore` | gsxdb-state | `store`, `redb_store` |
-| `Commitment`, `Node`, `Proof`, `StateTree` | gsxdb-state | `tree` |
-| `Bridge`, `Intent`, `RejectReason` | gsxdb-bridge | `lib.rs` |
-| `EvmTx`, `MoveTx`, `MockEvm`, `MockMove` | gsxdb-bridge | `vm` |
-| `MvStore`, `BlockExecutor`, `BlockReport`, `TxOutcome` | gsxdb-bridge | `occ` |
-| `Bundle`, `BundleExecutor`, `ContractRegistry`, `BundleGenerator` | gsxdb-bridge | `bundle` |
-| `Anchor`, `AnchorLog`, `AnchorDispatcher`, `ParityResult` | gsxdb-bridge | `anchor` |
-| `BlockStore`, `InMemoryBlockStore`, `RedbBlockStore`, `replay` | gsxdb-bridge | `recovery` |
+| `Address`, `Balance`, `BridgeToken`, `State` | suwappudb-state | `lib.rs` |
+| `BalanceSlot`, `EvmBalance`, `MoveCoinValue` | suwappudb-state | `balance_slot` |
+| `BalanceStore`, `InMemoryBalanceStore`, `RedbBalanceStore` | suwappudb-state | `store`, `redb_store` |
+| `Commitment`, `Node`, `Proof`, `StateTree` | suwappudb-state | `tree` |
+| `Bridge`, `Intent`, `RejectReason` | suwappudb-bridge | `lib.rs` |
+| `EvmTx`, `MoveTx`, `MockEvm`, `MockMove` | suwappudb-bridge | `vm` |
+| `MvStore`, `BlockExecutor`, `BlockReport`, `TxOutcome` | suwappudb-bridge | `occ` |
+| `Bundle`, `BundleExecutor`, `ContractRegistry`, `BundleGenerator` | suwappudb-bridge | `bundle` |
+| `Anchor`, `AnchorLog`, `AnchorDispatcher`, `ParityResult` | suwappudb-bridge | `anchor` |
+| `BlockStore`, `InMemoryBlockStore`, `RedbBlockStore`, `replay` | suwappudb-bridge | `recovery` |
 
 ### The 8 IQs
 
@@ -248,8 +248,8 @@ gsxdb-lane → gsxdb-bridge → gsxdb-state
 
 | Pitfall | What happens | Fix |
 |---|---|---|
-| Importing `gsxdb-state` from `gsxdb-lane` | `check-lane-separation.sh` fails | Route through `gsxdb-bridge` |
-| Calling `BridgeToken::__for_bridge_only` from outside `gsxdb-bridge` | Compile error | Don't — only the bridge mints tokens |
+| Importing `suwappudb-state` from `suwappudb-lane` | `check-lane-separation.sh` fails | Route through `suwappudb-bridge` |
+| Calling `BridgeToken::__for_bridge_only` from outside `suwappudb-bridge` | Compile error | Don't — only the bridge mints tokens |
 | `git rebase` in a worktree | History corruption | Use `git merge` or `git pull --no-rebase` |
 | `git commit` hangs | Hooks fighting | Prefix with `HUSKY=0` |
 | Adding "Co-Authored-By" line | Project rule violation | Don't. See `CLAUDE.md` |
@@ -259,9 +259,9 @@ gsxdb-lane → gsxdb-bridge → gsxdb-state
 
 If you're touching... | Read first
 ---|---
-State / balances | `docs/architecture/dual-projection.md` + `crates/gsxdb-state/src/lib.rs`
-Block execution | `docs/architecture/data-flow.md` + `crates/gsxdb-bridge/src/occ/block_executor.rs`
-Tree | `docs/spec/verkle-state-tree.md` + `crates/gsxdb-state/src/tree/`
-Anchors | `docs/spec/anchor-log.md` + `crates/gsxdb-bridge/src/anchor/`
-Recovery | `docs/spec/recovery.md` + `crates/gsxdb-bridge/src/recovery/`
+State / balances | `docs/architecture/dual-projection.md` + `crates/suwappudb-state/src/lib.rs`
+Block execution | `docs/architecture/data-flow.md` + `crates/suwappudb-bridge/src/occ/block_executor.rs`
+Tree | `docs/spec/verkle-state-tree.md` + `crates/suwappudb-state/src/tree/`
+Anchors | `docs/spec/anchor-log.md` + `crates/suwappudb-bridge/src/anchor/`
+Recovery | `docs/spec/recovery.md` + `crates/suwappudb-bridge/src/recovery/`
 Picking a swap point | the relevant IQ in `docs/iq/`

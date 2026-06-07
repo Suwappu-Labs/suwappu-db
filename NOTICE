@@ -1,8 +1,8 @@
-gsx-db
-Copyright 2026 Global Settlement Network
+suwappu-db
+Copyright 2026 Suwappu
 
-This product includes software developed at the Global Settlement
-Network (https://github.com/GlobalSettlementNetwork).
+This product includes software developed at the Suwappu
+Network (https://github.com/suwappu).
 
 Third-party software incorporated by reference, with their own
 licenses:
@@ -21,4 +21,4 @@ licenses:
 See `deny.toml` for the full pinned dependency graph + license
 allow-list. The MIT components above are vendored under MIT terms
 (see their respective repositories' LICENSE files); their inclusion
-does not modify the Apache-2.0 terms of gsx-db itself.
+does not modify the Apache-2.0 terms of suwappu-db itself.

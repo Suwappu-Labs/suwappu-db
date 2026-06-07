@@ -76,17 +76,17 @@ feature flag (`production-storage`) to gate the RocksDB impl in.
   cardinality, same names.
 - **ADR changes:** None yet (no ADR exists; this IQ stands alone).
 - **Code changes:**
-  - `crates/gsxdb-state/Cargo.toml`: replace `rocksdb` with `redb`
-  - `crates/gsxdb-state/src/redb_store.rs`: new module
-  - `crates/gsxdb-state/src/lib.rs`: re-export `RedbBalanceStore`
-  - `crates/gsxdb-state/src/rocks_store.rs` (uncommitted): delete
+  - `crates/suwappudb-state/Cargo.toml`: replace `rocksdb` with `redb`
+  - `crates/suwappudb-state/src/redb_store.rs`: new module
+  - `crates/suwappudb-state/src/lib.rs`: re-export `RedbBalanceStore`
+  - `crates/suwappudb-state/src/rocks_store.rs` (uncommitted): delete
 - **Test changes:** The existing slice-3 property tests
   (`rocks_preserves_dual_projection`, `rocks_matches_in_memory`) become
   `redb_*` equivalents and run against the new backend.
 
 ### Propagation checklist
 
-- [x] Code: replace `rocksdb` dep with `redb` in `crates/gsxdb-state/Cargo.toml`
+- [x] Code: replace `rocksdb` dep with `redb` in `crates/suwappudb-state/Cargo.toml`
 - [x] Code: implement `RedbBalanceStore` with same 5-table layout
 - [x] Code: re-export from `lib.rs`
 - [x] Tests: slice-3 property tests against redb backend

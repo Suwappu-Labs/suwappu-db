@@ -1,6 +1,6 @@
 # Governance
 
-How decisions get made in gsx-db. Three layers, matching the
+How decisions get made in suwappu-db. Three layers, matching the
 artefacts already in the repo.
 
 ## Tl;dr
@@ -92,7 +92,7 @@ of back-and-forth:
 2. Tag all maintainers explicitly.
 3. Maintainers vote with explicit comments: `+1`, `-1`, or
    `+0` (no opinion). Simple majority of non-`+0` votes decides.
-4. In case of tie, the lead maintainer (currently @tomagsx)
+4. In case of tie, the lead maintainer (currently @tomasuwappu)
    breaks it. The tiebreaker reason is recorded in the
    IQ / audit ledger.
 

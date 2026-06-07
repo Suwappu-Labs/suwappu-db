@@ -8,7 +8,7 @@ committing post-block state, anchoring it, and persisting the block.
 ```mermaid
 flowchart TB
     User([User])
-    Lane[gsxdb-lane]
+    Lane[suwappudb-lane]
     BlockExec[BlockExecutor::<br/>execute_with_registry]
     OCC{OCC scheduler}
     MvStore[(MvStore)]
@@ -46,7 +46,7 @@ flowchart TB
 ```mermaid
 sequenceDiagram
     actor User
-    participant Lane as gsxdb-lane
+    participant Lane as suwappudb-lane
     participant Block as BlockExecutor
     User->>Lane: submit intents
     Lane->>Lane: collect into a block (Vec<Intent>)

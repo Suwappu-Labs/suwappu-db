@@ -15,7 +15,7 @@ single account model to several runtimes through Sealevel [Solana,
 2020]. Each design fixes the substrate at one VM's primitives and
 projects others through it.
 
-We take the inverse approach. The substrate of §7.4 (GSX-DB) is
+We take the inverse approach. The substrate of §7.4 (Suwappu DB) is
 neither EVM-shaped nor Move-shaped; it is a canonical
 `(address, asset) → BalanceSlot` map with explicit projections per
 VM. The dual-projection invariant (Proposition 4) is verified
@@ -28,7 +28,7 @@ the validation pipeline.
 
 The closest prior work in spirit is Anchor [Anchor, 2021] which
 introduces capability-token mutation gates on Solana programs at
-the framework level. The GSX-DB capability gate is enforced at the
+the framework level. The Suwappu DB capability gate is enforced at the
 state-crate boundary (the smallest unit of code that can construct
 the token), not at the framework level, which makes the invariant
 auditable without reading any program logic.

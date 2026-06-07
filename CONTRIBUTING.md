@@ -1,8 +1,8 @@
-# Contributing to gsx-db
+# Contributing to suwappu-db
 
 Thanks for your interest. This repo is open to external contributions
 under the rules below. For integrator-facing usage (depending on
-gsx-db rather than changing it), see [`INTEGRATORS.md`](./INTEGRATORS.md).
+suwappu-db rather than changing it), see [`INTEGRATORS.md`](./INTEGRATORS.md).
 
 ## TL;DR
 
@@ -53,8 +53,8 @@ git rebase -i HEAD~N --exec 'git commit --amend --no-edit -s'   # last N commits
 ## Dev setup
 
 ```sh
-git clone https://github.com/GlobalSettlementNetwork/gsx-db
-cd gsx-db
+git clone https://github.com/suwappu/suwappu-db
+cd suwappu-db
 cargo test --workspace             # ~256 cases per proptest
 PROPTEST_CASES=10000 \
     cargo test --workspace --release    # exit-gate (slow)
@@ -70,7 +70,7 @@ cargo deny check
 | Sprint sub-pass | `<area>/s<N.M>-<slug>` | `verkle/s10.3-ipa-witness-generation` |
 | IQ / decision | `iq/<short-slug>` | `iq/anchor-parity` |
 | Security hardening (Pass B) | `hardening/b<N>-<slug>` | `hardening/b6-rpc-auth-bearer` |
-| External-dev (Pass C) | `external-dev/c<N>-<slug>` | `external-dev/c5-gsxdb-types` |
+| External-dev (Pass C) | `external-dev/c<N>-<slug>` | `external-dev/c5-suwappudb-types` |
 | Bug fix | `fix/<short-slug>` | `fix/snapshot-clock-skew` |
 | Documentation only | `docs/<short-slug>` | `docs/clarify-eth-payload` |
 
@@ -108,7 +108,7 @@ cargo deny check
   `PROPTEST_CASES=10000` for the exit-gate run that CI executes
   on push.
 - **Conformance fixtures** live in
-  `crates/gsxdb-bridge/tests/cross_parity.rs` and
+  `crates/suwappudb-bridge/tests/cross_parity.rs` and
   `contracts/test/fixtures/`. The Rust ↔ Solidity differential
   test (`LTPAnchorRegistryParityTest`) verifies every committed
   vector recovers correctly.
@@ -137,8 +137,8 @@ Some surfaces require a domain reviewer:
 
 | Surface | Reviewer hint |
 |---|---|
-| `gsxdb-lane`, `gsxdb-bridge`, `scripts/check-lane-separation.sh`, `deny.toml` | Lane-separation guard |
-| `gsxdb-state/src/tree`, `verkle.rs`, signature paths, KEM | Cryptographic correctness |
+| `suwappudb-lane`, `suwappudb-bridge`, `scripts/check-lane-separation.sh`, `deny.toml` | Lane-separation guard |
+| `suwappudb-state/src/tree`, `verkle.rs`, signature paths, KEM | Cryptographic correctness |
 | `anchor/`, `LTPAnchorRegistry.sol` | Rust ↔ Solidity parity |
 | `recovery/`, `dag.rs`, `snapshot.rs` | Recovery + DAG soundness |
 

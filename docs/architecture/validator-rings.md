@@ -1,6 +1,6 @@
 # Dual-ring validator set
 
-Per the GSX DAG L1 paper §5: the validator set is decomposed into
+Per the SUWAPPU DAG L1 paper §5: the validator set is decomposed into
 two concentric quorums with independent admission gates and
 independent corruption profiles.
 
@@ -11,13 +11,13 @@ flowchart TB
     subgraph Outer[Validator Ring - PoS]
         direction LR
         V1[100-500 stake-weighted<br/>open participants]
-        V2[Genesis stake: 25,000 GSX]
+        V2[Genesis stake: 25,000 SUWAPPU]
         V3[Slashing: 5-30% stake-weight]
     end
     subgraph Inner[Authority Ring - PoA]
         direction LR
         A1[30-50 licensed institutional<br/>entities]
-        A2[Per-node stake: 100,000 GSX]
+        A2[Per-node stake: 100,000 SUWAPPU]
         A3[Slashing: 100% + expulsion]
     end
     subgraph SN[Corridor super-nodes - subset]
@@ -98,7 +98,7 @@ institutional counterparties demand.
 
 | Independence axis | Authority Ring | Validator Ring |
 |---|---|---|
-| Admission gate | regulatory licensure (KYC, jurisdiction) | open stake (any party with 25,000 GSX) |
+| Admission gate | regulatory licensure (KYC, jurisdiction) | open stake (any party with 25,000 SUWAPPU) |
 | Operator population | licensed institutions | open market participants |
 | Slashing incentive | per-Authority-Node 100% + expulsion | stake-weighted 5–30% |
 | Geographic distribution | concentrated in regulated jurisdictions | unbounded (any IP) |
@@ -149,15 +149,15 @@ simultaneously. Bounded by four mitigations:
 4. **Governance staging** — from Phase G3 forward, super-node
    admission moves under Concord Council binding authority
 
-## How gsx-db sees the validator set
+## How suwappu-db sees the validator set
 
 ```mermaid
 flowchart LR
-    subgraph Outside[Outside gsx-db]
+    subgraph Outside[Outside suwappu-db]
         Mysticeti[Mysticeti-C consensus]
         VKey[Validator key registry<br/>maintained by Authority Ring]
     end
-    subgraph GsxDB[gsx-db state surface]
+    subgraph SuwappuDB[suwappu-db state surface]
         BridgeToken[BridgeToken capability]
         AnchorReg[AnchorDispatcher per ChainId]
         VSet[(Validator set state<br/>polymorphic balance map<br/>+ stake bonds)]
@@ -167,9 +167,9 @@ flowchart LR
     AnchorReg -.signs anchors with.-> VKey
 ```
 
-gsx-db's substrate doesn't enforce ring membership — that's the
+suwappu-db's substrate doesn't enforce ring membership — that's the
 consensus layer's job. The substrate holds the validator-set state
 (stake bonds, slashing balances, attestation keys) in the same
 polymorphic balance map as every other on-chain field. Ring-specific
 behaviour (admission, slashing, ratification) sits in the consensus
-crate (`gsxbft`).
+crate (`suwappubft`).

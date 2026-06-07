@@ -1,18 +1,18 @@
 # Deployment topology
 
 What runs where, today (phase-1 substrate live, chain not yet) and
-at launch (full GSX DAG L1 per the academic paper).
+at launch (full SUWAPPU DAG L1 per the academic paper).
 
 ## Today (phase-1 substrate + live experiments)
 
 ```mermaid
 flowchart TB
     Devs[Developers + ops]
-    GH[(GitHub<br/>GlobalSettlementNetwork)]
+    GH[(GitHub<br/>suwappu)]
     Devs -->|push| GH
 
     subgraph AWS[AWS us-east-2]
-        Besu[GSX Testnet<br/>4× Besu validator<br/>QBFT<br/>chain 103115120]
+        Besu[SUWAPPU Testnet<br/>4× Besu validator<br/>QBFT<br/>chain 103115120]
         OPStack[GSN L2<br/>op-reth + op-node<br/>chain 103218544<br/>RPC 18.226.17.168:8545]
         Besu -->|L1 settlement| OPStack
     end
@@ -34,25 +34,25 @@ flowchart TB
 
     subgraph Frontend[End users]
         CBDC[cbdc-studio]
-        RWA[gsx-rwa-frontend]
-        Identity[canton-gsxid]
+        RWA[suwappu-rwa-frontend]
+        Identity[canton-suwappuid]
     end
 
     CBDC -->|HTTPS| API
     RWA -->|HTTPS| API
     Identity -->|HTTPS| API
 
-    GsxDB[gsx-db substrate<br/>not deployed yet]
-    GsxDB -.shadow target.-> OPStack
+    SuwappuDB[suwappu-db substrate<br/>not deployed yet]
+    SuwappuDB -.shadow target.-> OPStack
 
-    style GsxDB fill:#fed
+    style SuwappuDB fill:#fed
     style Besu fill:#cfc
     style OPStack fill:#cfc
 ```
 
 **Status:**
 - Besu testnet + OP rollup are live; backend services deployed
-- `gsx-db` is the candidate substrate but **not deployed against any
+- `suwappu-db` is the candidate substrate but **not deployed against any
   live chain yet**
 
 ## Option A — Shadow deployment (1–2 weeks; pre-launch)
@@ -62,28 +62,28 @@ flowchart LR
     subgraph Live[Live GSN L2]
         OP[op-reth<br/>:8545]
     end
-    subgraph Shadow[gsx-db shadow]
+    subgraph Shadow[suwappu-db shadow]
         Syncer[L2StateSyncer<br/>polls every N seconds]
-        State[(gsxdb-state)]
-        Server[gsxdb-server<br/>JSON-RPC]
+        State[(suwappudb-state)]
+        Server[suwappudb-server<br/>JSON-RPC]
         Tree[(StateTree)]
     end
     OP -- eth_getBalance --> Syncer
     OP -- eth_getTransactionCount --> Syncer
     Syncer --> State
     State --> Tree
-    Server -- gsx_getBalance --> State
-    Server -- gsx_getStateRoot --> Tree
+    Server -- suwappu_getBalance --> State
+    Server -- suwappu_getStateRoot --> Tree
     Auditor[Auditor / dashboard]
     Auditor --> Server
     Auditor --> OP
     Auditor -.compare roots.-> Tree
 ```
 
-Cross-validation layer. gsx-db consumes published RPC state; any
-divergence between gsx-db and op-reth surfaces in the auditor view.
+Cross-validation layer. suwappu-db consumes published RPC state; any
+divergence between suwappu-db and op-reth surfaces in the auditor view.
 
-## Target — full GSX DAG L1 (per the academic paper)
+## Target — full SUWAPPU DAG L1 (per the academic paper)
 
 ```mermaid
 flowchart TB
@@ -114,8 +114,8 @@ flowchart TB
     VN -- ratify --> DAG
 
     subgraph Node[Per-validator node]
-        Consensus[gsxbft consensus]
-        Exec[gsx-revm + gsx-db<br/>dual-VM execution]
+        Consensus[suwappubft consensus]
+        Exec[gsx-revm + suwappu-db<br/>dual-VM execution]
         Anchor[LTP anchor pipeline]
     end
     DAG --> Consensus --> Exec --> Anchor
@@ -146,27 +146,27 @@ integration) for the formal description.
 | Inter-validator transport | SCION (BGP-class attack-resistant) |
 | Block propagation | RaptorQ erasure coding (RFC 6330) |
 
-## What gsx-db owns in the target topology
+## What suwappu-db owns in the target topology
 
 ```mermaid
 flowchart LR
     Tx[Transactions<br/>EVM or Move shape] --> Consensus[Mysticeti-C<br/>certificate DAG]
     Consensus --> BlockBuilder[BlockBuilder trait]
-    BlockBuilder --> Bridge[gsxdb-bridge<br/>OCC + bundles + anchor]
-    Bridge --> State[(gsxdb-state<br/>canonical balance map<br/>+ Verkle tree)]
+    BlockBuilder --> Bridge[suwappudb-bridge<br/>OCC + bundles + anchor]
+    Bridge --> State[(suwappudb-state<br/>canonical balance map<br/>+ Verkle tree)]
     Bridge --> Anchor[AnchorDispatcher]
     State --> Tree[(StateTree)]
     Anchor -.LTP attestation.-> SuperNode[Corridor super node]
 ```
 
-gsx-db owns the boxed-out execution and state surfaces. The
-consensus layer (above) is `gsxbft-consensus-only-demo` or the full
-`gsx-bft` repository; the LTP attestation pipeline (below) is
+suwappu-db owns the boxed-out execution and state surfaces. The
+consensus layer (above) is `suwappubft-consensus-only-demo` or the full
+`suwappu-bft` repository; the LTP attestation pipeline (below) is
 documented in the LTP companion paper.
 
 ## RPC endpoint auth posture (B6)
 
-`gsxdb-server` binds `0.0.0.0:8660` for `/health`, `/metrics`, and
+`suwappudb-server` binds `0.0.0.0:8660` for `/health`, `/metrics`, and
 `/rpc`. There is **no implicit network ACL**; every endpoint is
 reachable from anything that can dial the port. Production
 deployments MUST add at least one of:
@@ -180,7 +180,7 @@ deployments MUST add at least one of:
    ```nginx
    location /rpc {
        auth_request /_auth;
-       proxy_pass http://gsxdb_backend;
+       proxy_pass http://suwappudb_backend;
        proxy_set_header Authorization $http_authorization;
    }
    location = /_auth {
@@ -192,18 +192,18 @@ deployments MUST add at least one of:
    }
    ```
 
-3. **Bearer token (B6 in-process)**. Set `GSXDB_BEARER_TOKEN` to a
-   shared secret; gsxdb-server's `bearer_auth` middleware then
+3. **Bearer token (B6 in-process)**. Set `SUWAPPUDB_BEARER_TOKEN` to a
+   shared secret; suwappudb-server's `bearer_auth` middleware then
    requires `Authorization: Bearer <token>` on every `/rpc` request.
    `/health` and `/metrics` stay open so liveness probes work.
    Constant-time token compare. Sample:
 
    ```sh
-   export GSXDB_BEARER_TOKEN=$(openssl rand -hex 32)
-   ./gsxdb-server   # logs "Bearer-token auth ENABLED on /rpc"
-   curl -H "Authorization: Bearer $GSXDB_BEARER_TOKEN" \
-        -d '{"jsonrpc":"2.0","method":"gsx_getStateRoot","params":[],"id":1}' \
-        http://gsxdb:8660/rpc
+   export SUWAPPUDB_BEARER_TOKEN=$(openssl rand -hex 32)
+   ./suwappudb-server   # logs "Bearer-token auth ENABLED on /rpc"
+   curl -H "Authorization: Bearer $SUWAPPUDB_BEARER_TOKEN" \
+        -d '{"jsonrpc":"2.0","method":"suwappu_getStateRoot","params":[],"id":1}' \
+        http://suwappudb:8660/rpc
    ```
 
 The bearer-token middleware is a **second layer**, not a primary
@@ -214,7 +214,7 @@ in-process middleware exists because not every deployment has a
 front-proxy from day one, and the cost of an additional check on
 every request is sub-microsecond.
 
-`GSXDB_BEARER_TOKEN` unset (default) preserves the pre-B6 behaviour
-— gsxdb-server emits a startup log warning that the firewall /
+`SUWAPPUDB_BEARER_TOKEN` unset (default) preserves the pre-B6 behaviour
+— suwappudb-server emits a startup log warning that the firewall /
 front-proxy requirement is the operator's responsibility. CI / dev
 runs are unaffected.

@@ -1,15 +1,15 @@
-# gsx-db
+# suwappu-db
 
-> Storage + execution substrate for the [Global Settlement Network](https://github.com/GlobalSettlementNetwork).
+> Storage + execution substrate for the [Suwappu](https://github.com/suwappu).
 
-[![CI](https://github.com/GlobalSettlementNetwork/gsx-db/actions/workflows/ci.yml/badge.svg)](https://github.com/GlobalSettlementNetwork/gsx-db/actions/workflows/ci.yml)
-[![Security](https://github.com/GlobalSettlementNetwork/gsx-db/actions/workflows/security.yml/badge.svg)](https://github.com/GlobalSettlementNetwork/gsx-db/actions/workflows/security.yml)
+[![CI](https://github.com/suwappu/suwappu-db/actions/workflows/ci.yml/badge.svg)](https://github.com/suwappu/suwappu-db/actions/workflows/ci.yml)
+[![Security](https://github.com/suwappu/suwappu-db/actions/workflows/security.yml/badge.svg)](https://github.com/suwappu/suwappu-db/actions/workflows/security.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
-[![Release](https://img.shields.io/github/v/release/GlobalSettlementNetwork/gsx-db?include_prereleases&sort=semver)](https://github.com/GlobalSettlementNetwork/gsx-db/releases)
+[![Release](https://img.shields.io/github/v/release/suwappu/suwappu-db?include_prereleases&sort=semver)](https://github.com/suwappu/suwappu-db/releases)
 [![Rust 1.88](https://img.shields.io/badge/Rust-1.88-orange.svg)](./Cargo.toml)
 
 A dual-VM (EVM + Move) database with Verkle-rooted state commitments and
-cross-chain LTP anchors. Built for the GSX DAG L1; usable standalone as
+cross-chain LTP anchors. Built for the SUWAPPU DAG L1; usable standalone as
 a parallel-execution state substrate.
 
 > **Building a wallet, indexer, parallel verifier, or chain-listener?**
@@ -36,16 +36,16 @@ a parallel-execution state substrate.
 ```mermaid
 flowchart LR
     Tx[Transactions<br/>EVM or Move shape]
-    Tx --> Lane[gsxdb-lane<br/>ingest]
-    Lane --> Bridge[gsxdb-bridge<br/>OCC + bundles + anchor]
-    Bridge --> State[(gsxdb-state<br/>balances<br/>+ Verkle tree)]
+    Tx --> Lane[suwappudb-lane<br/>ingest]
+    Lane --> Bridge[suwappudb-bridge<br/>OCC + bundles + anchor]
+    Bridge --> State[(suwappudb-state<br/>balances<br/>+ Verkle tree)]
     Bridge --> Anchor[AnchorDispatcher]
     Anchor --> LTP[LTPAnchorRegistry.sol<br/>on-chain]
-    State --> Server[gsxdb-server<br/>JSON-RPC]
+    State --> Server[suwappudb-server<br/>JSON-RPC]
     State --> Tree[(StateTree)]
     Tree -.commit.-> Bridge
 
-    Types[gsxdb-types<br/>frozen public surface] -.depends on.-> State
+    Types[suwappudb-types<br/>frozen public surface] -.depends on.-> State
     Types -.depends on.-> Bridge
 
     style Tx fill:#fef
@@ -53,31 +53,31 @@ flowchart LR
     style Types fill:#ffd
 ```
 
-Five crates: `gsxdb-lane` (ingest) → `gsxdb-bridge` (the only writer
-to `gsxdb-state`; owns OCC + bundles + anchors) → `gsxdb-state`
-(canonical balance map + Verkle tree) → `gsxdb-server` (JSON-RPC).
-`gsxdb-types` re-exports the frozen public surface for downstream
+Five crates: `suwappudb-lane` (ingest) → `suwappudb-bridge` (the only writer
+to `suwappudb-state`; owns OCC + bundles + anchors) → `suwappudb-state`
+(canonical balance map + Verkle tree) → `suwappudb-server` (JSON-RPC).
+`suwappudb-types` re-exports the frozen public surface for downstream
 consumers. The Solidity `LTPAnchorRegistry` is the cross-chain
 verifier; `contracts/abi/*.abi.json` ships the published ABIs.
 
 ## Quickstart
 
 ```sh
-git clone https://github.com/GlobalSettlementNetwork/gsx-db
-cd gsx-db
+git clone https://github.com/suwappu/suwappu-db
+cd suwappu-db
 cargo test --workspace
-cargo run --release --bin gsxdb-server
+cargo run --release --bin suwappudb-server
 # In another shell:
 curl http://localhost:8660/health
-curl -d '{"jsonrpc":"2.0","method":"gsx_getStateRoot","params":[],"id":1}' \
+curl -d '{"jsonrpc":"2.0","method":"suwappu_getStateRoot","params":[],"id":1}' \
      http://localhost:8660/v1/rpc
 ```
 
 Container alternative:
 
 ```sh
-docker pull ghcr.io/globalsettlementnetwork/gsx-db:v0.1.0-pre
-docker run --rm -p 8660:8660 ghcr.io/globalsettlementnetwork/gsx-db:v0.1.0-pre
+docker pull ghcr.io/globalsettlementnetwork/suwappu-db:v0.1.0-pre
+docker run --rm -p 8660:8660 ghcr.io/globalsettlementnetwork/suwappu-db:v0.1.0-pre
 ```
 
 ## Why use this
@@ -115,9 +115,9 @@ Pre-1.0, minor bumps may include breaking changes; see
 
 | Feature | Crate | What it enables |
 |---|---|---|
-| `production-move-executor` | `gsxdb-state` | Real Aptos `move-vm-runtime`. Pulls ~100 crates from aptos-core git pin. |
-| `production-verkle` | `gsxdb-state` | banderwagon + ipa-multipoint Verkle commitments. |
-| `production-pqc` | `gsxdb-bridge` | ML-DSA-65 hybrid verifier (PQ post-launch). |
+| `production-move-executor` | `suwappudb-state` | Real Aptos `move-vm-runtime`. Pulls ~100 crates from aptos-core git pin. |
+| `production-verkle` | `suwappudb-state` | banderwagon + ipa-multipoint Verkle commitments. |
+| `production-pqc` | `suwappudb-bridge` | ML-DSA-65 hybrid verifier (PQ post-launch). |
 
 Defaults compile only the phase-1 substrate (BLAKE3 state-tree, mock
 Move executor, ECDSA-only anchor verifier).
@@ -143,26 +143,26 @@ Move executor, ECDSA-only anchor verifier).
 
 | Crate | Purpose | Downstream-stable? |
 |---|---|---|
-| [`gsxdb-types`](./crates/gsxdb-types) | Frozen public-type surface — re-exports the stable subset | ✅ Yes — depend on this |
-| [`gsxdb-state`](./crates/gsxdb-state) | Canonical balance store + Verkle tree | ⚠ Internal — use via `gsxdb-types` |
-| [`gsxdb-bridge`](./crates/gsxdb-bridge) | OCC executor + intent bundles + anchor pipeline | ⚠ Internal — use via `gsxdb-types` |
-| [`gsxdb-lane`](./crates/gsxdb-lane) | Transaction ingest lane | ⚠ Internal |
-| [`gsxdb-server`](./crates/gsxdb-server) | JSON-RPC binary | Binary, not a library |
+| [`suwappudb-types`](./crates/suwappudb-types) | Frozen public-type surface — re-exports the stable subset | ✅ Yes — depend on this |
+| [`suwappudb-state`](./crates/suwappudb-state) | Canonical balance store + Verkle tree | ⚠ Internal — use via `suwappudb-types` |
+| [`suwappudb-bridge`](./crates/suwappudb-bridge) | OCC executor + intent bundles + anchor pipeline | ⚠ Internal — use via `suwappudb-types` |
+| [`suwappudb-lane`](./crates/suwappudb-lane) | Transaction ingest lane | ⚠ Internal |
+| [`suwappudb-server`](./crates/suwappudb-server) | JSON-RPC binary | Binary, not a library |
 
 ## License
 
 [Apache-2.0](./LICENSE). Third-party attribution lives in
 [NOTICE](./NOTICE).
 
-The GSX stack spans three repositories with non-uniform licenses —
-`gsx-db` (this repo) and `gsx-dag` are Apache-2.0; `gsx-lattice-protocol`
+The SUWAPPU stack spans three repositories with non-uniform licenses —
+`suwappu-db` (this repo) and `suwappu-dag` are Apache-2.0; `suwappu-lattice-protocol`
 is Elastic License 2.0 (non-commercial-redistribution clause). If
 your product wires all three, consult the lattice-protocol terms
 separately. Full posture in [INTEGRATORS.md](./INTEGRATORS.md#cross-repo-license-posture).
 
 ## Reporting issues
 
-- **Bugs / feature requests:** [GitHub Issues](https://github.com/GlobalSettlementNetwork/gsx-db/issues) — structured templates.
+- **Bugs / feature requests:** [GitHub Issues](https://github.com/suwappu/suwappu-db/issues) — structured templates.
 - **Security vulnerabilities:** private disclosure per [SECURITY.md](./SECURITY.md). Do not open public issues for vulns.
 - **PRs:** sign off with `git commit -s` (DCO); follow
   [CONTRIBUTING.md](./CONTRIBUTING.md).

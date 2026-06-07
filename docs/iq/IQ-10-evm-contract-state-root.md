@@ -22,7 +22,7 @@ flowchart LR
 ## Question
 
 The real EVM executor (`production-evm-executor`) now runs contract
-bytecode and persists code + storage in gsx-db's EVM-only `evm_code` /
+bytecode and persists code + storage in suwappu-db's EVM-only `evm_code` /
 `evm_storage` / `evm_account_code` stores. But the state root
 (`StateTree`, IQ-6) commits only `Address → BalanceSlot` (balance +
 nonce). **Contract code and storage are not committed in the root**, so
@@ -45,7 +45,7 @@ invariant and determinism?
 **Commit EVM state as a second sub-tree, combined into the root:**
 
 ```
-state_root = H( "GSXDB-STATE-ROOT" || balance_tree_root || evm_state_root )
+state_root = H( "SUWAPPUDB-STATE-ROOT" || balance_tree_root || evm_state_root )
 ```
 
 - `balance_tree_root` — the **existing** `StateTree` over `Address →
@@ -83,20 +83,20 @@ Like IQ-6's V1→V2, binding the EVM sub-tree into the root changes every
 root. **No mainnet state exists; testnet wipes on re-genesis.** The cutover
 is a hard fork at the substrate-state-root level and must land atomically
 across validators (consistent with the substrate-cutover constraint in
-gsx-dag).
+suwappu-dag).
 
 ## Implementation surface
 
-- `gsxdb-state` — `State::evm_state_root()` commits EVM-only state from
+- `suwappudb-state` — `State::evm_state_root()` commits EVM-only state from
   `evm_account_code` / `evm_code` / `evm_storage` (sorted
   `addr || code_hash || storage_root`; `storage_root` = sorted
   `slot || value`). `State::state_root()` returns
-  `BLAKE3("GSXDB-STATE-ROOT" || balance_tree_root || evm_state_root)` — the
+  `BLAKE3("SUWAPPUDB-STATE-ROOT" || balance_tree_root || evm_state_root)` — the
   consensus root.
 - `tree/` (IQ-6) — **unchanged**; the balance tree + its proofs are reused
   as-is.
-- gsx-dag `GsxDbSubstrate::state_root` switches to `State::state_root()` so
-  the checkpoint commits contract state (consumption step, gsx-dag side).
+- suwappu-dag `SuwappuDbSubstrate::state_root` switches to `State::state_root()` so
+  the checkpoint commits contract state (consumption step, suwappu-dag side).
 
 ## Properties to verify (10k, + 1M stress)
 
@@ -133,7 +133,7 @@ gsx-dag).
 
 - [x] `State::evm_state_root()` over `evm_account_code` / `evm_code` / `evm_storage`
 - [x] `State::state_root()` = `H(balance_tree_root || evm_state_root)`
-- [x] Determinism + sensitivity + EOA-baseline tests in `gsxdb-state`
+- [x] Determinism + sensitivity + EOA-baseline tests in `suwappudb-state`
 - [x] `cross_tree_root_agreement` + 1M stress extended to contract state (`contract_state_root_agreement`)
-- [ ] gsx-dag `GsxDbSubstrate::state_root` → `State::state_root()` (consumption)
+- [ ] suwappu-dag `SuwappuDbSubstrate::state_root` → `State::state_root()` (consumption)
 - [ ] Re-genesis note in the substrate-cutover runbook

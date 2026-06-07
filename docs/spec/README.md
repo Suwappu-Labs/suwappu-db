@@ -1,4 +1,4 @@
-# GSX-DB specifications
+# Suwappu DB specifications
 
 Per-component formal specs, one per phase-1 sprint. Each documents
 the types, invariants, storage layout, failure model, and tests for
@@ -8,13 +8,13 @@ includes updating the relevant spec doc.
 
 ## Visuals
 
-Presentation-ready GSX visuals are available in the DAG repo for context:
+Presentation-ready SUWAPPU visuals are available in the DAG repo for context:
 
-- [GSX Visual Index](../../../gsx-dag/docs/visuals/index.html)
-- [GSX Ecosystem Atlas](../../../gsx-dag/docs/visuals/gsx-ecosystem-atlas.html)
-- [GSX DAG presentation](../../../gsx-dag/docs/visuals/gsx-dag.html)
-- [GSX DB presentation](../../../gsx-dag/docs/visuals/gsx-db.html)
-- [LTP presentation](../../../gsx-dag/docs/visuals/ltp.html)
+- [SUWAPPU Visual Index](../../../suwappu-dag/docs/visuals/index.html)
+- [SUWAPPU Ecosystem Atlas](../../../suwappu-dag/docs/visuals/suwappu-ecosystem-atlas.html)
+- [SUWAPPU DAG presentation](../../../suwappu-dag/docs/visuals/suwappu-dag.html)
+- [SUWAPPU DB presentation](../../../suwappu-dag/docs/visuals/suwappu-db.html)
+- [LTP presentation](../../../suwappu-dag/docs/visuals/ltp.html)
 
 ## Index
 

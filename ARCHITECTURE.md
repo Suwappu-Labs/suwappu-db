@@ -1,20 +1,20 @@
-# gsx-db architecture
+# suwappu-db architecture
 
 One-page system overview. For deep details see
 [`docs/architecture/`](./docs/architecture/) and
 [`docs/spec/`](./docs/spec/).
 
-## What gsx-db is
+## What suwappu-db is
 
 A storage + execution substrate that ingests EVM- or Move-shaped
 transactions, runs them through a CE-MVCC OCC parallel scheduler,
 commits the result to a Verkle-shaped state tree, and dispatches
 cross-chain anchors to the Solidity `LTPAnchorRegistry`. Built for
-the GSX DAG L1; usable standalone as a parallel-execution substrate.
+the SUWAPPU DAG L1; usable standalone as a parallel-execution substrate.
 
 The substrate is **substrate, not chain** — consensus runs upstream
-(`gsx-dag` / `gsxbft`); the cross-chain attestation pipeline runs
-downstream (`gsx-lattice-protocol`). gsx-db owns the boxed-out
+(`suwappu-dag` / `suwappubft`); the cross-chain attestation pipeline runs
+downstream (`suwappu-lattice-protocol`). suwappu-db owns the boxed-out
 execution + state + anchor surface in the diagram below.
 
 ## High-level shape
@@ -22,16 +22,16 @@ execution + state + anchor surface in the diagram below.
 ```mermaid
 flowchart TB
     Tx[Transactions<br/>EVM or Move shape]
-    Tx --> Lane[gsxdb-lane<br/>ingest]
-    Lane --> Bridge[gsxdb-bridge<br/>OCC + bundles + anchor]
-    Bridge --> State[(gsxdb-state<br/>balances<br/>+ Verkle tree)]
+    Tx --> Lane[suwappudb-lane<br/>ingest]
+    Lane --> Bridge[suwappudb-bridge<br/>OCC + bundles + anchor]
+    Bridge --> State[(suwappudb-state<br/>balances<br/>+ Verkle tree)]
     Bridge --> Anchor[AnchorDispatcher]
     Anchor --> LTP[LTPAnchorRegistry.sol<br/>on-chain]
-    State --> Server[gsxdb-server<br/>JSON-RPC]
+    State --> Server[suwappudb-server<br/>JSON-RPC]
     State --> Tree[(StateTree)]
     Tree -.commit.-> Bridge
 
-    Types[gsxdb-types<br/>frozen public surface] -.facade.-> State
+    Types[suwappudb-types<br/>frozen public surface] -.facade.-> State
     Types -.facade.-> Bridge
 
     style Tx fill:#fef
@@ -43,9 +43,9 @@ flowchart TB
 
 These are non-negotiable. Code that weakens them does not ship.
 
-1. **Lane separation.** `gsxdb-lane` (ingest) cannot directly mutate
-   `gsxdb-state` (authoritative state). All mutations go through
-   `gsxdb-bridge` via the capability-typed `BridgeToken`. Enforced
+1. **Lane separation.** `suwappudb-lane` (ingest) cannot directly mutate
+   `suwappudb-state` (authoritative state). All mutations go through
+   `suwappudb-bridge` via the capability-typed `BridgeToken`. Enforced
    by `scripts/check-lane-separation.sh` + `deny.toml`. Spec:
    [`docs/spec/lane-separation.md`](./docs/spec/lane-separation.md).
 2. **Proposition 1 (dual-VM consistency).** At every checkpoint,
@@ -53,7 +53,7 @@ These are non-negotiable. Code that weakens them does not ship.
    address. Enforced by a 10,000-case proptest. Spec:
    [`docs/spec/dual-vm-projectors.md`](./docs/spec/dual-vm-projectors.md).
 3. **Cross-parity.** Solidity `LTPAnchorRegistry` and Rust
-   `gsxdb-bridge::anchor` accept and reject the same inputs in
+   `suwappudb-bridge::anchor` accept and reject the same inputs in
    the same way. Pinned by the S11.5 differential test (16
    Rust-signed vectors verified via Solidity `recoverSigner`).
    Spec: [`docs/spec/anchor-log.md`](./docs/spec/anchor-log.md);
@@ -63,11 +63,11 @@ These are non-negotiable. Code that weakens them does not ship.
 
 | Crate | Owns | Stable for downstream? |
 |---|---|---|
-| [`gsxdb-types`](./crates/gsxdb-types) | Re-export facade. The frozen public surface. | ✅ |
-| [`gsxdb-state`](./crates/gsxdb-state) | Canonical balance map, Verkle state tree, snapshots, DAG store, metrics | ⚠ internal |
-| [`gsxdb-bridge`](./crates/gsxdb-bridge) | The only writer to `gsxdb-state`. OCC executor, intent bundles, anchor pipeline, ECDSA signer, recovery, L2 sync | ⚠ internal |
-| [`gsxdb-lane`](./crates/gsxdb-lane) | Transaction ingest, lane-separation type-system gate | ⚠ internal |
-| [`gsxdb-server`](./crates/gsxdb-server) | HTTP server binary: `/health`, `/metrics`, `/v1/rpc` | binary |
+| [`suwappudb-types`](./crates/suwappudb-types) | Re-export facade. The frozen public surface. | ✅ |
+| [`suwappudb-state`](./crates/suwappudb-state) | Canonical balance map, Verkle state tree, snapshots, DAG store, metrics | ⚠ internal |
+| [`suwappudb-bridge`](./crates/suwappudb-bridge) | The only writer to `suwappudb-state`. OCC executor, intent bundles, anchor pipeline, ECDSA signer, recovery, L2 sync | ⚠ internal |
+| [`suwappudb-lane`](./crates/suwappudb-lane) | Transaction ingest, lane-separation type-system gate | ⚠ internal |
+| [`suwappudb-server`](./crates/suwappudb-server) | HTTP server binary: `/health`, `/metrics`, `/v1/rpc` | binary |
 
 ## Storage backends
 
@@ -89,7 +89,7 @@ These are non-negotiable. Code that weakens them does not ship.
 
 ## Execution model
 
-`gsxdb-bridge::occ` is a CE-MVCC OCC (Aptos Block-STM style)
+`suwappudb-bridge::occ` is a CE-MVCC OCC (Aptos Block-STM style)
 parallel executor. Speculative parallel execution + sequential
 validation + clear-and-retry loop with a cap of `2n+4` iterations.
 Bundles (`Intent::Call`) execute atomically within a single OCC
@@ -112,20 +112,20 @@ IQ: [`docs/iq/IQ-7-anchor-parity.md`](./docs/iq/IQ-7-anchor-parity.md).
 
 ## Recovery
 
-`gsxdb-bridge::recovery` replays the block log to rebuild state
+`suwappudb-bridge::recovery` replays the block log to rebuild state
 deterministically. `RedbBlockStore` persists blocks across restart
-(S8.5). Snapshots (`StateSnapshot` in `gsxdb-state::snapshot`) are
+(S8.5). Snapshots (`StateSnapshot` in `suwappudb-state::snapshot`) are
 file-based capture+restore with byte-idempotent encoding.
 
 Spec: [`docs/spec/recovery.md`](./docs/spec/recovery.md).
 
 ## What this repo does NOT own
 
-- **Consensus.** Lives in `gsx-dag` (Mysticeti-C certificate DAG).
-- **Cross-chain attestation.** Lives in `gsx-lattice-protocol`
+- **Consensus.** Lives in `suwappu-dag` (Mysticeti-C certificate DAG).
+- **Cross-chain attestation.** Lives in `suwappu-lattice-protocol`
   (corridor super-nodes, LTP attestation pipeline).
 - **Wallet / explorer UIs.** Downstream products consume this via
-  `gsxdb-types` + the JSON-RPC surface.
+  `suwappudb-types` + the JSON-RPC surface.
 
 ## Going deeper
 

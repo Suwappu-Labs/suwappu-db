@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 /**
  * @title LTPAnchorRegistry
- * @notice Stores and validates cross-chain anchors for GSX-DB.
+ * @notice Stores and validates cross-chain anchors for Suwappu DB.
  *
  * An anchor ties a state root to a block height and is authenticated
  * via BLAKE3 keyed-hash MAC. The registry ensures:
@@ -261,7 +261,7 @@ contract LTPAnchorRegistry {
         // For now, use Keccak256 with domain separation.
         return keccak256(
             abi.encodePacked(
-                "GSXDB-ANCHOR/MAC",
+                "SUWAPPUDB-ANCHOR/MAC",
                 key,
                 anchor.chainId,
                 anchor.height,
@@ -279,7 +279,7 @@ contract LTPAnchorRegistry {
     function hashAnchor(Anchor calldata anchor) public pure returns (bytes32) {
         return keccak256(
             abi.encodePacked(
-                "GSXDB-ANCHOR/HASH",
+                "SUWAPPUDB-ANCHOR/HASH",
                 anchor.chainId,
                 anchor.height,
                 anchor.stateRoot,
@@ -297,7 +297,7 @@ contract LTPAnchorRegistry {
     function hashAnchorMemory(Anchor memory anchor) internal pure returns (bytes32) {
         return keccak256(
             abi.encodePacked(
-                "GSXDB-ANCHOR/HASH",
+                "SUWAPPUDB-ANCHOR/HASH",
                 anchor.chainId,
                 anchor.height,
                 anchor.stateRoot,

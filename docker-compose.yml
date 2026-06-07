@@ -1,4 +1,4 @@
-# Docker Compose for gsxdb with op-reth integration
+# Docker Compose for suwappudb with op-reth integration
 # This demonstrates the full ecosystem setup for local development
 
 version: '3.8'
@@ -16,15 +16,15 @@ services:
     volumes:
       - op-reth-data:/data/op-reth
     networks:
-      - gsxdb-net
+      - suwappudb-net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8545"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # GSX-DB Server
-  gsxdb-server:
+  # Suwappu DB Server
+  suwappudb-server:
     build:
       context: .
       dockerfile: Dockerfile
@@ -32,16 +32,16 @@ services:
       - "8660:8660"  # RPC
       - "9660:9660"  # Metrics
     environment:
-      - CONFIG_PATH=/etc/gsxdb/config.toml
+      - CONFIG_PATH=/etc/suwappudb/config.toml
       - RUST_LOG=info
     volumes:
-      - gsxdb-data:/data/gsxdb
-      - ./config.example.toml:/etc/gsxdb/config.toml:ro
+      - suwappudb-data:/data/suwappudb
+      - ./config.example.toml:/etc/suwappudb/config.toml:ro
     depends_on:
       op-reth:
         condition: service_healthy
     networks:
-      - gsxdb-net
+      - suwappudb-net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8660/health"]
       interval: 30s
@@ -50,8 +50,8 @@ services:
 
 volumes:
   op-reth-data:
-  gsxdb-data:
+  suwappudb-data:
 
 networks:
-  gsxdb-net:
+  suwappudb-net:
     driver: bridge

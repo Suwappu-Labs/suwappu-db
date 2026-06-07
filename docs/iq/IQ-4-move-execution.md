@@ -7,7 +7,7 @@
 
 ## Problem Statement
 
-GSX-DB must execute Move bytecode to validate that state transitions respect Move invariants. Move is a stack-based VM with its own bytecode format, resource model, and execution semantics. The question: how and when do we introduce real Move execution?
+Suwappu DB must execute Move bytecode to validate that state transitions respect Move invariants. Move is a stack-based VM with its own bytecode format, resource model, and execution semantics. The question: how and when do we introduce real Move execution?
 
 **Launch readiness constraint:** Move execution must not block Phase 1 (S1–S8). Phase 1 uses a mock executor that never fails and always succeeds with input state.
 
@@ -44,7 +44,7 @@ Real Aptos move-vm-runtime executing compiled Move bytecode. Requires:
 
 **Feature gate:** `production-move-executor` in `Cargo.toml`.
 
-**Integration point:** `gsxdb-bridge/src/vm/executor.rs` (not in state crate).
+**Integration point:** `suwappudb-bridge/src/vm/executor.rs` (not in state crate).
 
 ---
 
@@ -70,7 +70,7 @@ pub enum ExecutionOutcome {
 
 ## Nonce Semantics in Execution
 
-Move sequence numbers (`account.sequence_number`) are incremented by the Move VM on transaction acceptance. For GSX-DB:
+Move sequence numbers (`account.sequence_number`) are incremented by the Move VM on transaction acceptance. For Suwappu DB:
 
 1. **Canonical nonce field:** Stored in `BalanceSlot::nonce` (shared between both VMs)
 2. **Projection at read time:** 
@@ -89,7 +89,7 @@ Move sequence numbers (`account.sequence_number`) are incremented by the Move VM
 
 ## Execution Flow in Bridge
 
-When `gsxdb-bridge` applies a Move transaction:
+When `suwappudb-bridge` applies a Move transaction:
 
 1. Resolve the Move address (`MoveAddress`) from the EVM sender
 2. Read current state: `slot = state.slot_of(addr)`
@@ -109,7 +109,7 @@ When implementing `AptosMoveExecutor`:
 
 ### Dependencies
 
-Add to `gsxdb-bridge/Cargo.toml`:
+Add to `suwappudb-bridge/Cargo.toml`:
 
 ```toml
 aptos-core = { version = "0.1.x", features = ["move-vm-runtime"] }
@@ -168,7 +168,7 @@ impl MoveExecutor for AptosMoveExecutor {
 
 ### Testing Strategy
 
-1. **Unit tests:** Mock executor tests in `gsxdb-state` (done, S9)
+1. **Unit tests:** Mock executor tests in `suwappudb-state` (done, S9)
 2. **Integration tests:** Load real Aptos bytecode, execute against known coin values
 3. **Property tests:** `execute_matches_balance_slot` — all sequences of deposits/withdrawals, real executor output matches canonical slot
 4. **Parity tests:** Aptos move-vm-runtime output matches Solidity EVM output for same logical transfer

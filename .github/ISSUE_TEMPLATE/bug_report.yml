@@ -1,5 +1,5 @@
 name: Bug report
-description: A reproducible defect in gsx-db code or behaviour.
+description: A reproducible defect in suwappu-db code or behaviour.
 labels: ["bug", "triage"]
 body:
   - type: markdown
@@ -10,13 +10,13 @@ body:
         - For **security vulnerabilities**, do not open a public issue.
           Use the private disclosure path in [SECURITY.md](../SECURITY.md).
         - For **integration questions** ("how do I do X?"), open a
-          [Discussion](https://github.com/GlobalSettlementNetwork/gsx-db/discussions)
+          [Discussion](https://github.com/suwappu/suwappu-db/discussions)
           or read [INTEGRATORS.md](../INTEGRATORS.md) first.
 
   - type: input
     id: version
     attributes:
-      label: gsx-db version / commit
+      label: suwappu-db version / commit
       description: e.g. `v0.1.0-pre` or `git rev-parse HEAD` output.
       placeholder: v0.1.0-pre
     validations:
@@ -28,10 +28,10 @@ body:
       label: Affected surface
       multiple: true
       options:
-        - gsxdb-state (balances, state tree, snapshot, dag)
-        - gsxdb-bridge (OCC, bundles, anchor, recovery)
-        - gsxdb-server (HTTP, JSON-RPC, /metrics)
-        - gsxdb-types (public re-export facade)
+        - suwappudb-state (balances, state tree, snapshot, dag)
+        - suwappudb-bridge (OCC, bundles, anchor, recovery)
+        - suwappudb-server (HTTP, JSON-RPC, /metrics)
+        - suwappudb-types (public re-export facade)
         - contracts (Solidity LTPAnchorRegistry)
         - CI / workflows
         - Docs
@@ -45,7 +45,7 @@ body:
       label: What happened?
       description: The observed behaviour. Include logs, panic output, or RPC responses if relevant.
       placeholder: |
-        Ran `cargo test -p gsxdb-bridge --features production-pqc` and the
+        Ran `cargo test -p suwappudb-bridge --features production-pqc` and the
         `mldsa_hybrid_verify` test panicked with ...
     validations:
       required: true

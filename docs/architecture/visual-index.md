@@ -7,7 +7,7 @@ land on the section that explains it.
 
 | Diagram | File | What it shows |
 |---|---|---|
-| Three-crate split | [overview.md](overview.md#the-three-crates) | `gsxdb-lane → gsxdb-bridge → gsxdb-state` with the forbidden direct edge |
+| Three-crate split | [overview.md](overview.md#the-three-crates) | `suwappudb-lane → suwappudb-bridge → suwappudb-state` with the forbidden direct edge |
 | Capability-gated mutation sequence | [overview.md](overview.md#the-capability-gated-mutation-path) | Lane submits Intent → bridge validates → BridgeToken → state apply |
 | Parallel-vs-sequential split | [overview.md](overview.md#what-runs-in-parallel-what-runs-sequentially) | Aptos Block-STM shape: speculative parallel + sequential validate + retry |
 | Full pipeline (top-down) | [data-flow.md](data-flow.md#the-full-pipeline) | Intent → OCC → bundle → state → tree → anchor → store → replay |
@@ -16,7 +16,7 @@ land on the section that explains it.
 | Cross-VM bundle dispatch | [data-flow.md](data-flow.md#4-cross-vm-bundle-dispatch-when-intentcall) | per-bundle local accumulator interplay with MV store |
 | Consolidation via BridgeToken | [data-flow.md](data-flow.md#5-consolidation-through-bridgetoken) | finalise() → apply per (addr, slot) |
 | Recovery via replay | [data-flow.md](data-flow.md#9-recovery-via-replay) | BlockStore iter_from → BlockExecutor → defence-in-depth tree rebuild |
-| Conventional vs GSX-DB cross-VM | [dual-projection.md](dual-projection.md#why-this-matters) | Bridge-prone vs canonical-state design |
+| Conventional vs Suwappu DB cross-VM | [dual-projection.md](dual-projection.md#why-this-matters) | Bridge-prone vs canonical-state design |
 | BalanceSlot projection shape | [dual-projection.md](dual-projection.md#the-shape) | u128 canonical → EvmBalance + MoveCoinValue |
 | VM-shape transactions → canonical state | [dual-projection.md](dual-projection.md#how-vm-shaped-transactions-reach-canonical-state) | EvmTx / MoveTx flattening to Intent |
 | Read paths via projectors | [dual-projection.md](dual-projection.md#reads-through-evmprojector--moveprojector) | EvmProjector + MoveProjector delegating to slot_of |
@@ -48,11 +48,11 @@ land on the section that explains it.
 
 | Diagram | File | What it shows |
 |---|---|---|
-| Production architecture (current live) | [ecosystem.md](../ECOSYSTEM-AUDIT.md#2-actual-production-architecture-today) | Besu L1 + OP rollup; backend services; gsx-db not yet wired |
+| Production architecture (current live) | [ecosystem.md](../ECOSYSTEM-AUDIT.md#2-actual-production-architecture-today) | Besu L1 + OP rollup; backend services; suwappu-db not yet wired |
 | Deployment topology (target) | [deployment-topology.md](deployment-topology.md) | What deploys where: validator ring + corridor super-nodes + L1 + RPC nodes |
 | Dual-ring validator set | [validator-rings.md](validator-rings.md) | Authority Ring + Validator Ring with corruption profiles |
 | Sprint Gantt | [sprint-timeline.md](sprint-timeline.md) | Phase-1 (S1–S8) + launch-readiness (S8.5–S12) timeline |
-| Request lifecycle | [request-lifecycle.md](request-lifecycle.md) | Wallet RPC → gsxdb-server → state → response |
+| Request lifecycle | [request-lifecycle.md](request-lifecycle.md) | Wallet RPC → suwappudb-server → state → response |
 
 ## Paper-aligned diagrams
 

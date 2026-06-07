@@ -35,7 +35,7 @@ jobs:
           toolchain: 1.78
       - uses: Swatinem/rust-cache@v2
       - name: state_tree property suite
-        run: cargo test --release -p gsxdb-state --test state_tree
+        run: cargo test --release -p suwappudb-state --test state_tree
         env:
           PROPTEST_CASES: ${{ inputs.cases || '1000000' }}
 
@@ -49,7 +49,7 @@ jobs:
           toolchain: 1.78
       - uses: Swatinem/rust-cache@v2
       - name: cross_parity property suite
-        run: cargo test --release -p gsxdb-bridge --test cross_parity
+        run: cargo test --release -p suwappudb-bridge --test cross_parity
         env:
           PROPTEST_CASES: ${{ inputs.cases || '1000000' }}
 
@@ -63,7 +63,7 @@ jobs:
           toolchain: 1.78
       - uses: Swatinem/rust-cache@v2
       - name: recovery property suite
-        run: cargo test --release -p gsxdb-bridge --test recovery
+        run: cargo test --release -p suwappudb-bridge --test recovery
         env:
           PROPTEST_CASES: ${{ inputs.cases || '1000000' }}
 
@@ -77,6 +77,6 @@ jobs:
           toolchain: 1.78
       - uses: Swatinem/rust-cache@v2
       - name: cross_vm_parity property suite
-        run: cargo test --release -p gsxdb-bridge --test cross_vm_parity
+        run: cargo test --release -p suwappudb-bridge --test cross_vm_parity
         env:
           PROPTEST_CASES: ${{ inputs.cases || '1000000' }}

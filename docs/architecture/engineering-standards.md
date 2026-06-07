@@ -1,15 +1,15 @@
 # Engineering standards for enterprise + academic rigor
 
-This document defines non-negotiable standards for evolving GSX-DB as a
+This document defines non-negotiable standards for evolving Suwappu DB as a
 production database engine with research-grade correctness evidence.
 
 ## 1) Repository structure contract
 
 Top-level responsibilities are fixed:
 
-- `crates/gsxdb-state` — authoritative data model, storage backends, commitment tree.
-- `crates/gsxdb-bridge` — only mutation path from intents to state transitions.
-- `crates/gsxdb-lane` — ingestion and ordering; no direct state mutation.
+- `crates/suwappudb-state` — authoritative data model, storage backends, commitment tree.
+- `crates/suwappudb-bridge` — only mutation path from intents to state transitions.
+- `crates/suwappudb-lane` — ingestion and ordering; no direct state mutation.
 - `docs/spec` — normative behavior specs (must match code semantics).
 - `docs/architecture` — design rationale, tradeoffs, sprint maps, IQ backlog.
 - `docs/iq` — explicit decision records with alternatives and consequences.
@@ -43,8 +43,8 @@ scripts/check-lane-separation.sh
 Additional gate for execution/storage changes:
 
 ```bash
-cargo test -p gsxdb-bridge
-cargo test -p gsxdb-state
+cargo test -p suwappudb-bridge
+cargo test -p suwappudb-state
 ```
 
 ### Required PR checklist

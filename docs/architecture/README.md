@@ -1,4 +1,4 @@
-# GSX-DB architecture
+# Suwappu DB architecture
 
 Phase-1 closed. This directory is a tour of the substrate at the
 end of phase-1: what's where, what flows through it, and why.
@@ -30,17 +30,17 @@ end of phase-1: what's where, what flows through it, and why.
 
 ```mermaid
 flowchart TB
-    subgraph Lane[gsxdb-lane]
+    subgraph Lane[suwappudb-lane]
         Ingest[Intent Ingress]
     end
-    subgraph Bridge[gsxdb-bridge]
+    subgraph Bridge[suwappudb-bridge]
         Sub[Bridge::submit]
         Block[BlockExecutor]
         Bundle[BundleExecutor]
         Anchor[AnchorDispatcher]
         Recovery[recovery::replay]
     end
-    subgraph State[gsxdb-state]
+    subgraph State[suwappudb-state]
         Slot[BalanceSlot]
         Store[BalanceStore<br/>InMemory or redb]
         Tree[StateTree]
@@ -58,7 +58,7 @@ flowchart TB
 
 ## The substrate in one paragraph
 
-GSX-DB is the state and storage layer for a chain that runs EVM and
+Suwappu DB is the state and storage layer for a chain that runs EVM and
 Move side by side over a single canonical state. A `BalanceSlot` is
 one canonical value with two projections (EVM `balanceOf`, Move
 `Coin::value`); they can't disagree because there's nothing to

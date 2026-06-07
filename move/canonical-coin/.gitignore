@@ -1,4 +1,4 @@
 # aptos move compile output. The artifact we care about
 # (build/.../coin.mv) is checked in separately at
-# crates/gsxdb-state/move-bytecode/canonical_coin.mv.
+# crates/suwappudb-state/move-bytecode/canonical_coin.mv.
 build/

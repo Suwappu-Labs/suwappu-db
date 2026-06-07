@@ -2,20 +2,20 @@
 
 ## Goal
 
-Ensure untrusted ingestion code (`gsxdb-lane`) cannot directly mutate authoritative
-state (`gsxdb-state`). All state mutations must pass through `gsxdb-bridge` where
+Ensure untrusted ingestion code (`suwappudb-lane`) cannot directly mutate authoritative
+state (`suwappudb-state`). All state mutations must pass through `suwappudb-bridge` where
 validation and invariants are enforced.
 
 ## Types and invariants
 
-- `gsxdb-state::BridgeToken` is required for `State::apply`.
+- `suwappudb-state::BridgeToken` is required for `State::apply`.
 - `BridgeToken` construction is restricted to bridge internals.
-- `gsxdb-lane` operates on intents and queues only; it does not hold a valid
+- `suwappudb-lane` operates on intents and queues only; it does not hold a valid
   path to apply state changes.
 
 Invariant:
 
-- **Lane separation:** `gsxdb-lane` has no compile-time capability to mutate
+- **Lane separation:** `suwappudb-lane` has no compile-time capability to mutate
   state directly.
 
 ## Storage layout

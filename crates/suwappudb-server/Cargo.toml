@@ -1,0 +1,40 @@
+[package]
+name = "suwappudb-server"
+description = "HTTP server for suwappudb state queries and RPC endpoints"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "suwappudb-server"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+suwappudb-state = { path = "../suwappudb-state" }
+suwappudb-bridge = { path = "../suwappudb-bridge" }
+# HTTP server framework
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+# JSON serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Structured logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+# Configuration
+toml = "0.8"
+# Error handling
+anyhow = "1"
+thiserror = "1"
+# Hex encoding/decoding
+hex = "0.4"
+# Hash function for state root
+blake3 = "1"
+
+[dev-dependencies]

@@ -7,7 +7,7 @@
 ## 11.3 Empirical reinforcement of the formal arguments
 
 Theorem 2 and Proposition 1 establish safety on the consensus and
-execution sides analytically. The GSX-DB substrate of §7.4
+execution sides analytically. The Suwappu DB substrate of §7.4
 discharges the implementation-level burden of those theorems with
 randomized property tests at 10,000 cases per invariant. Table 4
 maps each formal claim to a test that empirically falsifies its
@@ -15,7 +15,7 @@ negation across the seeded input space.
 
 ### Table 4: Property-tested invariants
 
-| # | Formal claim | GSX-DB test | Cases |
+| # | Formal claim | Suwappu DB test | Cases |
 |---|---|---|---|
 | 1 | Lane separation (§7.4.1) | `scripts/check-lane-separation.sh` | — (structural) |
 | 2 | Dual-projection (Prop. 4) | `redb_preserves_dual_projection` | 10,000 |
@@ -49,7 +49,7 @@ without claiming formal proof.
 
 ### What this does not establish
 
-The property tests run against the GSX-DB substrate in isolation.
+The property tests run against the Suwappu DB substrate in isolation.
 Properties of the full chain — that the Mysticeti certificate DAG
 produces a unique linearization, that the fast-path lane converges
 with the main lane within $K$ rounds, that the SCION transport
