@@ -12,7 +12,7 @@ import {LTPAnchorRegistry} from "../src/LTPAnchorRegistry.sol";
  *
  *   PRIVATE_KEY           — deployer key (must hold gas).
  *   INITIAL_SIGNER        — first approved signer; the address whose
- *                           ECDSA key gsxdb-bridge's EcdsaSecp256k1Signer
+ *                           ECDSA key suwappudb-bridge's EcdsaSecp256k1Signer
  *                           will use. Optional; if unset, only the
  *                           deployer becomes owner and signer set is
  *                           empty (admin can `addSigner` later).

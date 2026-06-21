@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # check-lane-separation.sh
 #
-# Enforces the lane-separation invariant: gsxdb-lane must not depend on
-# gsxdb-state, directly or transitively-through-anything-other-than-bridge,
-# and must not import gsxdb_state symbols in its source.
+# Enforces the lane-separation invariant: suwappudb-lane must not depend on
+# suwappudb-state, directly or transitively-through-anything-other-than-bridge,
+# and must not import suwappudb_state symbols in its source.
 #
 # Two checks:
-#   1. Cargo.toml of gsxdb-lane has no gsxdb-state dependency
-#   2. No `use gsxdb_state` (or `gsxdb_state::`) in gsxdb-lane source
+#   1. Cargo.toml of suwappudb-lane has no suwappudb-state dependency
+#   2. No `use suwappudb_state` (or `suwappudb_state::`) in suwappudb-lane source
 #
 # Exits non-zero on violation. Run by /check, by CI, and by the lane-auditor
 # subagent.
@@ -15,7 +15,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LANE_DIR="$REPO_ROOT/crates/gsxdb-lane"
+LANE_DIR="$REPO_ROOT/crates/suwappudb-lane"
 LANE_TOML="$LANE_DIR/Cargo.toml"
 LANE_SRC="$LANE_DIR/src"
 
@@ -32,20 +32,20 @@ fi
 violations=0
 
 # Check 1: Cargo.toml dep
-# We grep for `gsxdb-state` outside of comment lines.
-if grep -nE '^[[:space:]]*gsxdb-state[[:space:]]*=' "$LANE_TOML" > /dev/null; then
-  echo "✗ lane-separation violation: gsxdb-lane/Cargo.toml depends on gsxdb-state" >&2
-  grep -nE '^[[:space:]]*gsxdb-state[[:space:]]*=' "$LANE_TOML" | sed 's/^/    /' >&2
+# We grep for `suwappudb-state` outside of comment lines.
+if grep -nE '^[[:space:]]*suwappudb-state[[:space:]]*=' "$LANE_TOML" > /dev/null; then
+  echo "✗ lane-separation violation: suwappudb-lane/Cargo.toml depends on suwappudb-state" >&2
+  grep -nE '^[[:space:]]*suwappudb-state[[:space:]]*=' "$LANE_TOML" | sed 's/^/    /' >&2
   violations=$((violations + 1))
 fi
 
 # Check 2: source imports
-# We look for any `use gsxdb_state` or bare `gsxdb_state::` reference. We
+# We look for any `use suwappudb_state` or bare `suwappudb_state::` reference. We
 # exclude comments (lines starting with `//` after optional whitespace).
 while IFS= read -r -d '' file; do
-  if grep -nE '^[[:space:]]*[^/]*\b(use[[:space:]]+gsxdb_state|gsxdb_state::)' "$file" > /dev/null; then
-    echo "✗ lane-separation violation: $file imports from gsxdb_state" >&2
-    grep -nE '^[[:space:]]*[^/]*\b(use[[:space:]]+gsxdb_state|gsxdb_state::)' "$file" | sed 's/^/    /' >&2
+  if grep -nE '^[[:space:]]*[^/]*\b(use[[:space:]]+suwappudb_state|suwappudb_state::)' "$file" > /dev/null; then
+    echo "✗ lane-separation violation: $file imports from suwappudb_state" >&2
+    grep -nE '^[[:space:]]*[^/]*\b(use[[:space:]]+suwappudb_state|suwappudb_state::)' "$file" | sed 's/^/    /' >&2
     violations=$((violations + 1))
   fi
 done < <(find "$LANE_SRC" -type f -name '*.rs' -print0)
@@ -56,4 +56,4 @@ if [[ "$violations" -gt 0 ]]; then
   exit 1
 fi
 
-echo "✓ lane-separation: gsxdb-lane has no path to gsxdb-state outside the bridge"
+echo "✓ lane-separation: suwappudb-lane has no path to suwappudb-state outside the bridge"

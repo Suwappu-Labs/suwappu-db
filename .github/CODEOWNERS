@@ -6,37 +6,37 @@
 # Later rules override earlier ones for the same path.
 
 # Default owner for everything.
-*                                                @tomagsx
+*                                                @tomasuwappu
 
 # Lane separation — the type-system invariant gate.
-/scripts/check-lane-separation.sh                @tomagsx
-/deny.toml                                       @tomagsx
-/crates/gsxdb-lane/                              @tomagsx
-/crates/gsxdb-bridge/                            @tomagsx
+/scripts/check-lane-separation.sh                @tomasuwappu
+/deny.toml                                       @tomasuwappu
+/crates/suwappudb-lane/                              @tomasuwappu
+/crates/suwappudb-bridge/                            @tomasuwappu
 
 # Cryptography surfaces — Verkle, signatures, key custody.
-/crates/gsxdb-state/src/tree/                    @tomagsx
-/crates/gsxdb-bridge/src/anchor/credential.rs    @tomagsx
-/crates/gsxdb-bridge/src/anchor/signing.rs       @tomagsx
-/docs/spec/key-custody.md                        @tomagsx
+/crates/suwappudb-state/src/tree/                    @tomasuwappu
+/crates/suwappudb-bridge/src/anchor/credential.rs    @tomasuwappu
+/crates/suwappudb-bridge/src/anchor/signing.rs       @tomasuwappu
+/docs/spec/key-custody.md                        @tomasuwappu
 
 # Anchor parity — Rust ↔ Solidity cross-impl boundary.
-/crates/gsxdb-bridge/src/anchor/                 @tomagsx
-/contracts/                                      @tomagsx
-/docs/iq/IQ-7-anchor-parity.md                   @tomagsx
+/crates/suwappudb-bridge/src/anchor/                 @tomasuwappu
+/contracts/                                      @tomasuwappu
+/docs/iq/IQ-7-anchor-parity.md                   @tomasuwappu
 
 # Recovery + DAG soundness.
-/crates/gsxdb-bridge/src/recovery/               @tomagsx
-/crates/gsxdb-state/src/dag.rs                   @tomagsx
-/crates/gsxdb-state/src/snapshot.rs              @tomagsx
+/crates/suwappudb-bridge/src/recovery/               @tomasuwappu
+/crates/suwappudb-state/src/dag.rs                   @tomasuwappu
+/crates/suwappudb-state/src/snapshot.rs              @tomasuwappu
 
 # Security policy + audit ledgers — maintainer-only.
-/SECURITY.md                                     @tomagsx
-/docs/audit/                                     @tomagsx
+/SECURITY.md                                     @tomasuwappu
+/docs/audit/                                     @tomasuwappu
 
 # CI workflows + repo policy.
-/.github/                                        @tomagsx
-/CONTRIBUTING.md                                 @tomagsx
-/GOVERNANCE.md                                   @tomagsx
-/MAINTAINERS.md                                  @tomagsx
-/CODEOWNERS                                      @tomagsx
+/.github/                                        @tomasuwappu
+/CONTRIBUTING.md                                 @tomasuwappu
+/GOVERNANCE.md                                   @tomasuwappu
+/MAINTAINERS.md                                  @tomasuwappu
+/CODEOWNERS                                      @tomasuwappu

@@ -12,7 +12,7 @@ yanked = "deny"
 ignore = [
     # rustls-pemfile is unmaintained; pulled transitively via ureq -> rustls.
     # No vulnerability — just maintenance status. Removing requires a ureq
-    # upgrade beyond what gsxdb-bridge currently pins.
+    # upgrade beyond what suwappudb-bridge currently pins.
     "RUSTSEC-2025-0134",
     # paste is unmaintained; pulled transitively via the crypto crates
     # (pqcrypto / ml-dsa derive macros). No vulnerability — proc-macro
@@ -87,7 +87,7 @@ allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = [
     # S9.5b: aptos-core Move VM crates. Not usefully published on
     # crates.io (only move-core-types = "0.0.3" from 2021).
-    # Pinned by tag in gsxdb-state's Cargo.toml.
+    # Pinned by tag in suwappudb-state's Cargo.toml.
     "https://github.com/aptos-labs/aptos-core",
     # S9.5b: aptos-labs/bcs is a transitive dep of move-core-types.
     # Aptos's fork of zefchain/bcs pinned to a specific rev. Pulled
@@ -95,7 +95,7 @@ allow-git = [
     "https://github.com/aptos-labs/bcs.git",
     # S10.1: crate-crypto/rust-verkle — Ethereum Foundation's
     # reference Verkle implementation (banderwagon curve + IPA
-    # multipoint). Not on crates.io. Pinned by rev in gsxdb-state's
+    # multipoint). Not on crates.io. Pinned by rev in suwappudb-state's
     # Cargo.toml. Pulled in only with `production-verkle`.
     "https://github.com/crate-crypto/rust-verkle",
 ]

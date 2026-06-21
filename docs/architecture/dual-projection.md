@@ -44,7 +44,7 @@ flowchart TB
         MoveState -- wrap --> Bridge
         Bridge -- prone to exploit --> Loss[$ billions lost]
     end
-    subgraph GSX["GSX-DB design"]
+    subgraph Suwappu["Suwappu-DB design"]
         Canonical[(Canonical state)]
         Canonical -- project --> EvmView[EVM view]
         Canonical -- project --> MoveView[Move view]
@@ -53,7 +53,7 @@ flowchart TB
 
 Conventional cross-VM chains keep separate state per VM and bridge
 between them. Bridges have been the locus of the largest hacks in
-crypto history. GSX-DB eliminates the category for intra-chain
+crypto history. Suwappu-DB eliminates the category for intra-chain
 cross-VM operations: there's no bridge, because there's nothing to
 bridge.
 

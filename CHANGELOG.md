@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to gsx-db are recorded here.
+All notable changes to suwappu-db are recorded here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
@@ -36,12 +36,12 @@ and Pass C (external-dev readiness; in-flight at tag time).
   ancestors/descendants/tips), snapshot capture+restore
   (sorted-encode for byte-idempotent round-trips), Prometheus
   exporter with summary-quantile output, shadow-testnet E2E gated
-  on `GSXDB_SHADOW_RPC`; `dag_snapshot_exit_gate` 10k proptest
+  on `Suwappudb_SHADOW_RPC`; `dag_snapshot_exit_gate` 10k proptest
   (IQ-9).
 
 ### Added — Pass B (security audit + hardening)
 
-- **B2** — Panic sweep: `parse_address_param` in `gsxdb-server`
+- **B2** — Panic sweep: `parse_address_param` in `suwappudb-server`
   RPC handlers; `RedbBlockStore::open` returns typed
   `BlockStoreError` instead of `.expect()`-panicking on corrupt
   redb state.
@@ -49,7 +49,7 @@ and Pass C (external-dev readiness; in-flight at tag time).
   `cargo audit --deny warnings`, gitleaks secret-scan (PR + push +
   nightly cron).
 - **B5** — Key-custody operational-enforcement clarification.
-- **B6** — Opt-in bearer-token middleware (`GSXDB_BEARER_TOKEN`),
+- **B6** — Opt-in bearer-token middleware (`Suwappudb_BEARER_TOKEN`),
   constant-time compare; deployment-topology doc + nginx /
   Cloudflare Access samples.
 - **B7** — Anchor surface deep-review; 12 findings ✅, 3
@@ -63,7 +63,7 @@ and Pass C (external-dev readiness; in-flight at tag time).
   Release. Workspace version bumped 0.0.1 → 0.1.0-pre.
 
 Remaining C-items (C3 INTEGRATORS, C4 RPC versioning, C5
-gsxdb-types, C6 CONTRIBUTING, C7 ABI cross-ref, C8 distribution)
+suwappudb-types, C6 CONTRIBUTING, C7 ABI cross-ref, C8 distribution)
 land on their own branches before the `v0.1.0-pre` tag is cut.
 
 ## [Pre-Pass-A entries below]
@@ -71,7 +71,7 @@ land on their own branches before the `v0.1.0-pre` tag is cut.
 ### Added
 
 - **S7 — Cross-chain anchor log + parity.**
-  - `gsxdb-bridge::anchor` module: `Anchor`, `AnchorLog`,
+  - `suwappudb-bridge::anchor` module: `Anchor`, `AnchorLog`,
     `AnchorDispatcher`, `parity_check`. In-memory + BLAKE3 keyed-MAC
     per IQ-7.
   - Per-chain append-only logs with parent-hash linkage; tampering is
@@ -90,7 +90,7 @@ land on their own branches before the `v0.1.0-pre` tag is cut.
   `LTPAnchorRegistry` + ECDSA signatures at launch readiness.
 
 - **S8 — Block store + recovery via deterministic replay.**
-  - `gsxdb-bridge::recovery` module: `Block`, `BlockHash`,
+  - `suwappudb-bridge::recovery` module: `Block`, `BlockHash`,
     `BlockStore` trait + `InMemoryBlockStore`, `replay`,
     `RecoveryError`.
   - Block hash = BLAKE3 of canonical encoding (height, parent, state
@@ -107,13 +107,13 @@ land on their own branches before the `v0.1.0-pre` tag is cut.
   lands in S8.5 before any deployment.
 
 - **S6 — State-tree commitment.**
-  - `gsxdb-state::tree` module: 256-ary trie over
+  - `suwappudb-state::tree` module: 256-ary trie over
     `Address → BalanceSlot` with BLAKE3-based commitments per IQ-6.
     Verkle-aligned shape (same depth, traversal, proof format) so
     real Verkle (IPA over banderwagon) is a single-function swap.
   - `Node`, `Commitment`, `Proof`, `ProofStep` types.
   - `commit_node` — domain-separated BLAKE3 commitments
-    (`GSXDB-TREE/EMPTY` / `LEAF_` / `INT__`).
+    (`Suwappudb-TREE/EMPTY` / `LEAF_` / `INT__`).
   - `StateTree::{new, from_entries, from_state, update, get, root,
     proof, verify}`.
   - Variable-length proofs: full-depth for inclusion, early-termination
@@ -133,7 +133,7 @@ land on their own branches before the `v0.1.0-pre` tag is cut.
   documented; stateless-client work gated on the swap.
 
 - **S5 — Cross-VM intent bundles.**
-  - `gsxdb-bridge::bundle` module: `Bundle` (Vec<BundleStep>) with
+  - `suwappudb-bridge::bundle` module: `Bundle` (Vec<BundleStep>) with
     `BundleStep::{Evm, Move}` and `BundleResult` /
     `BundleOutcome::{Committed, Reverted{failed_step}}`.
   - `BundleExecutor::execute(&mut State, &Bundle)` — standalone
@@ -159,14 +159,14 @@ land on their own branches before the `v0.1.0-pre` tag is cut.
   - **`docs/spec/cross-vm-intent-queue.md`** — full spec doc.
 
 - **S4 — CE-MVCC OCC (Aptos Block-STM style).**
-  - `gsxdb-bridge::occ::mv_store`: multi-version balance store with
+  - `suwappudb-bridge::occ::mv_store`: multi-version balance store with
     per-address `BTreeMap<TxnIdx, BalanceSlot>`. Reads return the
     highest-versioned write strictly below `my_idx`, falling through
     to canonical `State` on cold-cache miss.
-  - `gsxdb-bridge::occ::txn`: per-tx read/write sets and a stateless
+  - `suwappudb-bridge::occ::txn`: per-tx read/write sets and a stateless
     OCC `Validator`. Snapshot-vs-Version cell matrix drives
     staleness detection.
-  - `gsxdb-bridge::occ::block_executor`: rayon-parallel speculative
+  - `suwappudb-bridge::occ::block_executor`: rayon-parallel speculative
     execution + sequential validation + clear-and-retry loop. Cap of
     `2*n+4` iterations. Consolidation via fresh `BridgeToken`.
   - **Exit-gate test:** `block_executor::parallel_equals_sequential`
@@ -196,12 +196,12 @@ land on their own branches before the `v0.1.0-pre` tag is cut.
   intent queue) where contract calls give it real bug-finding value.
 
 - **S3 — EVM + Move projector wiring.**
-  - `gsxdb-state::vm` module: `EvmTx` / `MoveTx` typed transaction
+  - `suwappudb-state::vm` module: `EvmTx` / `MoveTx` typed transaction
     shapes both reducing to `CanonicalTransfer` via `to_canonical()`.
   - `EvmProjector` / `MoveProjector` traits + `EvmView` / `MoveView`
     default impls that read via `State::slot_of` and project the
     canonical `BalanceSlot`.
-  - `gsxdb-bridge::vm::executor`: `MockEvm` / `MockMove` faithful Rust
+  - `suwappudb-bridge::vm::executor`: `MockEvm` / `MockMove` faithful Rust
     mock executors, both routing through `Bridge::submit`. EVM revert
     / Move abort error semantics modelled.
   - **Exit-gate test:** `cross_vm_parity::interleaved_evm_move_preserves_invariant`
@@ -230,11 +230,11 @@ land on their own branches before the `v0.1.0-pre` tag is cut.
 - **IQ-1.** Phase-1 storage backend split: redb in dev/CI, RocksDB in
   production (S8). Decision driven by local build-disk constraints.
 - **S1 — Workspace + lane separation.**
-  - Three core crates: `gsxdb-state`, `gsxdb-bridge`, `gsxdb-lane`.
+  - Three core crates: `suwappudb-state`, `suwappudb-bridge`, `suwappudb-lane`.
   - Capability-token gate: `State::apply` requires a `BridgeToken` that
-    only `gsxdb-bridge` can mint.
-  - `scripts/check-lane-separation.sh` blocks `gsxdb-lane` from importing
-    or depending on `gsxdb-state`. Verified to catch both `Cargo.toml`
+    only `suwappudb-bridge` can mint.
+  - `scripts/check-lane-separation.sh` blocks `suwappudb-lane` from importing
+    or depending on `suwappudb-state`. Verified to catch both `Cargo.toml`
     and source-level violations.
 - **Workspace lints.** `forbid(unsafe_code)`, `deny(clippy::all)`,
   `warn(clippy::pedantic)` across all crates.
@@ -251,4 +251,4 @@ land on their own branches before the `v0.1.0-pre` tag is cut.
 
 - _nothing yet_
 
-[Unreleased]: https://github.com/GlobalSettlementNetwork/gsx-db/commits/main
+[Unreleased]: https://github.com/Suwappu-Labs/suwappu-db/commits/main

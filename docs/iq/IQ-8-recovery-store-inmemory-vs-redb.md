@@ -42,7 +42,7 @@ to redb is invisible to test code.
 
 ### Consequences
 
-- **Code:** `gsxdb-bridge::recovery::store` ships `BlockStore` trait +
+- **Code:** `suwappudb-bridge::recovery::store` ships `BlockStore` trait +
   `InMemoryBlockStore` impl. `RedbBlockStore` is S8.5.
 - **Tests:** Recovery property test runs against `InMemoryBlockStore`.
 - **Spec:** `docs/spec/recovery.md` documents the swap point.

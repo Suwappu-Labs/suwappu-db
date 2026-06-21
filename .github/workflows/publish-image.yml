@@ -19,7 +19,7 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  # C8: build + push the gsxdb-server container to GHCR on every `v*`
+  # C8: build + push the suwappudb-server container to GHCR on every `v*`
   # tag. Pairs with the cargo-binary artefacts in `release.yml` —
   # cargo binaries go to GitHub Releases, container goes to GHCR.
   #

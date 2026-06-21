@@ -2,7 +2,7 @@
 
 ## Goal
 
-Define the concrete execution model for Move bytecode in gsx-db. Replaces
+Define the concrete execution model for Move bytecode in suwappu-db. Replaces
 the placeholder `MoveExecutor` trait (which is a passthrough returning the
 input state) with a real bytecode-execution surface backed by Aptos
 `move-vm-runtime`.
@@ -14,7 +14,7 @@ wiring real Move bytecode through the bundle executor.
 
 ## Why the current trait surface is insufficient
 
-`crates/gsxdb-state/src/vm/executor.rs` defines:
+`crates/suwappudb-state/src/vm/executor.rs` defines:
 
 ```rust
 pub trait MoveExecutor {
@@ -62,7 +62,7 @@ The Move VM executes:
    `vector`, `option`, `signer`, `error`, `string` — no I/O, no
    ChainID, no time-sources, no randomness. Pinned by content hash;
    any change to the stdlib bundle is a wire-incompatible upgrade.
-3. **The canonical `Coin` module.** A gsx-db-vendored `Coin<T>` module
+3. **The canonical `Coin` module.** A suwappu-db-vendored `Coin<T>` module
    compatible with Aptos's `aptos_framework::coin` ABI — minimum
    surface to maintain dual-projection: `balance(addr)`, `transfer`,
    `mint`, `burn`. The `MoveCoinValue` projection reads from this
@@ -182,7 +182,7 @@ S9 ships as 5 PRs to bound review scope:
 | Sub-pass | Scope | Estimate |
 |---|---|---|
 | S9.1 | Design doc (this file) + IQ-3 update | 1 session |
-| S9.2 | New trait + types in `gsxdb-state::vm`; `MockMoveExecutor` re-impl against new surface; tests at new shape | 1 session |
+| S9.2 | New trait + types in `suwappudb-state::vm`; `MockMoveExecutor` re-impl against new surface; tests at new shape | 1 session |
 | S9.3 | `ModuleStore` (in-memory + redb-backed); `Intent::DeployModule`; tests | 1 session |
 | S9.4 | Wire `MoveExecutor::execute()` into `BundleExecutor` for `Intent::Call`; cross-VM parity test still passes with mock | 1 session |
 | S9.5 | `AptosMoveExecutor` impl using `move-vm-runtime`; canonical `Coin<T>` module bundled; `production-move-executor` feature ON in default build | 2 sessions |
@@ -252,14 +252,14 @@ for every EVM-addressable account.
 ## Open questions deferred from S9
 
 - **Move parallelism.** Aptos's Block-STM runs Move in parallel within a
-  block; gsx-db's OCC already does this for Intent-level operations.
+  block; suwappu-db's OCC already does this for Intent-level operations.
   Investigate whether Move-level parallelism inside a bundle is worth
   the complexity. Defer to post-S9 perf work.
 - **Module upgrades.** Aptos has a strict module-upgrade policy
-  (`compatible` upgrades only). gsx-db inherits this but doesn't yet
+  (`compatible` upgrades only). suwappu-db inherits this but doesn't yet
   surface it. Defer to post-launch governance.
 - **Cross-chain Move resources.** LTP attestations might carry Move
-  resource transfers. Defer to LTP integration (gsx-lattice-protocol).
+  resource transfers. Defer to LTP integration (suwappu-lattice-protocol).
 
 ## Cross-references
 

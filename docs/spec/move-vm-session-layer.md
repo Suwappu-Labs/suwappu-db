@@ -9,7 +9,7 @@ validation but cannot yet invoke the interpreter — `MoveVM::execute_loaded_fun
 requires a session layer that aptos-vm provides and that we deliberately
 don't pull in.
 
-This doc inventories what gsx-db needs to build to bridge our
+This doc inventories what suwappu-db needs to build to bridge our
 `MoveBalanceView` to Aptos's stateless VM. It's the design pass for
 S9.5d before any code lands.
 
@@ -44,7 +44,7 @@ function calls" step are all the caller's responsibility.
 Pulling `aptos-vm` brings the full Aptos block executor + state-view +
 storage stack, which we deliberately don't want.
 
-So gsx-db builds its own minimal session layer.
+So suwappu-db builds its own minimal session layer.
 
 ## Trait surface to implement
 
@@ -76,7 +76,7 @@ The module-bytes-and-metadata cache the loader sits on top of.
 - `RuntimeEnvironment` access (per-chain VM config)
 - Layout-cache management
 
-The gsx-db `ModuleStore` (in `gsxdb-state::vm::executor`) holds the
+The suwappu-db `ModuleStore` (in `suwappudb-state::vm::executor`) holds the
 opaque bytecode; the `ModuleStorage` impl wraps it with the
 `CompiledModule` + `Module` + layout cache.
 
@@ -93,7 +93,7 @@ Where resource reads + writes flow during a session. 9 methods:
 At session commit, the buffered writes get translated into our
 `ResourceWrite { addr, coin_value, nonce }` and routed to substrate
 through the bridge — that's already wired in
-`gsxdb-bridge::bundle::executor::apply_resource_writes` (S9.4).
+`suwappudb-bridge::bundle::executor::apply_resource_writes` (S9.4).
 
 The new work: extracting `coin_value` + `nonce` from Move's
 opaque `Value` representation.
@@ -130,7 +130,7 @@ the entry function by name + type-arg list.
 
 ## Implementation strategy
 
-Single new module `crates/gsxdb-state/src/vm/aptos_session.rs`:
+Single new module `crates/suwappudb-state/src/vm/aptos_session.rs`:
 
 ```rust
 #[cfg(feature = "production-move-executor")]
@@ -207,7 +207,7 @@ construction patterns.
   default registers ~30 natives across stdlib + framework. We want
   just the stdlib subset (`vector`, `option`, `signer`, `error`,
   `string`). Building a minimal table by hand.
-- **Move value ↔ gsx-db value conversion.** The Move VM produces
+- **Move value ↔ suwappu-db value conversion.** The Move VM produces
   `move_vm_types::values::Value`, an opaque tagged-union. We need to
   extract `u128` (for `coin_value`) and `u64` (for `nonce`) from
   resources. Likely needs `Value::cast_u128()` / `MoveStructLayout`
@@ -222,12 +222,12 @@ construction patterns.
 - Real **gas metering** — `UnmeteredGasMeter` is fine; S12 lands real.
 - **Parallelism** inside a single bundle's Move execution — defer.
 - **Cross-chain Move resources** (LTP transfers) — defer to
-  gsx-lattice-protocol integration.
+  suwappu-lattice-protocol integration.
 
 ## Cross-references
 
 - [docs/spec/move-execution.md](move-execution.md) — the S9.1 design
-  doc for the executor surface gsx-db exposes.
+  doc for the executor surface suwappu-db exposes.
 - [IQ-3](../iq/IQ-3-move-vm-choice.md) — why Aptos.
 - aptos-core source under `~/.cargo/git/checkouts/aptos-core-*/77535b5/`:
   - `third_party/move/move-vm/runtime/src/move_vm.rs` — top-level VM

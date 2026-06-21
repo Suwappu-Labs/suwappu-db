@@ -12,12 +12,12 @@ authoritative LTP signer state (the materialize-side and the
 attestation-side) lives off-chain, in a runtime that produces and
 consumes anchor records and submits them to `LTPAnchorRegistry`. We
 describe the Rust integration surface here for completeness; the
-detailed substrate is the companion *GSX-DB* implementation
-[GSX-DB, 2026].
+detailed substrate is the companion *Suwappu-DB* implementation
+[Suwappu-DB, 2026].
 
 ### 7.4.1 Anchor production
 
-For each block of the host chain, the GSX-DB `AnchorDispatcher`
+For each block of the host chain, the Suwappu-DB `AnchorDispatcher`
 emits one `Anchor` per registered target chain:
 
 ```rust
@@ -80,7 +80,7 @@ Per §9.1 (classical-cryptography exception zones), the launch path
 swaps the substrate's BLAKE3 keyed-MAC primitive in
 `Anchor::compute_mac` for a hybrid ECDSA-secp256k1 + ML-DSA-65
 signature, aligning with the host chain's account signing surface
-of [GSX DAG L1, 2026, §12, Table 1]. The primitive swap touches a
+of [Suwappu DAG L1, 2026, §12, Table 1]. The primitive swap touches a
 single function and is invisible to the per-chain `AnchorLog` and
 `AnchorDispatcher` types, and to the parity-check semantics of
 §7.4.2.
@@ -88,14 +88,14 @@ single function and is invisible to the per-chain `AnchorLog` and
 ### References to add
 
 ```bibtex
-@misc{gsxdb2026,
+@misc{suwappudb2026,
   author       = {Toma Natsagdorj and Javier Calderon Jr.
-                  and the GSX Engineering Team},
-  title        = {{GSX-DB}: A Polymorphic Dual-VM State Substrate
+                  and the Suwappu Engineering Team},
+  title        = {{Suwappu-DB}: A Polymorphic Dual-VM State Substrate
                   with Capability-Gated Mutation},
-  howpublished = {Companion implementation to the GSX DAG Layer 1
+  howpublished = {Companion implementation to the Suwappu DAG Layer 1
                   paper},
   year         = {2026},
-  url          = {https://github.com/GlobalSettlementNetwork/gsx-db}
+  url          = {https://github.com/Suwappu-Labs/suwappu-db}
 }
 ```

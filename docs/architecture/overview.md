@@ -4,7 +4,7 @@
 
 Most cross-VM chain designs synchronize EVM and Move state through a
 bridge. Bridges have lost the industry tens of billions of dollars.
-GSX-DB takes the opposite approach: **one canonical state, two
+Suwappu-DB takes the opposite approach: **one canonical state, two
 projections, no internal bridge**.
 
 EVM `balanceOf(addr)` and Move `Coin::value(&Coin)` for the same
@@ -15,9 +15,9 @@ disagree because there is nothing for them to disagree about.
 
 ```mermaid
 flowchart LR
-    Lane[gsxdb-lane<br/>untrusted ingest]
-    Bridge[gsxdb-bridge<br/>capability gate +<br/>block execution]
-    State[gsxdb-state<br/>canonical state +<br/>tree + storage]
+    Lane[suwappudb-lane<br/>untrusted ingest]
+    Bridge[suwappudb-bridge<br/>capability gate +<br/>block execution]
+    State[suwappudb-state<br/>canonical state +<br/>tree + storage]
     Lane -- Intent --> Bridge
     Bridge -- BridgeToken --> State
     Lane -. cannot import .-X State
@@ -25,26 +25,26 @@ flowchart LR
 
 | Crate | What it owns | Who can mutate it |
 |---|---|---|
-| `gsxdb-lane` | Untrusted ingest of `Intent`s | nothing — read-only data layer |
-| `gsxdb-bridge` | Validation, OCC scheduler, bundle atomicity, anchor dispatch, recovery | itself, by minting `BridgeToken`s |
-| `gsxdb-state` | `BalanceSlot`, `BalanceStore`, `StateTree`, the canonical state | only callers holding a `BridgeToken` |
+| `suwappudb-lane` | Untrusted ingest of `Intent`s | nothing — read-only data layer |
+| `suwappudb-bridge` | Validation, OCC scheduler, bundle atomicity, anchor dispatch, recovery | itself, by minting `BridgeToken`s |
+| `suwappudb-state` | `BalanceSlot`, `BalanceStore`, `StateTree`, the canonical state | only callers holding a `BridgeToken` |
 
 The lane crate is **structurally forbidden** from importing
-`gsxdb-state`. This is enforced two ways:
+`suwappudb-state`. This is enforced two ways:
 
 1. **At the type level** — `State::apply` requires a `BridgeToken`,
    whose constructor is named `__for_bridge_only` and is callable
-   only from `gsxdb-bridge` (lane code that imports it gets a sealed
+   only from `suwappudb-bridge` (lane code that imports it gets a sealed
    token).
 2. **At build time** — `scripts/check-lane-separation.sh` searches
-   the lane crate for any path leading to `gsxdb-state` and fails
+   the lane crate for any path leading to `suwappudb-state` and fails
    the build on violation.
 
 ## The capability-gated mutation path
 
 ```mermaid
 sequenceDiagram
-    participant Lane as gsxdb-lane
+    participant Lane as suwappudb-lane
     participant Bridge as Bridge::submit
     participant Token as BridgeToken
     participant State as State::apply
@@ -53,7 +53,7 @@ sequenceDiagram
     Lane->>Bridge: Intent::Transfer { from, to, amount }
     Bridge->>Bridge: validate balance, overflow
     Bridge->>Token: __for_bridge_only()
-    Note over Token: Sealed: only gsxdb-bridge<br/>can construct
+    Note over Token: Sealed: only suwappudb-bridge<br/>can construct
     Bridge->>State: apply(&token, StateChange::SetBalance)
     State->>Store: set(addr, slot)
     Store-->>State: ()

@@ -7,7 +7,7 @@ of when each sprint landed and what's still queued.
 
 ```mermaid
 gantt
-    title GSX-DB delivery sprints
+    title Suwappu-DB delivery sprints
     dateFormat YYYY-MM-DD
     axisFormat %b '%y
 
@@ -78,18 +78,18 @@ started.
 | Sprint | Crate touched | Key types | LOC delta (approx) |
 |---|---|---|---|
 | S1 | workspace | `Address`, `Balance`, `BridgeToken`, `State`, `Bridge` | +1,200 |
-| S2 | gsxdb-state | `BalanceSlot`, `BalanceStore`, `InMemoryBalanceStore`, `RedbBalanceStore` | +2,400 |
-| S3 | gsxdb-state, gsxdb-bridge | `EvmTx`, `MoveTx`, `EvmProjector`, `MoveProjector`, `MockEvm`, `MockMove` | +1,800 |
-| S4 | gsxdb-bridge | `MvStore`, `Txn`, `Validator`, `BlockExecutor`, `BlockReport` | +2,100 |
-| S5 | gsxdb-bridge | `Bundle`, `BundleExecutor`, `ContractRegistry`, `BundleGenerator`, `Intent::Call` | +1,600 |
-| S6 | gsxdb-state | `Node`, `Commitment`, `Proof`, `StateTree` | +1,400 |
-| S7 | gsxdb-bridge | `Anchor`, `AnchorLog`, `AnchorDispatcher`, `ParityResult` | +1,200 |
-| S8 | gsxdb-bridge | `Block`, `BlockStore`, `InMemoryBlockStore`, `replay` | +1,800 |
-| S8.5 | gsxdb-bridge | `RedbBlockStore`, `BlockStoreError` | +600 |
-| S9 | gsxdb-state | `MoveExecutor`, `AccountNonce`, `MoveAddress`, `address_shape` | +800 |
-| S10 | gsxdb-state | `tree::verkle::GroupElement` (placeholder) | +200 |
-| S11 | gsxdb-bridge | `AuthScheme`, `L1AnchorReader`, `LTPAnchorRegistry.sol` | +1,500 |
-| S12 | gsxdb-state, gsxdb-bridge | `DagBlock`, `DagStore`, `SnapshotManager`, telemetry, shadow E2E | +1,800 |
+| S2 | suwappudb-state | `BalanceSlot`, `BalanceStore`, `InMemoryBalanceStore`, `RedbBalanceStore` | +2,400 |
+| S3 | suwappudb-state, suwappudb-bridge | `EvmTx`, `MoveTx`, `EvmProjector`, `MoveProjector`, `MockEvm`, `MockMove` | +1,800 |
+| S4 | suwappudb-bridge | `MvStore`, `Txn`, `Validator`, `BlockExecutor`, `BlockReport` | +2,100 |
+| S5 | suwappudb-bridge | `Bundle`, `BundleExecutor`, `ContractRegistry`, `BundleGenerator`, `Intent::Call` | +1,600 |
+| S6 | suwappudb-state | `Node`, `Commitment`, `Proof`, `StateTree` | +1,400 |
+| S7 | suwappudb-bridge | `Anchor`, `AnchorLog`, `AnchorDispatcher`, `ParityResult` | +1,200 |
+| S8 | suwappudb-bridge | `Block`, `BlockStore`, `InMemoryBlockStore`, `replay` | +1,800 |
+| S8.5 | suwappudb-bridge | `RedbBlockStore`, `BlockStoreError` | +600 |
+| S9 | suwappudb-state | `MoveExecutor`, `AccountNonce`, `MoveAddress`, `address_shape` | +800 |
+| S10 | suwappudb-state | `tree::verkle::GroupElement` (placeholder) | +200 |
+| S11 | suwappudb-bridge | `AuthScheme`, `L1AnchorReader`, `LTPAnchorRegistry.sol` | +1,500 |
+| S12 | suwappudb-state, suwappudb-bridge | `DagBlock`, `DagStore`, `SnapshotManager`, telemetry, shadow E2E | +1,800 |
 
 ## Test count growth
 

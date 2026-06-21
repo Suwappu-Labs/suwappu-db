@@ -21,7 +21,7 @@ jobs:
   # Two jobs run in parallel:
   #
   # 1. cargo-binary  — release-profile cargo build, uploads the
-  #    gsxdb-server binary.
+  #    suwappudb-server binary.
   # 2. solidity-abi  — forge build, uploads the
   #    LTPAnchorRegistry ABI JSON committed in S11.4.
   #
@@ -51,13 +51,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }} -p gsxdb-server
+        run: cargo build --release --target ${{ matrix.target }} -p suwappudb-server
 
       - name: Stage artefact
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/gsxdb-server dist/gsxdb-server-${{ matrix.target }}
-          (cd dist && sha256sum gsxdb-server-${{ matrix.target }} > gsxdb-server-${{ matrix.target }}.sha256)
+          cp target/${{ matrix.target }}/release/suwappudb-server dist/suwappudb-server-${{ matrix.target }}
+          (cd dist && sha256sum suwappudb-server-${{ matrix.target }} > suwappudb-server-${{ matrix.target }}.sha256)
 
       - uses: actions/upload-artifact@v4
         with:
@@ -108,7 +108,7 @@ jobs:
       - name: Collect artefacts into one directory
         run: |
           mkdir -p release
-          find dist -type f \( -name 'gsxdb-server-*' -o -name '*.abi.json' -o -name '*.sha256' \) \
+          find dist -type f \( -name 'suwappudb-server-*' -o -name '*.abi.json' -o -name '*.sha256' \) \
             -exec cp {} release/ \;
           ls -la release/
 

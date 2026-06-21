@@ -58,9 +58,9 @@ In-memory `AnchorLog` per chain + BLAKE3 keyed-MAC authentication.
 
 ### Decision
 
-The Solidity contract `LTPAnchorRegistry.sol` (deployed on GSX L1
+The Solidity contract `LTPAnchorRegistry.sol` (deployed on Suwappu L1
 testnet chain ID 103,115,120) is the authoritative on-chain anchor
-record. Rust substrate (`gsxdb-bridge::anchor`) maintains a mirror
+record. Rust substrate (`suwappudb-bridge::anchor`) maintains a mirror
 log and verifies parity against the contract via `L1AnchorReader`.
 
 ### Contract surface
@@ -95,7 +95,7 @@ component breaking does not compromise the other.
 ### Rust integration surface
 
 ```rust
-// gsxdb-bridge::anchor::types — landed in PR #4
+// suwappudb-bridge::anchor::types — landed in PR #4
 #[repr(u8)]
 pub enum AuthScheme {
     Blake3Mac      = 0, // phase-1 substrate
@@ -119,7 +119,7 @@ The verifier dispatches on `auth_scheme`. Full diagram of the landed
 `verify_credential` AND-gate, parity-critical invariants, and the
 discriminant table:
 
-→ [IQ-7 hybrid auth — visual](../../../gsx-dag/docs/visuals/mermaid/iq7-hybrid-auth.md)
+→ [IQ-7 hybrid auth — visual](../../../suwappu-dag/docs/visuals/mermaid/iq7-hybrid-auth.md)
 
 ```mermaid
 flowchart LR
@@ -160,7 +160,7 @@ flowchart LR
 
 ```mermaid
 sequenceDiagram
-    participant Node as gsx-db node
+    participant Node as suwappu-db node
     participant Reader as L1AnchorReader
     participant L1 as LTPAnchorRegistry.sol
     participant Mirror as Local AnchorLog
@@ -204,8 +204,8 @@ sequenceDiagram
 
 ### Propagation checklist
 
-- [x] `crates/gsxdb-bridge/src/anchor/types.rs` — `AuthScheme` enum
-- [x] `crates/gsxdb-bridge/src/anchor/l1_reader.rs` — Mock + RPC backends
+- [x] `crates/suwappudb-bridge/src/anchor/types.rs` — `AuthScheme` enum
+- [x] `crates/suwappudb-bridge/src/anchor/l1_reader.rs` — Mock + RPC backends
 - [x] `tests/solidity_anchor_parity.rs` — 8 fixture tests
 - [x] `contracts/src/LTPAnchorRegistry.sol`
 - [ ] Mainnet contract deployment

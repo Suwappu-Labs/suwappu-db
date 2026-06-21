@@ -996,78 +996,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gsxdb-bridge"
-version = "0.0.1"
-dependencies = [
- "blake3",
- "gsxdb-state",
- "hex",
- "k256",
- "pqcrypto-mldsa",
- "pqcrypto-traits",
- "proptest",
- "rand 0.8.6",
- "rayon",
- "redb",
- "reqwest",
- "serde_json",
- "sha3 0.10.9",
- "tempfile",
- "tokio",
- "tracing",
- "ureq",
-]
-
-[[package]]
-name = "gsxdb-lane"
-version = "0.0.1"
-dependencies = [
- "gsxdb-bridge",
-]
-
-[[package]]
-name = "gsxdb-server"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "axum",
- "blake3",
- "gsxdb-bridge",
- "gsxdb-state",
- "hex",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "toml",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "gsxdb-state"
-version = "0.0.1"
-dependencies = [
- "ark-ff",
- "ark-serialize",
- "banderwagon",
- "blake3",
- "bytes",
- "hex",
- "ipa-multipoint",
- "move-binary-format",
- "move-bytecode-verifier",
- "move-core-types",
- "move-vm-runtime",
- "move-vm-types",
- "proptest",
- "redb",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
 name = "h2"
 version = "0.3.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2681,6 +2609,86 @@ name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
+
+[[package]]
+name = "suwappudb-bridge"
+version = "0.1.0-pre"
+dependencies = [
+ "blake3",
+ "hex",
+ "k256",
+ "pqcrypto-mldsa",
+ "pqcrypto-traits",
+ "proptest",
+ "rand 0.8.6",
+ "rayon",
+ "redb",
+ "reqwest",
+ "serde_json",
+ "sha3 0.10.9",
+ "suwappudb-state",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "ureq",
+]
+
+[[package]]
+name = "suwappudb-lane"
+version = "0.1.0-pre"
+dependencies = [
+ "suwappudb-bridge",
+]
+
+[[package]]
+name = "suwappudb-server"
+version = "0.1.0-pre"
+dependencies = [
+ "anyhow",
+ "axum",
+ "blake3",
+ "hex",
+ "serde",
+ "serde_json",
+ "suwappudb-bridge",
+ "suwappudb-state",
+ "thiserror",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "suwappudb-state"
+version = "0.1.0-pre"
+dependencies = [
+ "ark-ff",
+ "ark-serialize",
+ "banderwagon",
+ "blake3",
+ "bytes",
+ "hex",
+ "ipa-multipoint",
+ "move-binary-format",
+ "move-bytecode-verifier",
+ "move-core-types",
+ "move-vm-runtime",
+ "move-vm-types",
+ "proptest",
+ "redb",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "suwappudb-types"
+version = "0.1.0-pre"
+dependencies = [
+ "suwappudb-bridge",
+ "suwappudb-state",
+]
 
 [[package]]
 name = "syn"

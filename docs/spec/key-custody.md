@@ -18,7 +18,7 @@ point:
 - [Besu QBFT docs](https://besu.hyperledger.org/private-networks/how-to/configure/consensus/qbft)
   — `--security-module` integrates an external key manager.
 
-GSX-DB needs an analogue and a written profile.
+Suwappu-DB needs an analogue and a written profile.
 
 ## Profile (binding)
 
@@ -76,13 +76,13 @@ build rejects production binaries that linked it in.
 
 **Operational, not code-level.** The HSM-only profile above is
 enforced by **deployment tooling and the per-peer handshake**, not by
-a compile-time check inside the gsxdb binary.
+a compile-time check inside the suwappudb binary.
 
 | Layer | Mechanism | Where it runs |
 |---|---|---|
 | Build | `production-pqc` and similar features gate optional crypto deps; **no feature gates `InsecureSoftKey` out of production builds today**. | Cargo |
 | Deploy | Terraform / Helm values + bootstrap scripts pin `KEY_SOURCE` env to one of `cloudhsm`/`yubihsm`/`fireblocks-mpc`; AMI image lacks a writable filesystem path for raw keys. | Operator infrastructure |
-| Runtime | The attestation-handshake check in the failure-modes table rejects peers whose `module_type` is not in the accepted set, and refuses to start if the local handle cannot produce a valid attestation. | gsxdb node |
+| Runtime | The attestation-handshake check in the failure-modes table rejects peers whose `module_type` is not in the accepted set, and refuses to start if the local handle cannot produce a valid attestation. | suwappudb node |
 | Audit | The validator's signed attestation (handshake JSON) is mirrored into the on-chain anchor / governance log; off-chain compliance can verify the chain of custody after the fact. | LTP super-nodes |
 
 **Why operational and not code-level.** A compile-time gate that

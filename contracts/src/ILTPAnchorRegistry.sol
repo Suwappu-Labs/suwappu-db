@@ -14,7 +14,7 @@ pragma solidity ^0.8.20;
  */
 interface ILTPAnchorRegistry {
     /// One per-chain anchor for one block. Field set MUST match the
-    /// Rust `Anchor` struct in `gsxdb-bridge` (chainId, height,
+    /// Rust `Anchor` struct in `suwappudb-bridge` (chainId, height,
     /// stateRoot, parent, mac).
     struct Anchor {
         uint32 chainId;

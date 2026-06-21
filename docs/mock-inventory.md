@@ -16,9 +16,9 @@ Each entry has:
 
 ### 1.1 `MockEvm`, `MockMove`
 
-- **Where:** `crates/gsxdb-bridge/src/vm/executor.rs:56,85`
-  (re-exported via `crates/gsxdb-bridge/src/vm/mod.rs:15` and
-  `crates/gsxdb-bridge/src/lib.rs:46`).
+- **Where:** `crates/suwappudb-bridge/src/vm/executor.rs:56,85`
+  (re-exported via `crates/suwappudb-bridge/src/vm/mod.rs:15` and
+  `crates/suwappudb-bridge/src/lib.rs:46`).
 - **What it stands in for:** real revm EVM execution and real Aptos
   Move VM execution. Both currently canonicalise their VM-shape tx to
   `Intent::Transfer` and route through `Bridge::submit`.
@@ -29,7 +29,7 @@ Each entry has:
 
 ### 1.2 `MockMoveExecutor`
 
-- **Where:** `crates/gsxdb-state/src/vm/executor.rs:58`
+- **Where:** `crates/suwappudb-state/src/vm/executor.rs:58`
   (default impl of `MoveExecutor` trait at line 42).
 - **What it stands in for:** Aptos `move-vm-runtime` bytecode
   execution. Mock passes input state through unchanged with no
@@ -41,7 +41,7 @@ Each entry has:
 
 ### 1.3 `MockL1AnchorReader`
 
-- **Where:** `crates/gsxdb-bridge/src/anchor/l1_reader.rs:23`
+- **Where:** `crates/suwappudb-bridge/src/anchor/l1_reader.rs:23`
   (implements `L1AnchorReader` trait at line 16).
 - **What it stands in for:** RPC reads of the Solidity
   `LTPAnchorRegistry` on chain 103115120. Mock keeps anchors in a
@@ -57,18 +57,18 @@ Each entry has:
 
 ### 2.1 `InMemoryBalanceStore`
 
-- **Where:** `crates/gsxdb-state/src/store.rs:64`
+- **Where:** `crates/suwappudb-state/src/store.rs:64`
   (implements `BalanceStore` trait; default for `State::default()`).
 - **What it stands in for:** persistent balance storage.
 - **Status:** Production counterpart `RedbBalanceStore` already
-  exists at `crates/gsxdb-state/src/redb_store.rs`. The two are
+  exists at `crates/suwappudb-state/src/redb_store.rs`. The two are
   cross-checked by the property test `redb_matches_in_memory`
   (`redb_store.rs:446`). **No replacement work pending** — this is the
   intended dual-impl pattern; in-memory remains as the test fixture.
 
 ### 2.2 `InMemoryBlockStore`
 
-- **Where:** `crates/gsxdb-bridge/src/recovery/store.rs:62`
+- **Where:** `crates/suwappudb-bridge/src/recovery/store.rs:62`
   (implements `BlockStore` trait).
 - **What it stands in for:** crash-recoverable block log.
 - **Scheduled replacement:** **S8.5** (IQ-8).
@@ -79,7 +79,7 @@ Each entry has:
 
 ### 2.3 Lane `Mempool` (FIFO)
 
-- **Where:** `crates/gsxdb-lane/src/lib.rs:32-39`.
+- **Where:** `crates/suwappudb-lane/src/lib.rs:32-39`.
   Comment: *"Simple FIFO mempool. Phase-1 placeholder; S5 replaces
   this with the crash-recoverable cross-VM intent queue Q."*
 - **What it stands in for:** the crash-recoverable cross-VM intent
@@ -100,8 +100,8 @@ Each entry has:
 ### 3.1 Verkle commitment scaffolding
 
 - **Where:**
-  - `crates/gsxdb-state/src/tree/verkle.rs:22` — `GroupElement([u8; 32])` "Phase 1 placeholder; S10 wraps actual elliptic-curve arithmetic."
-  - `crates/gsxdb-state/src/tree/commit.rs:45` — `Commitment([0; 32])` placeholder constant; real value produced by `empty_commitment()`.
+  - `crates/suwappudb-state/src/tree/verkle.rs:22` — `GroupElement([u8; 32])` "Phase 1 placeholder; S10 wraps actual elliptic-curve arithmetic."
+  - `crates/suwappudb-state/src/tree/commit.rs:45` — `Commitment([0; 32])` placeholder constant; real value produced by `empty_commitment()`.
 - **What it stands in for:** Verkle commitments + IPA witnesses.
 - **Scheduled replacement:** **S10** (IQ-6 Part 2). Backlog row S10:
   *"Real Verkle commitments + IPA witnesses + parity harness."*
@@ -111,9 +111,9 @@ Each entry has:
 
 - **Where:**
   - `contracts/src/LTPAnchorRegistry.sol:246` — uses Keccak256 instead of BLAKE3 ("real deployment requires actual BLAKE3 via precompile").
-  - `crates/gsxdb-bridge/src/anchor/parity_test.rs:4` — Rust parity tests deliberately match the Keccak256 placeholder.
-  - `crates/gsxdb-bridge/src/anchor/l1_reader.rs:86` — `RpcL1AnchorReader` calls with function signature `0x12345678` (stand-in ABI, "real ABI needed").
-  - `crates/gsxdb-bridge/src/anchor/l1_reader.rs:183-187` — `placeholder_key = [0u8; 32]` HMAC key in RPC reader.
+  - `crates/suwappudb-bridge/src/anchor/parity_test.rs:4` — Rust parity tests deliberately match the Keccak256 placeholder.
+  - `crates/suwappudb-bridge/src/anchor/l1_reader.rs:86` — `RpcL1AnchorReader` calls with function signature `0x12345678` (stand-in ABI, "real ABI needed").
+  - `crates/suwappudb-bridge/src/anchor/l1_reader.rs:183-187` — `placeholder_key = [0u8; 32]` HMAC key in RPC reader.
 - **What it stands in for:** real BLAKE3 hashing + real `getAnchor`
   ABI + real per-chain HMAC keys delivered via the anchor dispatcher.
 - **Scheduled replacement:** **S11** (IQ-7 Part 2).
@@ -130,7 +130,7 @@ Each entry has:
 
 ### 4.1 `/metrics` HTTP handler
 
-- **Where:** `crates/gsxdb-server/src/main.rs:77` — *"Handler: GET /metrics (placeholder)."*
+- **Where:** `crates/suwappudb-server/src/main.rs:77` — *"Handler: GET /metrics (placeholder)."*
 - **What it stands in for:** Prometheus scrape endpoint backed by
   OpenTelemetry meters.
 - **Scheduled replacement:** **S12** (IQ-9, "structured telemetry").
@@ -138,7 +138,7 @@ Each entry has:
 
 ### 4.2 Replay parent-hash placeholder
 
-- **Where:** `crates/gsxdb-bridge/src/recovery/replay.rs:78-80` —
+- **Where:** `crates/suwappudb-bridge/src/recovery/replay.rs:78-80` —
   uses `GENESIS_PARENT` as the parent of `from` because the real
   parent must come from outside the call. Caller-contract, not a
   mock; documented as deliberate.
@@ -147,7 +147,7 @@ Each entry has:
 
 ### 4.3 Test-only fixture
 
-- `crates/gsxdb-bridge/src/recovery/store.rs:640` — `fake_hash = [0x42; 32]`. Test data, not production code. Not relevant.
+- `crates/suwappudb-bridge/src/recovery/store.rs:640` — `fake_hash = [0x42; 32]`. Test data, not production code. Not relevant.
 
 ---
 

@@ -14,7 +14,7 @@ DEST_PROJECT="$REPO_ROOT/.claude"
 DEST_USER="$HOME/.claude"
 
 if [[ ! -d "$SRC" ]]; then
-  echo "error: $SRC not found — are you running from the gsx-db repo?" >&2
+  echo "error: $SRC not found — are you running from the suwappu-db repo?" >&2
   exit 1
 fi
 

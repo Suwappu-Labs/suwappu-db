@@ -1,5 +1,5 @@
 name: Feature request
-description: Propose a change to gsx-db's behaviour, API, or scope.
+description: Propose a change to suwappu-db's behaviour, API, or scope.
 labels: ["enhancement", "triage"]
 body:
   - type: markdown
@@ -51,10 +51,10 @@ body:
       label: Surface affected
       multiple: true
       options:
-        - gsxdb-state
-        - gsxdb-bridge
-        - gsxdb-server
-        - gsxdb-types (frozen public surface — breaking changes need extra scrutiny)
+        - suwappudb-state
+        - suwappudb-bridge
+        - suwappudb-server
+        - suwappudb-types (frozen public surface — breaking changes need extra scrutiny)
         - contracts (Solidity)
         - JSON-RPC schema
         - Build / CI

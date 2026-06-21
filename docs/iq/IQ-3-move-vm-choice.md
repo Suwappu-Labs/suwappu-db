@@ -92,7 +92,7 @@ S3.5 into a launch-readiness item.
 
 ### Trade-offs (accepted)
 
-- **Framework lock-in.** GSX-DB Move code will be Aptos-flavoured
+- **Framework lock-in.** Suwappu-DB Move code will be Aptos-flavoured
   (ability sets, gas model, native function ABIs). Acceptable —
   Aptos is the launch ecosystem.
 - **Build size.** ~500 MB target dir. Mitigated by Docker layer
@@ -110,7 +110,7 @@ S3.5 into a launch-readiness item.
 
 ### Consequences
 
-- `gsxdb-bridge` gains `move-vm` feature gate (off by default in
+- `suwappudb-bridge` gains `move-vm` feature gate (off by default in
   fast tests; on for the launch-readiness exit gate)
 - `Cargo.toml` pins `aptos-core` version
 - `MoveProjector::execute` calls real bytecode behind the feature
@@ -128,13 +128,13 @@ S3.5 into a launch-readiness item.
 
 ### Propagation checklist
 
-- [x] `crates/gsxdb-state/src/vm/executor.rs` — placeholder trait + Mock impl
+- [x] `crates/suwappudb-state/src/vm/executor.rs` — placeholder trait + Mock impl
 - [x] `production-move-executor` feature gate (empty — pulls no deps yet)
 - [ ] **Trait redesign** — current trait `(addr, BalanceSlot) → ExecutionOutcome` is a passthrough; not invoked anywhere. Replace with `(MoveCall, &dyn ModuleStore, &mut MoveSessionState) → MoveOutcome`. See `docs/spec/move-execution.md`.
 - [ ] `ModuleStore` trait + in-memory + redb-backed impls
 - [ ] `Intent::DeployModule` + `Intent::Call` Move-arm wiring through `BundleExecutor`
 - [ ] `aptos_vm::AptosVM` (actually: `move-vm-runtime` subset) wired behind the feature
-- [ ] Canonical gsx-db `Coin<T>` Move module bundled
+- [ ] Canonical suwappu-db `Coin<T>` Move module bundled
 - [ ] Re-run dual-projection 10k proptest with real bytecode
 - [x] `docs/spec/move-execution.md` ✅ — S9.1 (this PR)
 - [x] IQ-4 (address shape) resolved in spec — `Address` enum with canonical projection
@@ -145,7 +145,7 @@ S3.5 into a launch-readiness item.
 | Sub-pass | What | Status |
 |---|---|---|
 | S9.1 | Design doc (`docs/spec/move-execution.md`) + IQ-3 update | ✅ landed |
-| S9.2 | New trait surface in `gsxdb-state::vm` + new `MockMoveExecutor` | ✅ landed |
+| S9.2 | New trait surface in `suwappudb-state::vm` + new `MockMoveExecutor` | ✅ landed |
 | S9.3 | `InMemoryModuleStore` + `Intent::DeployModule` wire format | ✅ landed |
 | S9.4 | `BundleExecutor::execute_with_move_runtime` (MoveCall + DeployModule with deferred-commit) | ✅ landed |
 | S9.5a | `AptosMoveExecutor` scaffold + dep-choice docs | ✅ landed |
@@ -153,7 +153,7 @@ S3.5 into a launch-readiness item.
 | S9.5c | Real `CompiledModule::deserialize` + `verify_module` in `AptosMoveExecutor` | ✅ landed |
 | S9.5d | Session-layer design doc (`docs/spec/move-vm-session-layer.md`); inventories the ~60 trait methods + 4 open questions | ✅ landed |
 | S9.5e | **Build** the session layer (`Loader` + `ModuleStorage` + `MoveVmDataCache` + `GasMeter`) | pending — multi-session per design doc |
-| S9.5f | Compile + bundle canonical gsx-db `Coin<T>` Move module | pending |
+| S9.5f | Compile + bundle canonical suwappu-db `Coin<T>` Move module | pending |
 | S9.6 | Flip `production-move-executor` ON by default + 10k cross-VM parity gate with real bytecode | pending |
 
 S9.5 had to split deeper than expected. The Aptos `MoveVM` at tag

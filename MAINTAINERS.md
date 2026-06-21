@@ -4,7 +4,7 @@
 
 | Handle | Role | Coverage |
 |---|---|---|
-| [@tomagsx](https://github.com/tomagsx) | Lead maintainer | All surfaces. Security disclosure contact. |
+| [@tomasuwappu](https://github.com/tomasuwappu) | Lead maintainer | All surfaces. Security disclosure contact. |
 
 ## Areas + suggested reviewers
 
@@ -14,12 +14,12 @@ human-readable version of the same map.
 
 | Area | Reviewer hint |
 |---|---|
-| Lane separation (`gsxdb-lane`, `gsxdb-bridge`, `scripts/check-lane-separation.sh`, `deny.toml`) | @tomagsx — invariant guard |
-| Cryptography (`gsxdb-state/tree/`, `signing.rs`, `credential.rs`) | @tomagsx — correctness + side-channels |
-| Anchor parity (`anchor/`, `LTPAnchorRegistry.sol`, `contracts/`) | @tomagsx — Rust ↔ Solidity parity |
-| Recovery + DAG (`recovery/`, `dag.rs`, `snapshot.rs`) | @tomagsx — replay soundness |
-| Security policy + audit ledgers (`SECURITY.md`, `docs/audit/`) | @tomagsx |
-| CI workflows (`.github/`) | @tomagsx |
+| Lane separation (`suwappudb-lane`, `suwappudb-bridge`, `scripts/check-lane-separation.sh`, `deny.toml`) | @tomasuwappu — invariant guard |
+| Cryptography (`suwappudb-state/tree/`, `signing.rs`, `credential.rs`) | @tomasuwappu — correctness + side-channels |
+| Anchor parity (`anchor/`, `LTPAnchorRegistry.sol`, `contracts/`) | @tomasuwappu — Rust ↔ Solidity parity |
+| Recovery + DAG (`recovery/`, `dag.rs`, `snapshot.rs`) | @tomasuwappu — replay soundness |
+| Security policy + audit ledgers (`SECURITY.md`, `docs/audit/`) | @tomasuwappu |
+| CI workflows (`.github/`) | @tomasuwappu |
 
 ## Becoming a maintainer
 

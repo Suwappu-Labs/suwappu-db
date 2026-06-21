@@ -1,20 +1,20 @@
 # Request lifecycle
 
 What happens between a wallet calling an RPC method and getting a
-response back. Covers the read path (`gsx_getBalance`,
-`gsx_getStateRoot`) today and the write path
-(`gsx_sendTransaction` / `eth_sendRawTransaction`) at launch.
+response back. Covers the read path (`suwappu_getBalance`,
+`suwappu_getStateRoot`) today and the write path
+(`suwappu_sendTransaction` / `eth_sendRawTransaction`) at launch.
 
 ## Read path (live in phase-1)
 
 ```mermaid
 sequenceDiagram
     actor Wallet
-    participant Server as gsxdb-server (Axum)
+    participant Server as suwappudb-server (Axum)
     participant Lock as Arc&lt;Mutex&lt;State&gt;&gt;
-    participant State as gsxdb-state
+    participant State as suwappudb-state
     participant Tree as StateTree
-    Wallet->>Server: HTTP POST /<br/>{method: "gsx_getBalance",<br/> params: [addr]}
+    Wallet->>Server: HTTP POST /<br/>{method: "suwappu_getBalance",<br/> params: [addr]}
     Server->>Server: parse JSON-RPC envelope
     Server->>Lock: lock.lock().await
     Lock-->>Server: &State guard
@@ -33,10 +33,10 @@ read-only snapshot strategy when the read-write ratio justifies it.
 ```mermaid
 sequenceDiagram
     actor Auditor
-    participant Server as gsxdb-server
-    participant State as gsxdb-state
+    participant Server as suwappudb-server
+    participant State as suwappudb-state
     participant Tree as StateTree
-    Auditor->>Server: gsx_getStateRoot
+    Auditor->>Server: suwappu_getStateRoot
     Server->>State: state.entries()
     State-->>Server: Vec<(Address, BalanceSlot)>
     Server->>Tree: StateTree::from_entries(...)
@@ -55,8 +55,8 @@ caching with explicit dirty marks — same `tree.root()` API.
 sequenceDiagram
     participant Syncer as L2StateSyncer<br/>tokio task
     participant OPReth as op-reth :8545
-    participant Bridge as gsxdb-bridge::sync::l2
-    participant State as gsxdb-state
+    participant Bridge as suwappudb-bridge::sync::l2
+    participant State as suwappudb-state
     loop every N seconds
         Syncer->>OPReth: eth_getBalance(addr, "latest")
         OPReth-->>Syncer: 0x...
@@ -68,23 +68,23 @@ sequenceDiagram
 ```
 
 The shadow path is the only place where on-chain data enters
-gsx-db state via the bridge's capability gate; lane code never
+suwappu-db state via the bridge's capability gate; lane code never
 touches op-reth directly.
 
 ## Write path (target — launch)
 
 At launch, wallets submit `eth_sendRawTransaction` against
-gsx-db's RPC endpoint, which lifts the tx into the consensus layer:
+suwappu-db's RPC endpoint, which lifts the tx into the consensus layer:
 
 ```mermaid
 sequenceDiagram
     actor Wallet
-    participant RPC as gsxdb-server
+    participant RPC as suwappudb-server
     participant Mempool as Mempool (not yet built)
-    participant Consensus as gsxbft consensus
+    participant Consensus as suwappubft consensus
     participant DAG as Mysticeti certificate DAG
-    participant Exec as gsxdb-bridge::BlockExecutor
-    participant State as gsxdb-state
+    participant Exec as suwappudb-bridge::BlockExecutor
+    participant State as suwappudb-state
     participant Anchor as AnchorDispatcher
 
     Wallet->>RPC: eth_sendRawTransaction(0x...)
@@ -134,7 +134,7 @@ flowchart LR
     style OK fill:#cfc
 ```
 
-Standard JSON-RPC 2.0 error codes. gsxdb-server adds one extension
+Standard JSON-RPC 2.0 error codes. suwappudb-server adds one extension
 code `-32100` for "state not yet synchronized" used when the shadow
 syncer hasn't caught up.
 
