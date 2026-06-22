@@ -28,6 +28,14 @@ ignore = [
     # interpreter's hot path. Aptos can swap to rustc-hash but hasn't.
     # Will drop once Aptos migrates upstream.
     "RUSTSEC-2025-0057",
+    # pqcrypto-{traits,internals,mldsa} unmaintained: upstream PQClean
+    # archived (2026). No vulnerability — these are the ML-DSA (FIPS 204)
+    # bindings backing the PQ anchor signatures. Migration to the
+    # pure-Rust `ml-dsa` (RustCrypto) crate is tracked; until then the
+    # PQClean-backed impl is the reference. Keep in sync with .cargo/audit.toml.
+    "RUSTSEC-2026-0162",
+    "RUSTSEC-2026-0163",
+    "RUSTSEC-2026-0166",
 ]
 
 [licenses]

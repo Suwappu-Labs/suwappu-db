@@ -66,9 +66,13 @@ jobs:
           # Full history so gitleaks scans every commit, not just HEAD.
           fetch-depth: 0
 
+      # Use the free, open-source gitleaks CLI (Docker image) rather than
+      # gitleaks/gitleaks-action@v2, which requires a paid GITLEAKS_LICENSE
+      # for organization repos. The CLI is MIT-licensed and fully featured.
+      # `detect` scans the full git history (fetch-depth: 0 above); a
+      # .gitleaks.toml at repo root can allow-list false positives.
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Default config is sufficient; .gitleaks.toml at repo root
-          # can override allow-listed false positives if any surface.
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/repo" \
+            ghcr.io/gitleaks/gitleaks:latest detect \
+            --source /repo --redact --no-banner --verbose

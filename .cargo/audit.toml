@@ -19,4 +19,12 @@ ignore = [
     # fxhash is unmaintained; pulled transitively via Aptos
     # move-vm-runtime. Hot-path non-cryptographic hash.
     "RUSTSEC-2025-0057",
+    # pqcrypto-{traits,internals,mldsa} are unmaintained: upstream
+    # PQClean was archived (2026). No vulnerability — these are the
+    # ML-DSA (FIPS 204) bindings used for PQ anchor signatures.
+    # Migration to the pure-Rust `ml-dsa` (RustCrypto) crate is tracked;
+    # until it lands, the PQClean-backed impl is the reference.
+    "RUSTSEC-2026-0162",
+    "RUSTSEC-2026-0163",
+    "RUSTSEC-2026-0166",
 ]
