@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/GlobalSettlementNetwork/gsx-db/docs/api/rpc-schema.json",
-  "title": "gsxdb-server JSON-RPC schema",
-  "description": "C4 (Pass C): JSON-RPC 2.0 method catalogue for gsxdb-server. Canonical mount is /v1/rpc; /rpc is a deprecated alias for one cycle past v0.1.0-pre. /health and /metrics are operational endpoints, not part of this schema.",
+  "$id": "https://github.com/Suwappu-Labs/suwappu-db/docs/api/rpc-schema.json",
+  "title": "suwappudb-server JSON-RPC schema",
+  "description": "C4 (Pass C): JSON-RPC 2.0 method catalogue for suwappudb-server. Canonical mount is /v1/rpc; /rpc is a deprecated alias for one cycle past v0.1.0-pre. /health and /metrics are operational endpoints, not part of this schema.",
   "version": "0.1.0-pre",
   "endpoint": {
     "method": "POST",
@@ -40,7 +40,7 @@
     }
   },
   "methods": {
-    "gsx_getBalance": {
+    "suwappu_getBalance": {
       "summary": "Read the EVM-projected balance for an address.",
       "params": [
         {
@@ -61,7 +61,7 @@
         "-32602": "Invalid address format"
       }
     },
-    "gsx_getCoinValue": {
+    "suwappu_getCoinValue": {
       "summary": "Read the Move-projected coin value for an address. Equals balance under Proposition 1.",
       "params": [
         {
@@ -79,7 +79,7 @@
         }
       }
     },
-    "gsx_getStateRoot": {
+    "suwappu_getStateRoot": {
       "summary": "Current state-tree root commitment.",
       "params": [],
       "result": {
@@ -89,7 +89,7 @@
         }
       }
     },
-    "gsx_getParity": {
+    "suwappu_getParity": {
       "summary": "Cross-chain parity check at a given height across all registered chains in the AnchorDispatcher.",
       "params": [
         {
@@ -133,7 +133,7 @@
         ]
       }
     },
-    "gsx_getBlock": {
+    "suwappu_getBlock": {
       "summary": "Retrieve a recorded block by height. Placeholder in v0.1.0-pre; wires up when BlockStore is plumbed into the server.",
       "params": [
         {
@@ -145,7 +145,7 @@
       "result": { "type": "object" },
       "status": "not yet implemented"
     },
-    "gsx_submitIntent": {
+    "suwappu_submitIntent": {
       "summary": "Submit a transaction intent into the bridge. Placeholder in v0.1.0-pre; wires up when the lane → bridge pipe is exposed.",
       "params": [],
       "result": { "type": "object" },
@@ -161,6 +161,6 @@
   "notes": [
     "Method names will not be repurposed. Adding new variants to existing return objects is backward-compatible; removing or renaming a field is a breaking change.",
     "The deprecated POST /rpc route routes through the same handler as POST /v1/rpc, but logs a warning on every hit. Removed in the next minor bump after v0.1.0-pre.",
-    "AuthScheme discriminants surfaced in future methods (e.g. gsx_getAnchor) follow the wire encoding fixed in crates/gsxdb-bridge/src/anchor/types.rs: Blake3Mac=0, Sp1ZkProof=1, EcdsaSecp256k1=2, MlDsa65Hybrid=3."
+    "AuthScheme discriminants surfaced in future methods (e.g. suwappu_getAnchor) follow the wire encoding fixed in crates/suwappudb-bridge/src/anchor/types.rs: Blake3Mac=0, Sp1ZkProof=1, EcdsaSecp256k1=2, MlDsa65Hybrid=3."
   ]
 }

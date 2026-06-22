@@ -1,6 +1,6 @@
 # LTP three-phase lifecycle
 
-Per the LTP companion paper. GSX-DB integrates with LTP as both
+Per the LTP companion paper. Suwappu-DB integrates with LTP as both
 **producer of anchors** (outbound, via `AnchorDispatcher`) and
 **consumer of attestations** (inbound, via `L1AnchorReader`).
 
@@ -167,11 +167,11 @@ identifier alone via `loc(eid, i)`; shard identifiers live only as
 Merkle leaves in the commitment record. The lattice key shrank from
 ~869 B to ~160 B and closed all three leakage points.
 
-## How gsx-db integrates
+## How suwappu-db integrates
 
 ```mermaid
 flowchart LR
-    subgraph GsxDB[gsx-db substrate]
+    subgraph SuwappuDB[suwappu-db substrate]
         Bridge[AnchorDispatcher] --> Anchor[Anchor 32B state_root<br/>+ chain_id + height]
         Server[L1AnchorReader] --> Verify[verify state_root parity]
     end
@@ -184,7 +184,7 @@ flowchart LR
     Reg -- eth_call --> Verify
 ```
 
-GSX-DB's anchor is a small input (`Anchor` ≈ 96 B) to the LTP
+Suwappu-DB's anchor is a small input (`Anchor` ≈ 96 B) to the LTP
 attestation pipeline. The LTP commitment on the base chain
 (constant ~1,600 B per anchor) compresses regardless of payload
 complexity.

@@ -13,13 +13,13 @@ Run read-only AWS checks. **No mutations.** Report a structured summary.
 aws sts get-caller-identity
 ```
 
-Confirm the account matches what's expected for gsx-db (look in `terraform/` or `scripts/bootstrap.sh` for the canonical account ID — don't hardcode it here).
+Confirm the account matches what's expected for suwappu-db (look in `terraform/` or `scripts/bootstrap.sh` for the canonical account ID — don't hardcode it here).
 
 ## Compute
 
 ```bash
 aws ec2 describe-instances \
-  --filters "Name=tag:Project,Values=gsx-db" \
+  --filters "Name=tag:Project,Values=suwappu-db" \
   --query 'Reservations[].Instances[].{Id:InstanceId,State:State.Name,Type:InstanceType,Launch:LaunchTime,Name:Tags[?Key==`Name`]|[0].Value}' \
   --output table
 ```
@@ -29,15 +29,15 @@ Flag any instance that is `stopped`, `stopping`, or `terminated`.
 ## Storage
 
 ```bash
-aws s3 ls | grep -i gsx || echo "no gsx-* buckets"
+aws s3 ls | grep -i suwappu || echo "no suwappu-* buckets"
 ```
 
 ## Container registry
 
 ```bash
 aws ecr describe-repositories \
-  --query 'repositories[?contains(repositoryName, `gsx`)].{Name:repositoryName,URI:repositoryUri}' \
-  --output table 2>/dev/null || echo "no gsx ECR repos"
+  --query 'repositories[?contains(repositoryName, `suwappu`)].{Name:repositoryName,URI:repositoryUri}' \
+  --output table 2>/dev/null || echo "no suwappu ECR repos"
 ```
 
 ## Recent logs (validator shadow)
@@ -45,14 +45,14 @@ aws ecr describe-repositories \
 ```bash
 # Find log groups, then tail the most recent
 aws logs describe-log-groups \
-  --log-group-name-prefix /gsx-db \
+  --log-group-name-prefix /suwappu-db \
   --query 'logGroups[].logGroupName' --output text 2>/dev/null
 ```
 
-If a `/gsx-db/validator-shadow` group exists, tail the last 5 minutes:
+If a `/suwappu-db/validator-shadow` group exists, tail the last 5 minutes:
 
 ```bash
-aws logs tail /gsx-db/validator-shadow --since 5m --format short 2>/dev/null | tail -50
+aws logs tail /suwappu-db/validator-shadow --since 5m --format short 2>/dev/null | tail -50
 ```
 
 ## Report format

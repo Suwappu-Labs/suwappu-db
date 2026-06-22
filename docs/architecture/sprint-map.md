@@ -46,27 +46,27 @@ property test.
 
 | Sprint | Crate | Module | Key types |
 |---|---|---|---|
-| S1 | gsxdb-state, gsxdb-bridge, gsxdb-lane | (workspace) | `Address`, `Balance`, `BridgeToken`, `State`, `Bridge` |
-| S2 | gsxdb-state | `balance_slot`, `store`, `redb_store` | `BalanceSlot`, `EvmBalance`, `MoveCoinValue`, `BalanceStore`, `InMemoryBalanceStore`, `RedbBalanceStore` |
-| S3 | gsxdb-state, gsxdb-bridge | `vm`, `vm::executor` | `EvmTx`, `MoveTx`, `EvmProjector`, `MoveProjector`, `EvmView`, `MoveView`, `MockEvm`, `MockMove` |
-| S4 | gsxdb-bridge | `occ` | `MvStore`, `Txn`, `Validator`, `BlockExecutor`, `BlockReport`, `TxOutcome` |
-| S5 | gsxdb-bridge | `bundle` | `Bundle`, `BundleStep`, `BundleExecutor`, `ContractRegistry`, `BundleGenerator`, `CallCtx`, `Intent::Call` |
-| S6 | gsxdb-state | `tree` | `Node`, `Commitment`, `Proof`, `ProofStep`, `StateTree` |
-| S7 | gsxdb-bridge | `anchor` | `ChainId`, `AnchorHash`, `Anchor`, `AnchorLog`, `AnchorDispatcher`, `ParityResult` |
-| S8 | gsxdb-bridge | `recovery` | `Block`, `BlockHash`, `BlockStore`, `InMemoryBlockStore`, `replay`, `RecoveryError` |
+| S1 | suwappudb-state, suwappudb-bridge, suwappudb-lane | (workspace) | `Address`, `Balance`, `BridgeToken`, `State`, `Bridge` |
+| S2 | suwappudb-state | `balance_slot`, `store`, `redb_store` | `BalanceSlot`, `EvmBalance`, `MoveCoinValue`, `BalanceStore`, `InMemoryBalanceStore`, `RedbBalanceStore` |
+| S3 | suwappudb-state, suwappudb-bridge | `vm`, `vm::executor` | `EvmTx`, `MoveTx`, `EvmProjector`, `MoveProjector`, `EvmView`, `MoveView`, `MockEvm`, `MockMove` |
+| S4 | suwappudb-bridge | `occ` | `MvStore`, `Txn`, `Validator`, `BlockExecutor`, `BlockReport`, `TxOutcome` |
+| S5 | suwappudb-bridge | `bundle` | `Bundle`, `BundleStep`, `BundleExecutor`, `ContractRegistry`, `BundleGenerator`, `CallCtx`, `Intent::Call` |
+| S6 | suwappudb-state | `tree` | `Node`, `Commitment`, `Proof`, `ProofStep`, `StateTree` |
+| S7 | suwappudb-bridge | `anchor` | `ChainId`, `AnchorHash`, `Anchor`, `AnchorLog`, `AnchorDispatcher`, `ParityResult` |
+| S8 | suwappudb-bridge | `recovery` | `Block`, `BlockHash`, `BlockStore`, `InMemoryBlockStore`, `replay`, `RecoveryError` |
 
 ## Exit gates
 
 | Sprint | Exit-gate test | File |
 |---|---|---|
 | S1 | `check-lane-separation.sh` (script + capability gate) | `scripts/check-lane-separation.sh` |
-| S2 | `redb_preserves_dual_projection` | `crates/gsxdb-state/src/redb_store.rs` |
-| S3 | `interleaved_evm_move_preserves_invariant` | `crates/gsxdb-bridge/tests/cross_vm_parity.rs` |
-| S4 | `parallel_equals_sequential` | `crates/gsxdb-bridge/tests/block_executor.rs` |
-| S5 | `bundle_atomicity` | `crates/gsxdb-bridge/tests/cross_vm_bundles.rs` |
-| S6 | `cross_tree_root_agreement` | `crates/gsxdb-state/tests/state_tree.rs` |
-| S7 | `cross_chain_parity_holds` | `crates/gsxdb-bridge/tests/cross_parity.rs` |
-| S8 | `recover_matches_live_state` | `crates/gsxdb-bridge/tests/recovery.rs` |
+| S2 | `redb_preserves_dual_projection` | `crates/suwappudb-state/src/redb_store.rs` |
+| S3 | `interleaved_evm_move_preserves_invariant` | `crates/suwappudb-bridge/tests/cross_vm_parity.rs` |
+| S4 | `parallel_equals_sequential` | `crates/suwappudb-bridge/tests/block_executor.rs` |
+| S5 | `bundle_atomicity` | `crates/suwappudb-bridge/tests/cross_vm_bundles.rs` |
+| S6 | `cross_tree_root_agreement` | `crates/suwappudb-state/tests/state_tree.rs` |
+| S7 | `cross_chain_parity_holds` | `crates/suwappudb-bridge/tests/cross_parity.rs` |
+| S8 | `recover_matches_live_state` | `crates/suwappudb-bridge/tests/recovery.rs` |
 
 
 ## Step-by-step execution plan (post phase-1)
@@ -80,7 +80,7 @@ exit gate.
 Landed in PR #2 (`Merge PR #2: redb-backed BlockStore + LTPAnchorRegistry + replay hardening`).
 
 Delivered:
-1. `RedbBlockStore` under `gsxdb-bridge::recovery::store` behind the existing
+1. `RedbBlockStore` under `suwappudb-bridge::recovery::store` behind the existing
    `BlockStore` trait — no caller API changes.
 2. Append + get_by_hash + get_by_height + latest + iter_from with deterministic
    height ordering. Tables: `blocks_by_hash` (`[u8;32] -> &[u8]`) and
@@ -95,7 +95,7 @@ Delivered:
    and write-txn isolation.
 
 Exit gate met: 12 redb-specific tests + 7 replay tests + 5 in-memory tests all
-green in `cargo test -p gsxdb-bridge --lib recovery`. The pre-existing 10k-case
+green in `cargo test -p suwappudb-bridge --lib recovery`. The pre-existing 10k-case
 `recover_matches_live_state` invariant continues to hold with the persistent
 backend.
 
@@ -236,7 +236,7 @@ Each merge preserves the per-slice commit structure under a
 
 The chain enforces these at every block:
 
-1. **Lane separation** (S1) — only `gsxdb-bridge` can mutate state
+1. **Lane separation** (S1) — only `suwappudb-bridge` can mutate state
 2. **Dual-projection** (S2) — EVM == Move for any balance, structurally
 3. **Cross-VM canonical equivalence** (S3) — same logical op in both
    VM shapes ⇒ same canonical state

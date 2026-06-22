@@ -31,13 +31,13 @@ rg -n "not yet|future work|to be added|contingency" docs crates
 ## Scope buckets (audit in this order)
 
 1. **Runtime correctness surfaces (code first)**
-   - `crates/gsxdb-bridge/src/recovery/*`
-   - `crates/gsxdb-bridge/src/anchor/*`
-   - `crates/gsxdb-bridge/src/vm/*`
-   - `crates/gsxdb-state/src/tree/*`
+   - `crates/suwappudb-bridge/src/recovery/*`
+   - `crates/suwappudb-bridge/src/anchor/*`
+   - `crates/suwappudb-bridge/src/vm/*`
+   - `crates/suwappudb-state/src/tree/*`
 2. **Invariant and property tests**
-   - `crates/gsxdb-bridge/tests/*`
-   - `crates/gsxdb-state/tests/*`
+   - `crates/suwappudb-bridge/tests/*`
+   - `crates/suwappudb-state/tests/*`
 3. **Normative specs/docs**
    - `docs/spec/*`
    - `docs/architecture/*`
@@ -60,10 +60,10 @@ Rules:
 
 These are already known high-impact placeholders to verify first:
 
-- `crates/gsxdb-lane/src/lib.rs:32` (phase-1 mempool placeholder)
-- `crates/gsxdb-bridge/src/recovery/replay.rs:77` (genesis-parent placeholder comment)
-- `crates/gsxdb-state/src/tree/ops.rs:127` (placeholder commitment path)
-- `crates/gsxdb-state/src/tree/commit.rs:37` (const placeholder commitment)
+- `crates/suwappudb-lane/src/lib.rs:32` (phase-1 mempool placeholder)
+- `crates/suwappudb-bridge/src/recovery/replay.rs:77` (genesis-parent placeholder comment)
+- `crates/suwappudb-state/src/tree/ops.rs:127` (placeholder commitment path)
+- `crates/suwappudb-state/src/tree/commit.rs:37` (const placeholder commitment)
 - `docs/spec/README.md:16-17` (spec TODO markers)
 - `docs/architecture/overview.md:110` (`TBD` runtime row)
 - `docs/architecture/dual-projection.md:118-122` (explicit placeholder IQ refs)

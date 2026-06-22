@@ -145,7 +145,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "input=$(cat); cmd=$(printf '%s' \"$input\" | jq -r '.tool_input.command // empty'); case \"$cmd\" in *'rm -rf /'*|*'rm -rf ~'*|*'rm -rf $HOME'*) echo '{\"decision\":\"block\",\"reason\":\"destructive rm -rf blocked by gsx-db PreToolUse hook\"}'; exit 0;; *'git push --force'*|*'git push -f '*) echo '{\"decision\":\"block\",\"reason\":\"force push blocked by gsx-db PreToolUse hook\"}'; exit 0;; *'terraform destroy'*) echo '{\"decision\":\"block\",\"reason\":\"terraform destroy blocked by gsx-db PreToolUse hook\"}'; exit 0;; esac"
+            "command": "input=$(cat); cmd=$(printf '%s' \"$input\" | jq -r '.tool_input.command // empty'); case \"$cmd\" in *'rm -rf /'*|*'rm -rf ~'*|*'rm -rf $HOME'*) echo '{\"decision\":\"block\",\"reason\":\"destructive rm -rf blocked by suwappu-db PreToolUse hook\"}'; exit 0;; *'git push --force'*|*'git push -f '*) echo '{\"decision\":\"block\",\"reason\":\"force push blocked by suwappu-db PreToolUse hook\"}'; exit 0;; *'terraform destroy'*) echo '{\"decision\":\"block\",\"reason\":\"terraform destroy blocked by suwappu-db PreToolUse hook\"}'; exit 0;; esac"
           }
         ]
       }

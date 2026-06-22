@@ -48,7 +48,7 @@ jobs:
           PROPTEST_CASES: 10000
 
       - name: Run property tests (production-pqc feature)
-        run: cargo test --workspace --release --features gsxdb-bridge/production-pqc
+        run: cargo test --workspace --release --features suwappudb-bridge/production-pqc
         env:
           PROPTEST_CASES: 10000
 
@@ -92,7 +92,7 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          tags: gsxdb-server:${{ github.sha }},gsxdb-server:latest
+          tags: suwappudb-server:${{ github.sha }},suwappudb-server:latest
 
   # Optional: Push to ECR on main branch
   push-ecr:
@@ -118,7 +118,7 @@ jobs:
           push: true
           registry: 905418423235.dkr.ecr.us-east-1.amazonaws.com
           tags: |
-            905418423235.dkr.ecr.us-east-1.amazonaws.com/gsxdb-server:latest
-            905418423235.dkr.ecr.us-east-1.amazonaws.com/gsxdb-server:${{ github.sha }}
+            905418423235.dkr.ecr.us-east-1.amazonaws.com/suwappudb-server:latest
+            905418423235.dkr.ecr.us-east-1.amazonaws.com/suwappudb-server:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

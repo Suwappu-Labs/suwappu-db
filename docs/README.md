@@ -1,7 +1,7 @@
-# GSX-DB documentation
+# Suwappu-DB documentation
 
-State and execution substrate for the GSX DAG Layer 1, per the
-academic paper [GSX DAG L1] (Natsagdorj, Calderon Jr., Mieskoski,
+State and execution substrate for the Suwappu DAG Layer 1, per the
+academic paper [Suwappu DAG L1] (Natsagdorj, Calderon Jr., Mieskoski,
 Kirkley; 2026).
 
 > **Zero context?** Read [EXPLAINER.md](EXPLAINER.md) first —
@@ -10,15 +10,15 @@ Kirkley; 2026).
 
 ## Visuals
 
-Presentation-ready diagrams and source formats live in the GSX DAG repo:
+Presentation-ready diagrams and source formats live in the Suwappu DAG repo:
 
-- [GSX Visual Index](../../gsx-dag/docs/visuals/index.html)
-- [GSX Ecosystem Atlas](../../gsx-dag/docs/visuals/gsx-ecosystem-atlas.html)
-- [GSX DAG presentation](../../gsx-dag/docs/visuals/gsx-dag.html)
-- [GSX DB presentation](../../gsx-dag/docs/visuals/gsx-db.html)
-- [LTP presentation](../../gsx-dag/docs/visuals/ltp.html)
-- Mermaid sources: [GSX DAG](../../gsx-dag/docs/visuals/mermaid/gsx-dag.md), [GSX DB](../../gsx-dag/docs/visuals/mermaid/gsx-db.md), [LTP](../../gsx-dag/docs/visuals/mermaid/ltp.md), [IQ-7 hybrid auth](../../gsx-dag/docs/visuals/mermaid/iq7-hybrid-auth.md)
-- Excalidraw sources: [GSX DAG](../../gsx-dag/docs/visuals/excalidraw/gsx-dag.excalidraw), [GSX DB](../../gsx-dag/docs/visuals/excalidraw/gsx-db.excalidraw), [LTP](../../gsx-dag/docs/visuals/excalidraw/ltp.excalidraw)
+- [Suwappu Visual Index](../../suwappu-dag/docs/visuals/index.html)
+- [Suwappu Ecosystem Atlas](../../suwappu-dag/docs/visuals/suwappu-ecosystem-atlas.html)
+- [Suwappu DAG presentation](../../suwappu-dag/docs/visuals/suwappu-dag.html)
+- [Suwappu DB presentation](../../suwappu-dag/docs/visuals/suwappu-db.html)
+- [LTP presentation](../../suwappu-dag/docs/visuals/ltp.html)
+- Mermaid sources: [Suwappu DAG](../../suwappu-dag/docs/visuals/mermaid/suwappu-dag.md), [Suwappu DB](../../suwappu-dag/docs/visuals/mermaid/suwappu-db.md), [LTP](../../suwappu-dag/docs/visuals/mermaid/ltp.md), [IQ-7 hybrid auth](../../suwappu-dag/docs/visuals/mermaid/iq7-hybrid-auth.md)
+- Excalidraw sources: [Suwappu DAG](../../suwappu-dag/docs/visuals/excalidraw/suwappu-dag.excalidraw), [Suwappu DB](../../suwappu-dag/docs/visuals/excalidraw/suwappu-db.excalidraw), [LTP](../../suwappu-dag/docs/visuals/excalidraw/ltp.excalidraw)
 
 ## Where do I start?
 
@@ -49,7 +49,7 @@ flowchart LR
 | Audience | Order |
 |---|---|
 | **Anyone wanting the 10-minute plain-language tour** | [EXPLAINER.md](EXPLAINER.md) |
-| **Backend engineer joining cold** | [EXPLAINER.md](EXPLAINER.md) → [HANDOFF.md](HANDOFF.md) → [architecture/README.md](architecture/README.md) → [architecture/data-flow.md](architecture/data-flow.md) → `crates/gsxdb-state/src/lib.rs` |
+| **Backend engineer joining cold** | [EXPLAINER.md](EXPLAINER.md) → [HANDOFF.md](HANDOFF.md) → [architecture/README.md](architecture/README.md) → [architecture/data-flow.md](architecture/data-flow.md) → `crates/suwappudb-state/src/lib.rs` |
 | **Academic reviewer** | [paper-additions/README.md](paper-additions/README.md) → [architecture/dual-projection.md](architecture/dual-projection.md) → [architecture/state-tree.md](architecture/state-tree.md) → [iq/README.md](iq/README.md) |
 | **Ops engineer deploying** | [architecture/deployment-topology.md](architecture/deployment-topology.md) → [architecture/request-lifecycle.md](architecture/request-lifecycle.md) → [ECOSYSTEM-AUDIT.md](ECOSYSTEM-AUDIT.md) |
 | **Security auditor** | [HARDENING.md](HARDENING.md) → [iq/README.md](iq/README.md) → [spec/README.md](spec/README.md) → [paper-additions/dag-l1-section-11-empirical.md](paper-additions/dag-l1-section-11-empirical.md) → invariant tests under `crates/*/tests/` |
@@ -58,10 +58,10 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    subgraph Lane[gsxdb-lane]
+    subgraph Lane[suwappudb-lane]
         Ingest[Intent ingress]
     end
-    subgraph Bridge[gsxdb-bridge]
+    subgraph Bridge[suwappudb-bridge]
         Sub[Bridge::submit]
         Block[BlockExecutor]
         Bundle[BundleExecutor]
@@ -70,14 +70,14 @@ flowchart TB
         Sync[sync::l2]
         Tele[telemetry]
     end
-    subgraph State[gsxdb-state]
+    subgraph State[suwappudb-state]
         Slot[BalanceSlot]
         Store[BalanceStore]
         Tree[StateTree]
         DAG[(DagStore)]
         Snap[SnapshotManager]
     end
-    subgraph Server[gsxdb-server]
+    subgraph Server[suwappudb-server]
         RPC[Axum + JSON-RPC]
     end
     External[op-reth / Solidity L1] -.RPC.-> Sync
@@ -147,7 +147,7 @@ docs/
 └── paper-additions/                proposed insertions to the two academic papers
     ├── README.md                   index with target sections
     ├── dag-l1-related-work.md
-    ├── dag-l1-section-7-4.md       new §7.4 — State substrate: GSX-DB
+    ├── dag-l1-section-7-4.md       new §7.4 — State substrate: Suwappu-DB
     ├── dag-l1-section-11-empirical.md
     ├── dag-l1-section-12-row.md    new Table 1 rows
     ├── ltp-section-7-4.md          new §7.4 — Rust integration surface
@@ -160,11 +160,11 @@ docs/
 |---|---|---|
 | Phase-1 substrate (S1–S8) | ✅ closed; 8 invariants verified at 10k cases | [sprint-map.md](architecture/sprint-map.md) |
 | Test count | 269 passing | `cargo test --workspace` |
-| Real EVM via `gsx-revm` | exists separately; not yet wired | [ECOSYSTEM-AUDIT.md](ECOSYSTEM-AUDIT.md) |
+| Real EVM via `suwappu-revm` | exists separately; not yet wired | [ECOSYSTEM-AUDIT.md](ECOSYSTEM-AUDIT.md) |
 | Real Move VM (Aptos) | decision binding; integration pending | [IQ-3](iq/IQ-3-move-vm-choice.md) |
 | Real Verkle commitments | decision binding; IPA wiring pending | [IQ-6](iq/IQ-6-verkle-commitment.md) |
 | LTPAnchorRegistry.sol | merged via PR #2 | `contracts/src/LTPAnchorRegistry.sol` |
-| Consensus integration (Mysticeti / gsxbft) | not started; `BlockBuilder` trait is the seam | [deployment-topology.md](architecture/deployment-topology.md) |
+| Consensus integration (Mysticeti / suwappubft) | not started; `BlockBuilder` trait is the seam | [deployment-topology.md](architecture/deployment-topology.md) |
 
 ## How the docs cross-reference
 

@@ -8,7 +8,7 @@ allowed-tools: Bash, Read, Agent
 The 3-way parity check verifies that anchor validation rules are identical across:
 
 1. **Solidity** — `LTPAnchorRegistry` contract (canonical)
-2. **Rust** — `gsxdb-anchor` crate (production validator)
+2. **Rust** — `suwappudb-anchor` crate (production validator)
 3. **Shadow** — testnet shadow instance behavior
 
 For Phase 1 close, all 36 entity-state-machine pairs must be green.
@@ -19,7 +19,7 @@ For Phase 1 close, all 36 entity-state-machine pairs must be green.
 which forge       # Solidity tests
 cargo --version   # Rust tests
 ls contracts/LTPAnchorRegistry.sol 2>/dev/null || echo "MISSING contract"
-ls gsxdb-anchor/src/lib.rs 2>/dev/null || echo "MISSING crate"
+ls suwappudb-anchor/src/lib.rs 2>/dev/null || echo "MISSING crate"
 ```
 
 If any dep is missing, stop and report.
@@ -28,7 +28,7 @@ If any dep is missing, stop and report.
 
 ```bash
 # Rust side
-cargo test --package gsxdb-anchor --features parity-fixtures -- --nocapture
+cargo test --package suwappudb-anchor --features parity-fixtures -- --nocapture
 
 # Solidity side
 (cd contracts && forge test --match-contract AnchorParity -vv)

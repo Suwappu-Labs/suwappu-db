@@ -1,28 +1,28 @@
-# Integrating with gsx-db
+# Integrating with suwappu-db
 
 > **Coming from the [README](./README.md)?** You're in the right
 > place. This is the integrator front door — wallet, indexer,
 > custodial relayer, parallel verifier, or auditor — whoever is
-> wiring gsx-db into a downstream stack.
+> wiring suwappu-db into a downstream stack.
 
 It pairs with the [README](./README.md) (orientation),
 [CHANGELOG](./CHANGELOG.md) (per-release deltas),
 [ARCHITECTURE](./ARCHITECTURE.md) (one-page system overview), and
 [docs/spec/](./docs/spec/) (deep specs per subsystem).
 
-If you're contributing to gsx-db itself, see [CONTRIBUTING.md](./CONTRIBUTING.md).
+If you're contributing to suwappu-db itself, see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ---
 
 ## Who this is for
 
-You're integrating **with** gsx-db (not contributing **to** it) if any
+You're integrating **with** suwappu-db (not contributing **to** it) if any
 of these match:
 
 - Building a wallet, indexer, block-explorer, or chain-listener
-  against the GSX DAG.
+  against the Suwappu DAG.
 - Wiring an upstream service (custody, settlement, RWA tokenisation)
-  to read state from a gsxdb node or write intents into one.
+  to read state from a suwappudb node or write intents into one.
 - Running a parallel verifier implementation that needs the same
   parity guarantees as the canonical Rust path.
 - Auditing pre-launch — you want to see the load-bearing invariants
@@ -36,12 +36,12 @@ of these match:
 | `AuthScheme` discriminants (0=Blake3Mac, 1=Sp1ZkProof, 2=EcdsaSecp256k1, 3=MlDsa65Hybrid) | **Frozen.** New variants are additive only. |
 | ECDSA EIP-191 payload (`eth_signed_message_hash`) | **Frozen.** Cross-impl proptest pins 16 vectors. |
 | `LTPAnchorRegistry` Solidity ABI | **Frozen.** Published as `contracts/abi/*.abi.json` per release. |
-| Workspace Rust crate names (`gsxdb-state`, `gsxdb-bridge`, `gsxdb-server`) | **Stable.** Public types may shift before `v1.0.0`. |
-| JSON-RPC method names (`gsx_getBalance`, `gsx_getStateRoot`, `gsx_getParity`) | **Frozen.** Future versions add methods, never repurpose. |
+| Workspace Rust crate names (`suwappudb-state`, `suwappudb-bridge`, `suwappudb-server`) | **Stable.** Public types may shift before `v1.0.0`. |
+| JSON-RPC method names (`suwappu_getBalance`, `suwappu_getStateRoot`, `suwappu_getParity`) | **Frozen.** Future versions add methods, never repurpose. |
 | Internal traits (`MoveExecutor`, `CommitmentScheme`, `BlockStore`) | **Volatile.** Don't depend; use the front-door types. |
 | Anything under `#[doc(hidden)]` or `__for_tests` | **Volatile.** Test helpers; will change. |
 
-Pre-`v1.0.0` (which gates on the gsx-types crate freeze, see C5),
+Pre-`v1.0.0` (which gates on the suwappu-types crate freeze, see C5),
 minor bumps **may include breaking changes**. We will call them out
 in CHANGELOG. From `v1.0.0` onward, strict SemVer.
 
@@ -51,55 +51,55 @@ in CHANGELOG. From `v1.0.0` onward, strict SemVer.
 
 ```toml
 [dependencies]
-gsxdb-bridge = { git = "https://github.com/GlobalSettlementNetwork/gsx-db", tag = "v0.1.0-pre" }
-gsxdb-state  = { git = "https://github.com/GlobalSettlementNetwork/gsx-db", tag = "v0.1.0-pre" }
+suwappudb-bridge = { git = "https://github.com/Suwappu-Labs/suwappu-db", tag = "v0.1.0-pre" }
+suwappudb-state  = { git = "https://github.com/Suwappu-Labs/suwappu-db", tag = "v0.1.0-pre" }
 ```
 
-Frozen public types (re-exported from `gsxdb_bridge::anchor` and
-`gsxdb_state`):
+Frozen public types (re-exported from `suwappudb_bridge::anchor` and
+`suwappudb_state`):
 
 ```rust
 // Anchor surface (S11)
-gsxdb_bridge::anchor::{Anchor, AnchorHash, AnchorEntry, AuthScheme, ChainId, GENESIS_PARENT}
-gsxdb_bridge::anchor::{AnchorAuthCredential, ExpectedVerifier, VerifierConfig}
-gsxdb_bridge::anchor::{AnchorDispatcher, AnchorLog, ParityResult}
-gsxdb_bridge::anchor::{AnchorSigner, EcdsaSecp256k1Signer, SignerError}
-gsxdb_bridge::anchor::{verify_credential, verify_ecdsa, eth_signed_message_hash, EthAddress}
+suwappudb_bridge::anchor::{Anchor, AnchorHash, AnchorEntry, AuthScheme, ChainId, GENESIS_PARENT}
+suwappudb_bridge::anchor::{AnchorAuthCredential, ExpectedVerifier, VerifierConfig}
+suwappudb_bridge::anchor::{AnchorDispatcher, AnchorLog, ParityResult}
+suwappudb_bridge::anchor::{AnchorSigner, EcdsaSecp256k1Signer, SignerError}
+suwappudb_bridge::anchor::{verify_credential, verify_ecdsa, eth_signed_message_hash, EthAddress}
 
 // State surface (S2 / S6 / S12)
-gsxdb_state::{Address, Balance, BalanceSlot, BridgeToken, Commitment, State, StateChange}
-gsxdb_state::{StateTree, Proof, ProofStep, Node}
-gsxdb_state::snapshot::{StateSnapshot, SnapshotManager}
-gsxdb_state::dag::{DagBlock, DagStore, BlockHash}
+suwappudb_state::{Address, Balance, BalanceSlot, BridgeToken, Commitment, State, StateChange}
+suwappudb_state::{StateTree, Proof, ProofStep, Node}
+suwappudb_state::snapshot::{StateSnapshot, SnapshotManager}
+suwappudb_state::dag::{DagBlock, DagStore, BlockHash}
 
 // Metrics surface (S12.3)
-gsxdb_state::Metrics  // .to_prometheus_text()
+suwappudb_state::Metrics  // .to_prometheus_text()
 ```
 
 ### JSON-RPC (external integrators)
 
-`gsxdb-server` binds `0.0.0.0:8660` and serves:
+`suwappudb-server` binds `0.0.0.0:8660` and serves:
 
 | Method | Params | Returns |
 |---|---|---|
-| `gsx_getBalance` | `[address: 0x... or hex 40 chars]` | `{address, balance}` |
-| `gsx_getCoinValue` | `[address]` | `{address, coin_value}` (Move-side projection) |
-| `gsx_getStateRoot` | `[]` | `{state_root}` (32-byte hex) |
-| `gsx_getParity` | `[height: u64]` | `{parity: agreed|disagreed, state_root, height, ...}` |
-| `gsx_getBlock` | `[height: u64]` | placeholder (not yet wired) |
-| `gsx_submitIntent` | tbd | placeholder (not yet wired) |
+| `suwappu_getBalance` | `[address: 0x... or hex 40 chars]` | `{address, balance}` |
+| `suwappu_getCoinValue` | `[address]` | `{address, coin_value}` (Move-side projection) |
+| `suwappu_getStateRoot` | `[]` | `{state_root}` (32-byte hex) |
+| `suwappu_getParity` | `[height: u64]` | `{parity: agreed|disagreed, state_root, height, ...}` |
+| `suwappu_getBlock` | `[height: u64]` | placeholder (not yet wired) |
+| `suwappu_submitIntent` | tbd | placeholder (not yet wired) |
 
 `GET /health` returns `{status: "ok"}`. `GET /metrics` returns a
 Prometheus exposition-format text body (S12.3 quantile summaries).
 
 Auth posture: `/health` and `/metrics` are unauthenticated. `/rpc`
 gates behind `Authorization: Bearer <token>` when
-`GSXDB_BEARER_TOKEN` is set (B6 / `docs/architecture/deployment-topology.md`).
+`Suwappudb_BEARER_TOKEN` is set (B6 / `docs/architecture/deployment-topology.md`).
 
 ### Solidity (downstream contracts)
 
 ```solidity
-import {ILTPAnchorRegistry} from "@gsxdb/ILTPAnchorRegistry.sol";
+import {ILTPAnchorRegistry} from "@suwappudb/ILTPAnchorRegistry.sol";
 
 contract YourBridgeReceiver {
     ILTPAnchorRegistry public registry;
@@ -121,19 +121,19 @@ GitHub Release bundles them as artefacts.
 
 ```sh
 # 1. Clone + pin to a tag
-git clone https://github.com/GlobalSettlementNetwork/gsx-db
-cd gsx-db
+git clone https://github.com/Suwappu-Labs/suwappu-db
+cd suwappu-db
 git checkout v0.1.0-pre
 
 # 2. Run a local server (in-memory state by default)
-cargo run --release --bin gsxdb-server
+cargo run --release --bin suwappudb-server
 
 # 3. Read state via JSON-RPC
-curl -sS -d '{"jsonrpc":"2.0","method":"gsx_getStateRoot","params":[],"id":1}' \
+curl -sS -d '{"jsonrpc":"2.0","method":"suwappu_getStateRoot","params":[],"id":1}' \
     http://localhost:8660/rpc
 
 # 4. Read an address balance
-curl -sS -d '{"jsonrpc":"2.0","method":"gsx_getBalance","params":["0x1111111111111111111111111111111111111111"],"id":2}' \
+curl -sS -d '{"jsonrpc":"2.0","method":"suwappu_getBalance","params":["0x1111111111111111111111111111111111111111"],"id":2}' \
     http://localhost:8660/rpc
 
 # 5. Query Prometheus metrics
@@ -143,7 +143,7 @@ curl -sS http://localhost:8660/metrics | head -20
 ### Same balance via Rust:
 
 ```rust
-use gsxdb_state::{Address, State};
+use suwappudb_state::{Address, State};
 
 let state = State::default();
 let addr = Address([0x11; 20]);
@@ -154,11 +154,11 @@ println!("balance = {}", balance.0);
 ### Verify an anchor signature off-chain:
 
 ```rust
-use gsxdb_bridge::anchor::{
+use suwappudb_bridge::anchor::{
     Anchor, AuthScheme, ChainId, EthAddress, ExpectedVerifier,
     verify_credential, AnchorAuthCredential, GENESIS_PARENT,
 };
-use gsxdb_state::Commitment;
+use suwappudb_state::Commitment;
 
 let anchor = Anchor::ecdsa(ChainId(7), 0, Commitment([0; 32]), GENESIS_PARENT);
 let credential = AnchorAuthCredential::EcdsaSecp256k1 {
@@ -198,9 +198,9 @@ implementation must mirror vs. what's intentionally divergent.
 
 | Feature | Crate | What it enables |
 |---|---|---|
-| `production-move-executor` | `gsxdb-state` | Real Aptos Move VM via `move-vm-runtime` (S9). Adds ~100 transitive deps from `aptos-core` git pin. Default off. |
-| `production-verkle` | `gsxdb-state` | Real banderwagon-IPA Verkle commitments (S10). Adds `banderwagon` + `ipa-multipoint` git deps. Default off. |
-| `production-pqc` | `gsxdb-bridge` | ML-DSA-65 PQ verifier (S11 hybrid). Adds `pqcrypto-mldsa` C shim. Default off. |
+| `production-move-executor` | `suwappudb-state` | Real Aptos Move VM via `move-vm-runtime` (S9). Adds ~100 transitive deps from `aptos-core` git pin. Default off. |
+| `production-verkle` | `suwappudb-state` | Real banderwagon-IPA Verkle commitments (S10). Adds `banderwagon` + `ipa-multipoint` git deps. Default off. |
+| `production-pqc` | `suwappudb-bridge` | ML-DSA-65 PQ verifier (S11 hybrid). Adds `pqcrypto-mldsa` C shim. Default off. |
 
 Default builds compile only the phase-1 substrate: BLAKE3 state-tree,
 mock Move executor, ECDSA-only anchor verifier. Flip features on for
@@ -223,7 +223,7 @@ The `LTPAnchorRegistry` Solidity ABI is published in two forms:
 Use cases:
 
 - **TypeScript / ethers.js / viem:** `import abi from
-  '@gsxdb/abi/LTPAnchorRegistry.abi.json'` (vendor the file from
+  '@suwappudb/abi/LTPAnchorRegistry.abi.json'` (vendor the file from
   the release bundle).
 - **Rust / ethers-rs:** `abigen!(...)` with the ABI path or the
   release URL.
@@ -242,7 +242,7 @@ The release pipeline publishes a multi-arch container image
 every `v*` tag:
 
 ```sh
-docker pull ghcr.io/globalsettlementnetwork/gsx-db:v0.1.0-pre
+docker pull ghcr.io/globalsettlementnetwork/suwappu-db:v0.1.0-pre
 ```
 
 Tagging rules (per
@@ -258,7 +258,7 @@ Tagging rules (per
 ```sh
 docker run --rm -p 8660:8660 -p 9660:9660 \
     -e RUST_LOG=info \
-    ghcr.io/globalsettlementnetwork/gsx-db:v0.1.0-pre
+    ghcr.io/globalsettlementnetwork/suwappu-db:v0.1.0-pre
 ```
 
 The container exposes:
@@ -279,9 +279,9 @@ recommendations on top:
 ```sh
 docker run --rm \
     -p 127.0.0.1:8660:8660 \                # bind localhost only
-    -e GSXDB_BEARER_TOKEN=$(openssl rand -hex 32) \  # B6 auth
+    -e Suwappudb_BEARER_TOKEN=$(openssl rand -hex 32) \  # B6 auth
     -e RUST_LOG=info \
-    ghcr.io/globalsettlementnetwork/gsx-db:v0.1.0-pre
+    ghcr.io/globalsettlementnetwork/suwappu-db:v0.1.0-pre
 ```
 
 …then expose 8660 to the outside world only through nginx /
@@ -292,11 +292,11 @@ Cloudflare Access / ALB authentication. See
 ### Building locally
 
 ```sh
-docker build -t gsxdb-server:dev .
+docker build -t suwappudb-server:dev .
 ```
 
 `Dockerfile` is multi-stage; the final image is `debian:bookworm-slim`
-with the gsxdb-server binary + `ca-certificates` + `curl` for the
+with the suwappudb-server binary + `ca-certificates` + `curl` for the
 HEALTHCHECK probe. Total image ~80 MB.
 
 ## License
@@ -305,15 +305,15 @@ This repository is [Apache-2.0](./LICENSE).
 
 ### Cross-repo license posture
 
-The GSX stack spans three repositories with non-uniform licenses:
+The Suwappu stack spans three repositories with non-uniform licenses:
 
 | Repository | License | Notes |
 |---|---|---|
-| `gsx-db` (this repo) | Apache-2.0 | Permissive; redistribute freely. |
-| `gsx-dag` (sibling) | Apache-2.0 | Same posture. |
-| `gsx-lattice-protocol` (sibling) | Elastic License 2.0 | Non-commercial-redistribution clause; if your product uses lattice-protocol, you must consult that repo's terms separately. |
+| `suwappu-db` (this repo) | Apache-2.0 | Permissive; redistribute freely. |
+| `suwappu-dag` (sibling) | Apache-2.0 | Same posture. |
+| `suwappu-lattice-protocol` (sibling) | Elastic License 2.0 | Non-commercial-redistribution clause; if your product uses lattice-protocol, you must consult that repo's terms separately. |
 
-The license mismatch with `gsx-lattice-protocol` is intentional —
+The license mismatch with `suwappu-lattice-protocol` is intentional —
 it covers the corridor super-node attestation surface, which has
 licensing characteristics distinct from the substrate. Downstream
 Rust consumers that depend on **all three** must accept Elastic 2.0's
@@ -321,7 +321,7 @@ constraints on the lattice-protocol portion.
 
 ## Reporting issues / proposing changes
 
-- **Issue tracker:** https://github.com/GlobalSettlementNetwork/gsx-db/issues
+- **Issue tracker:** https://github.com/Suwappu-Labs/suwappu-db/issues
 - **Security disclosures:** see [SECURITY.md](./SECURITY.md) (private
   disclosure path; do not file public issues for vulnerabilities).
 - **PRs welcome** under the `CONTRIBUTING.md` workflow (DCO sign-off

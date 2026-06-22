@@ -92,7 +92,7 @@ continues to enforce the same invariant against the real backends.
   and points to this IQ.
 - **ADR changes:** None. ADRs aren't yet established in this repo.
 - **Code changes:**
-  - `crates/gsxdb-bridge/src/vm/executor.rs` ships `MockEvm` and
+  - `crates/suwappudb-bridge/src/vm/executor.rs` ships `MockEvm` and
     `MockMove`. They are public; lane code can call them. (Lane code
     already had to go through the bridge anyway, so this preserves the
     lane-separation invariant.)
@@ -116,7 +116,7 @@ continues to enforce the same invariant against the real backends.
 
 ### Propagation checklist
 
-- [x] Code: `MockEvm`, `MockMove` ship in `gsxdb-bridge::vm::executor`
+- [x] Code: `MockEvm`, `MockMove` ship in `suwappudb-bridge::vm::executor`
 - [x] Tests: `cross_vm_parity` proptest at 10k cases passing
 - [x] Doc: `docs/spec/dual-vm-projectors.md` written and references this IQ
 - [ ] S3.5: introduce `RevmExecutor` swapping in real EVM bytecode

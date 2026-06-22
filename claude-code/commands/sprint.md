@@ -6,7 +6,7 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 
 # Sprint $ARGUMENTS
 
-You are driving sprint **$ARGUMENTS** of GSX-DB Phase 1.
+You are driving sprint **$ARGUMENTS** of Suwappu-DB Phase 1.
 
 ## Phase 1: Orient
 

@@ -11,21 +11,21 @@ anything to anyone.
 
 ## TL;DR
 
-You have **34 repositories** in `GlobalSettlementNetwork`. **Two
-production chains are already running** (GSX Testnet on Besu, GSN L2
-on OP Stack + Reth). **`gsx-db` is not powering either of them yet.**
+You have **34 repositories** in `Suwappu-Labs`. **Two
+production chains are already running** (Suwappu Testnet on Besu, GSN L2
+on OP Stack + Reth). **`suwappu-db` is not powering either of them yet.**
 
-What `gsx-db` currently is:
+What `suwappu-db` currently is:
 
-- A workspace of 4 Rust crates (`gsxdb-state`, `gsxdb-bridge`,
-  `gsxdb-lane`, `gsxdb-server`) with 259 passing tests
+- A workspace of 4 Rust crates (`suwappudb-state`, `suwappudb-bridge`,
+  `suwappudb-lane`, `suwappudb-server`) with 259 passing tests
 - The S9–S12 launch-readiness work has *partial* implementations:
   Verkle is a placeholder (no real IPA), the Move VM is a trait with
   a mock impl, the Solidity `LTPAnchorRegistry` contract **does not
   exist anywhere in any repo**, and the "shadow testnet" test runs
   in-memory only
-- A real JSON-RPC server (`gsxdb-server`) exposes `gsx_*` methods
-- A real L2 syncer (`gsxdb-bridge::sync::l2`) can read balance/nonce
+- A real JSON-RPC server (`suwappudb-server`) exposes `suwappu_*` methods
+- A real L2 syncer (`suwappudb-bridge::sync::l2`) can read balance/nonce
   from the live op-reth at `18.226.17.168:8545`
 
 What "production-ready DAG L1" actually requires (and what's
@@ -42,26 +42,26 @@ against the live GSN L2**. See §7.
 
 | Repo | Lang | Size | Role | Status |
 |---|---|---|---|---|
-| **`gsx-db`** (this) | Rust | 2 MB | State + execution substrate | Phase-1 closed; S9–S12 partial |
-| `gsxbft-consensus-only-demo` | Rust | 76 KB | MonadBFT consensus (pipelined HotStuff, Ed25519+BLS) | Recent commits (May 11); has `BlockBuilder` trait + Engine API client |
-| `gsx-bft` | (docs only) | 40 MB | gh-pages branch — rendered docs | Documentation site |
-| `gsx-execution-client` | C++ | 36 MB | Monad-derived execution client | Monad codebase, GSX-rebranded |
-| `gsx-revm` | Rust | 623 KB | Monad-derived REVM with staking precompile (`0x1000`) | Single crate `gsx-revm` |
-| `alloy-gsx-evm` | Rust | 45 KB | Alloy integration wrapping `monad-revm` | Crate published name `alloy-monad-evm` |
-| `gsx-foundry` | Rust | 49 MB | Forge variant for GSX EVM | Heavy, in-progress |
-| `gsx-std` | Solidity | 14 KB | "GSXBFT Standard Library" (Monad std lib renamed) | Stub-ish |
+| **`suwappu-db`** (this) | Rust | 2 MB | State + execution substrate | Phase-1 closed; S9–S12 partial |
+| `suwappubft-consensus-only-demo` | Rust | 76 KB | MonadBFT consensus (pipelined HotStuff, Ed25519+BLS) | Recent commits (May 11); has `BlockBuilder` trait + Engine API client |
+| `suwappu-bft` | (docs only) | 40 MB | gh-pages branch — rendered docs | Documentation site |
+| `suwappu-execution-client` | C++ | 36 MB | Monad-derived execution client | Monad codebase, Suwappu-rebranded |
+| `suwappu-revm` | Rust | 623 KB | Monad-derived REVM with staking precompile (`0x1000`) | Single crate `suwappu-revm` |
+| `alloy-suwappu-evm` | Rust | 45 KB | Alloy integration wrapping `monad-revm` | Crate published name `alloy-monad-evm` |
+| `suwappu-foundry` | Rust | 49 MB | Forge variant for Suwappu EVM | Heavy, in-progress |
+| `suwappu-std` | Solidity | 14 KB | "SuwappuBFT Standard Library" (Monad std lib renamed) | Stub-ish |
 | `Mysticeti` | Rust | 904 KB | Sui's DAG consensus, with ARCHITECTURE.md + INTEGRATION.md | Sitting; unclear if active |
 
 ### Production rails (live)
 
 | Repo | Lang | Role | Status |
 |---|---|---|---|
-| `gsx-testnet-PoA-runbook` | (IaC) | 4-validator Besu QBFT cluster on AWS EKS | **LIVE** — chain ID 103115120, us-east-2 |
+| `suwappu-testnet-PoA-runbook` | (IaC) | 4-validator Besu QBFT cluster on AWS EKS | **LIVE** — chain ID 103115120, us-east-2 |
 | `op-stack-reth` | HCL | OP Stack rollup, Reth + op-node + Besu L1 | **LIVE** — chain ID 103218544, RPC at `18.226.17.168:8545` |
 
-GSN L2's deploy config (`op-stack-reth/deploy-config-gsx.json`) wires
+GSN L2's deploy config (`op-stack-reth/deploy-config-suwappu.json`) wires
 chain `103218544` (L2) on top of chain `103115120` (L1). Governance
-token symbol is GSX.
+token symbol is Suwappu.
 
 ### Application + backend
 
@@ -79,22 +79,22 @@ token symbol is GSX.
 
 | Repo | Role |
 |---|---|
-| `gsx-website-2026` | Marketing site |
-| `gsx-foundation-website` | Foundation site |
-| `canton-gsxid` | Identity service frontend (Next.js + Daml/Canton) |
-| `gsx-identity` | Identity primitives |
+| `suwappu-website-2026` | Marketing site |
+| `suwappu-foundation-website` | Foundation site |
+| `canton-suwappuid` | Identity service frontend (Next.js + Daml/Canton) |
+| `suwappu-identity` | Identity primitives |
 | `cbdc-studio` | CBDC issuance studio |
 | `cbdc-admin`, `cbdc-banking`, `cbdc-user` | CBDC platform per-role apps |
-| `gsx-stablecoin-studio-fe` | Stablecoin studio frontend |
-| `gsx-rwa-frontend` | RWA sandbox frontend |
-| `canton-app`, `canton-demo`, `gsx-canton-offramping-onramping` | Canton/Daml integrations |
+| `suwappu-stablecoin-studio-fe` | Stablecoin studio frontend |
+| `suwappu-rwa-frontend` | RWA sandbox frontend |
+| `canton-app`, `canton-demo`, `suwappu-canton-offramping-onramping` | Canton/Daml integrations |
 | `rapid-routing` | Payment routing prototype |
-| `gsx-foundry-staking` | Staking contracts (Foundry) |
+| `suwappu-foundry-staking` | Staking contracts (Foundry) |
 | `gitbook`, `gitbook-get-started-docs`, `gitbook-external-developer-documentation` | Gitbook docs |
 | `safedockercompose` | Docker compose hardening |
 | `optimism` | Optimism fork |
 | `op-stack-reth` | (see above) |
-| `gsx-multicloud` | **1 KB skeleton — only `environments/testnet/` empty dir** |
+| `suwappu-multicloud` | **1 KB skeleton — only `environments/testnet/` empty dir** |
 
 ---
 
@@ -106,7 +106,7 @@ flowchart TB
     Frontend[CBDC studios, RWA frontend,<br/>identity UI, foundation site]
     GsnBackend["gsn-backend (Go monorepo)<br/>api / chain-listener / wallet-service / fireblocks"]
     OpRollup["GSN L2 — OP Stack Bedrock + Reth<br/>chain 103218544 @ 18.226.17.168<br/>(LIVE)"]
-    Besu["GSX Testnet — Hyperledger Besu QBFT<br/>chain 103115120 on AWS EKS us-east-2<br/>4-validator cluster (LIVE)"]
+    Besu["Suwappu Testnet — Hyperledger Besu QBFT<br/>chain 103115120 on AWS EKS us-east-2<br/>4-validator cluster (LIVE)"]
     Turnkey[Turnkey wallet platform]
     Fireblocks[Fireblocks platform]
     Temporal[Temporal workflow engine]
@@ -119,47 +119,47 @@ flowchart TB
     GsnBackend -->|workflows| Temporal
 ```
 
-**Neither chain uses `gsx-db`.** Both are stock implementations of
-Besu / OP Stack. `gsx-db` is being developed as a parallel substrate
+**Neither chain uses `suwappu-db`.** Both are stock implementations of
+Besu / OP Stack. `suwappu-db` is being developed as a parallel substrate
 with its own substrate model + invariants, but it's not in the
 critical path yet.
 
 ---
 
-## 3. What's in `gsx-db` right now (as of 2026-05-12)
+## 3. What's in `suwappu-db` right now (as of 2026-05-12)
 
 ### Workspace
 
 ```
 crates/
-├── gsxdb-state/      — canonical state, BalanceSlot, BalanceStore,
+├── suwappudb-state/      — canonical state, BalanceSlot, BalanceStore,
 │                       StateTree (BLAKE3), DAG store, snapshots,
 │                       address shape mapping, nonce semantics,
 │                       Move VM trait, Verkle placeholder, metrics
-├── gsxdb-bridge/     — capability gate, OCC, bundles, anchors (mock
+├── suwappudb-bridge/     — capability gate, OCC, bundles, anchors (mock
 │                       + RPC L1 reader), recovery, L2 syncer to
 │                       op-reth, telemetry timers
-├── gsxdb-lane/       — placeholder for untrusted ingest
-└── gsxdb-server/     — NEW: Axum HTTP server exposing gsx_getBalance,
-                        gsx_getCoinValue, gsx_getStateRoot
+├── suwappudb-lane/       — placeholder for untrusted ingest
+└── suwappudb-server/     — NEW: Axum HTTP server exposing suwappu_getBalance,
+                        suwappu_getCoinValue, suwappu_getStateRoot
 ```
 
 ### Test counts (`cargo test --workspace`)
 
 | Crate / target | Tests |
 |---|---|
-| `gsxdb-state` lib | 101 |
-| `gsxdb-state` tests/state_tree | 6 |
-| `gsxdb-bridge` lib | 112 |
-| `gsxdb-bridge` tests/block_executor | 4 |
-| `gsxdb-bridge` tests/cross_parity | 5 |
-| `gsxdb-bridge` tests/cross_vm_bundles | 4 |
-| `gsxdb-bridge` tests/cross_vm_parity | 6 |
-| `gsxdb-bridge` tests/e2e_shadow_testnet | 4 |
-| `gsxdb-bridge` tests/persistent_e2e | 4 |
-| `gsxdb-bridge` tests/recovery | 3 |
-| `gsxdb-bridge` tests/solidity_anchor_parity | 8 |
-| `gsxdb-lane` lib | 2 |
+| `suwappudb-state` lib | 101 |
+| `suwappudb-state` tests/state_tree | 6 |
+| `suwappudb-bridge` lib | 112 |
+| `suwappudb-bridge` tests/block_executor | 4 |
+| `suwappudb-bridge` tests/cross_parity | 5 |
+| `suwappudb-bridge` tests/cross_vm_bundles | 4 |
+| `suwappudb-bridge` tests/cross_vm_parity | 6 |
+| `suwappudb-bridge` tests/e2e_shadow_testnet | 4 |
+| `suwappudb-bridge` tests/persistent_e2e | 4 |
+| `suwappudb-bridge` tests/recovery | 3 |
+| `suwappudb-bridge` tests/solidity_anchor_parity | 8 |
+| `suwappudb-lane` lib | 2 |
 | **Total** | **270+** (post-IQ-7 PR #4; 297 with default features, 309 with `production-pqc`) |
 
 ### What each S9–S12 milestone actually contains
@@ -173,20 +173,20 @@ crates/
 
 ### What DOES work end-to-end right now
 
-- `gsxdb-bridge::sync::l2::L2StateSyncer` makes real `eth_getBalance` /
+- `suwappudb-bridge::sync::l2::L2StateSyncer` makes real `eth_getBalance` /
   `eth_getTransactionCount` RPC calls against any JSON-RPC endpoint
-- `gsxdb-bridge::anchor::l1_reader` has a `RpcL1AnchorReader` that
+- `suwappudb-bridge::anchor::l1_reader` has a `RpcL1AnchorReader` that
   hits a real RPC endpoint (just doesn't have a real contract to read
   from yet)
-- `gsxdb-server` runs an Axum HTTP server on a configurable port
-  with `gsx_getBalance`, `gsx_getCoinValue`, `gsx_getStateRoot`
+- `suwappudb-server` runs an Axum HTTP server on a configurable port
+  with `suwappu_getBalance`, `suwappu_getCoinValue`, `suwappu_getStateRoot`
 - All 8 phase-1 invariants verified at 10k cases (S1–S8)
 
 ---
 
 ## 4. The MonadBFT consensus layer (already exists, decoupled)
 
-`gsxbft-consensus-only-demo` is the most mature consensus piece. It's
+`suwappubft-consensus-only-demo` is the most mature consensus piece. It's
 deliberately decoupled from execution:
 
 ```text
@@ -206,13 +206,13 @@ deliberately decoupled from execution:
                          │
             ┌────────────┴─────────────┐
             │  Execution (Reth/Geth/   │
-            │  gsx-revm/gsx-db)        │
+            │  suwappu-revm/suwappu-db)        │
             └──────────────────────────┘
 ```
 
-**To wire `gsx-db` into MonadBFT consensus, you implement
-`BlockBuilder` against `gsxdb-bridge::BlockExecutor`.** That's one
-trait impl on the gsx-db side.
+**To wire `suwappu-db` into MonadBFT consensus, you implement
+`BlockBuilder` against `suwappudb-bridge::BlockExecutor`.** That's one
+trait impl on the suwappu-db side.
 
 The consensus crate already has:
 
@@ -227,9 +227,9 @@ The consensus crate already has:
 
 ## 5. The Solidity contracts story
 
-The IQs and gsx-db code reference `LTPAnchorRegistry.sol` as the
+The IQs and suwappu-db code reference `LTPAnchorRegistry.sol` as the
 on-chain anchor target. **No such contract exists in any
-GlobalSettlementNetwork repo.** I searched.
+Suwappu-Labs repo.** I searched.
 
 What `contracts/` actually has:
 
@@ -240,10 +240,10 @@ contracts/src/
 ├── interop/               — cross-chain interop primitives
 ├── onchainid/             — on-chain identity
 ├── payment/               — payment rails
-├── rwa/                   — GSXClaimTopicsRegistry, GSXCompliance,
-│                            GSXIdentityRegistry, GSXIdentityRegistryLedger,
-│                            GSXRWA, GSXRWAFactory, GSXTrustedIssuersRegistry
-├── stablecoin/            — GSXComptroller, GSXStable*, GSXStableFactory
+├── rwa/                   — SuwappuClaimTopicsRegistry, SuwappuCompliance,
+│                            SuwappuIdentityRegistry, SuwappuIdentityRegistryLedger,
+│                            SuwappuRWA, SuwappuRWAFactory, SuwappuTrustedIssuersRegistry
+├── stablecoin/            — SuwappuComptroller, SuwappuStable*, SuwappuStableFactory
 │                            (full ERC-20 stablecoin family)
 └── tokens/                — ERC20ExtendedUpgradeable, ERC3009Upgradeable,
                              ERC712* (signing primitives)
@@ -253,7 +253,7 @@ contracts/src/
 specification**, not an on-chain contract. It defines the
 commit-lattice-materialize phases conceptually.
 
-**Gap:** to actually anchor gsx-db state roots on-chain, someone has
+**Gap:** to actually anchor suwappu-db state roots on-chain, someone has
 to write `LTPAnchorRegistry.sol`. The Rust side (S11) has parity
 fixtures ready, but there's nothing to verify against.
 
@@ -266,30 +266,30 @@ Honest checklist. Rows marked **MISSING** are blockers; rows marked
 
 | Layer | Status | What's missing |
 |---|---|---|
-| State substrate | ✅ in `gsx-db` | (working) |
+| State substrate | ✅ in `suwappu-db` | (working) |
 | State commitment (Verkle) | **PARTIAL** | Real IPA over banderwagon. Current: BLAKE3 placeholder |
-| EVM execution | exists in `gsx-revm` | Wiring gsx-revm ↔ gsxdb-bridge |
+| EVM execution | exists in `suwappu-revm` | Wiring suwappu-revm ↔ suwappudb-bridge |
 | Move VM execution | **MISSING** | Pick dialect (Aptos? Sui?), integrate runtime |
-| Consensus (DAG/BFT) | exists in `gsxbft-consensus-only-demo` | Wiring: implement `BlockBuilder` for gsx-db |
+| Consensus (DAG/BFT) | exists in `suwappubft-consensus-only-demo` | Wiring: implement `BlockBuilder` for suwappu-db |
 | Networking (p2p) | partially in consensus repo | Validator gossip, sync protocol |
 | Anchor contract on L1 | **MISSING** | `LTPAnchorRegistry.sol` doesn't exist |
 | ECDSA anchor signing | **PARTIAL** | Solidity contract to verify against doesn't exist |
 | Validator set + slashing | **MISSING** | Set management, rotation, slashing for divergent anchors |
 | Genesis configuration | **MISSING** for new L1 | Chain ID, initial validator set, genesis state |
-| JSON-RPC layer | partial (`gsxdb-server`) | `eth_*` methods (not just `gsx_*`) for wallet compatibility |
+| JSON-RPC layer | partial (`suwappudb-server`) | `eth_*` methods (not just `suwappu_*`) for wallet compatibility |
 | Mempool | **MISSING** | Pending tx queue, eviction policy |
 | Fee market / gas | **MISSING** | Gas accounting, priority fees |
 | Persistent state storage | ✅ redb works | RocksDB swap for prod scale (IQ-1) |
 | Persistent block storage | ✅ `RedbBlockStore` | (working) |
 | Snapshots / checkpoints | **PARTIAL** | `snapshot.rs` exists; not integrated with replay |
 | DAG block storage | **PARTIAL** | `dag.rs` exists; not integrated with execution |
-| Telemetry / monitoring | **PARTIAL** | Timers exist; Prometheus exporter not wired to `gsxdb-server` |
+| Telemetry / monitoring | **PARTIAL** | Timers exist; Prometheus exporter not wired to `suwappudb-server` |
 | Reorg handling | **MISSING** | Linear chain only in `recovery::replay` |
 | Reorg handling at DAG level | **MISSING** | DagStore exists but no fork-choice rule |
 | Wallet RPC compatibility | **MISSING** | No `eth_sendRawTransaction`, etc. |
 | L1 ↔ L2 bridge | partial (`Bridge.sol`) | Not LTP-style |
 | Genesis state import | **MISSING** | Bootstrapping flow |
-| Deployment infra | **MISSING** | `gsx-multicloud` is 1 KB |
+| Deployment infra | **MISSING** | `suwappu-multicloud` is 1 KB |
 | Audit | **MISSING** | No third-party security review of any of this |
 
 **To actually launch a "DAG L1": expect months, not days.** The
@@ -301,24 +301,24 @@ substrate work that's done is meaningful, but it's substrate only.
 
 ### Option A — Shadow / cross-validation against live GSN L2 (doable this week)
 
-**Goal:** run `gsx-db` as a read-only replica of the live OP rollup.
-Validate that gsx-db's state matches op-reth's for a set of addresses,
-publish parity metrics, expose `gsx_*` queries.
+**Goal:** run `suwappu-db` as a read-only replica of the live OP rollup.
+Validate that suwappu-db's state matches op-reth's for a set of addresses,
+publish parity metrics, expose `suwappu_*` queries.
 
 **What you do:**
 
-1. Configure `gsxdb-bridge::sync::l2::L2SyncConfig` with
+1. Configure `suwappudb-bridge::sync::l2::L2SyncConfig` with
    `rpc_url = "http://18.226.17.168:8545"` and a list of addresses
-   (e.g., the CBDC issuance accounts, the RWA registry, the GSX gov
+   (e.g., the CBDC issuance accounts, the RWA registry, the Suwappu gov
    token holders).
-2. Run `gsxdb-server` on a public-ish endpoint with the syncer in a
+2. Run `suwappudb-server` on a public-ish endpoint with the syncer in a
    background task that polls every N seconds.
-3. Cross-check: for each tracked address, fetch balance via gsx-db
+3. Cross-check: for each tracked address, fetch balance via suwappu-db
    and via op-reth, report divergence as a Prometheus metric.
-4. Expose `gsx_getStateRoot` so an auditor can compare snapshots over
+4. Expose `suwappu_getStateRoot` so an auditor can compare snapshots over
    time.
 
-**What this proves:** gsx-db's state model works against real on-chain
+**What this proves:** suwappu-db's state model works against real on-chain
 data. It's not a chain yet, but it's a useful cross-validation layer.
 
 **Effort:** 1–2 weeks for an engineer who already knows Rust + ops.
@@ -328,17 +328,17 @@ infrastructure that doesn't exist (`LTPAnchorRegistry.sol`, real
 Verkle, real Move VM, consensus wiring). This one is shippable on
 top of what's actually there today.
 
-### Option B — Wire MonadBFT consensus + gsx-revm + gsx-db into a minimal L1 devnet (weeks–months)
+### Option B — Wire MonadBFT consensus + suwappu-revm + suwappu-db into a minimal L1 devnet (weeks–months)
 
 **Goal:** a single-node or 4-node devnet that produces blocks via
-MonadBFT consensus, executes them via `gsx-revm`, persists state via
-`gsx-db`. No production claims; just "the pieces fit."
+MonadBFT consensus, executes them via `suwappu-revm`, persists state via
+`suwappu-db`. No production claims; just "the pieces fit."
 
 **What you do:**
 
-1. In `gsx-db`: implement `gsxbft_consensus_only::BlockBuilder` over
-   `gsxdb_bridge::BlockExecutor`. This is the integration point.
-2. Wire `gsx-revm` into `gsxdb-bridge::vm::executor` (replace
+1. In `suwappu-db`: implement `suwappubft_consensus_only::BlockBuilder` over
+   `suwappudb_bridge::BlockExecutor`. This is the integration point.
+2. Wire `suwappu-revm` into `suwappudb-bridge::vm::executor` (replace
    `MockEvm`). The trait already exists; this is plumbing.
 3. Set up genesis: chain ID, validator set (Ed25519+BLS keys for
    MonadBFT), initial state.
@@ -367,7 +367,7 @@ Everything in option B plus:
 - `eth_*` RPC compatibility for wallet interop
 - Reorg handling at DAG level (fork-choice rule)
 - Third-party security audit (probably two)
-- Infrastructure-as-code in `gsx-multicloud` (currently 1 KB)
+- Infrastructure-as-code in `suwappu-multicloud` (currently 1 KB)
 - Public testnet → mainnet rollout plan
 - Runbooks for ops (incidents, key rotation, upgrades)
 - Genesis ceremony
@@ -381,37 +381,37 @@ Everything in option B plus:
 Sorted by what unblocks the most.
 
 ### Day 1
-1. Clone `gsx-db`, run `cargo test --workspace` — verify 259 tests pass
+1. Clone `suwappu-db`, run `cargo test --workspace` — verify 259 tests pass
 2. Run `cargo doc --workspace --open` and read the module-level docs
 3. Read `docs/HANDOFF.md`, `docs/architecture/`, and this document
-4. Read `gsxbft-consensus-only-demo`'s `block_builder.rs` source
+4. Read `suwappubft-consensus-only-demo`'s `block_builder.rs` source
 
 ### Week 1
 5. Pick option A (shadow) and write a runbook: how to deploy
-   `gsxdb-server` + syncer against the live GSN L2
-6. Implement Prometheus exporter for the telemetry in `gsxdb-bridge::telemetry`
-7. Add `eth_*` JSON-RPC method handlers to `gsxdb-server` so wallets
+   `suwappudb-server` + syncer against the live GSN L2
+6. Implement Prometheus exporter for the telemetry in `suwappudb-bridge::telemetry`
+7. Add `eth_*` JSON-RPC method handlers to `suwappudb-server` so wallets
    can use it as an alternative endpoint
 
 ### Week 2–4
 8. Write `LTPAnchorRegistry.sol` in `contracts/` matching the Solidity
-   parity fixtures in `gsx-db/crates/gsxdb-bridge/tests/solidity_anchor_parity.rs`
-9. Deploy `LTPAnchorRegistry` to GSX Testnet (Besu L1) so anchor
+   parity fixtures in `suwappu-db/crates/suwappudb-bridge/tests/solidity_anchor_parity.rs`
+9. Deploy `LTPAnchorRegistry` to Suwappu Testnet (Besu L1) so anchor
    parity tests have something to verify against
-10. Begin implementing `BlockBuilder` over `gsxdb_bridge::BlockExecutor`
+10. Begin implementing `BlockBuilder` over `suwappudb_bridge::BlockExecutor`
     (start with consensus integration tests, not a live deploy)
 
 ### Month 2+
 11. Decide: Move VM dialect (Aptos vs Sui vs no-Move). Write IQ.
 12. Decide: real Verkle implementation path (rust-verkle vs hand-rolled IPA)
-13. Start integrating `gsx-revm` to replace `MockEvm`
+13. Start integrating `suwappu-revm` to replace `MockEvm`
 
 ### What to avoid
 - Don't promise launch timelines until S9–S11 are actually
   implemented (not just trait stubs)
 - Don't claim "production-ready DAG L1" externally — the live chains
   today are Besu PoA + OP Stack, not a DAG L1
-- Don't deploy `gsxdb-server` publicly without `eth_*` methods —
+- Don't deploy `suwappudb-server` publicly without `eth_*` methods —
   wallets won't understand it
 - Don't skip the audit. Two audits.
 
@@ -442,14 +442,14 @@ Each should be a new IQ document.
 
 I did **not** verify:
 
-- Whether `gsx-execution-client` builds and runs (36 MB C++, takes a
+- Whether `suwappu-execution-client` builds and runs (36 MB C++, takes a
   while to compile)
 - Whether `Mysticeti` is actually being used or is just sitting
 - Whether `gsn-backend` services have been deployed (the
   README has good docs; I didn't poke deployments)
 - Live state of `op-stack-reth` — RPC URL is listed in the README but
   I didn't curl it
-- Whether the Besu testnet validators are healthy (`gsx-testnet-PoA-runbook`
+- Whether the Besu testnet validators are healthy (`suwappu-testnet-PoA-runbook`
   has health checks; I didn't run them)
 - Security posture of any deployed component
 - Operational readiness (paging, on-call, incident response)
@@ -462,11 +462,11 @@ explicitly.
 
 ## Appendix: how this audit was produced
 
-- Listed all repos under `GlobalSettlementNetwork` via `gh repo list`
+- Listed all repos under `Suwappu-Labs` via `gh repo list`
 - For each load-bearing repo, fetched `README.md` + top-level tree
   via `gh api`
 - Searched `contracts` for `LTPAnchorRegistry` (returned: nothing)
-- Inspected `gsx-db`'s actual source tree, including S9–S12 partial
+- Inspected `suwappu-db`'s actual source tree, including S9–S12 partial
   implementations
 - Ran `cargo test --workspace` to confirm 259 tests pass locally
 

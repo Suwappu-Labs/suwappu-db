@@ -1,7 +1,7 @@
 # LTPAnchorRegistry — Solidity surface
 
 This directory holds the Solidity side of [IQ-7's](../docs/iq/IQ-7-anchor-parity.md)
-cross-chain anchor parity. `gsxdb-bridge` is the Rust counterpart; both
+cross-chain anchor parity. `suwappudb-bridge` is the Rust counterpart; both
 must accept/reject identical inputs.
 
 ## Contents
@@ -44,7 +44,7 @@ forge script script/Deploy.s.sol \
 export PRIVATE_KEY=0x…
 export SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/…
 export ETHERSCAN_API_KEY=…
-export INITIAL_SIGNER=0x…   # optional: the gsxdb-bridge ECDSA signer
+export INITIAL_SIGNER=0x…   # optional: the suwappudb-bridge ECDSA signer
 forge script script/Deploy.s.sol \
     --rpc-url $SEPOLIA_RPC_URL \
     --private-key $PRIVATE_KEY \
@@ -52,11 +52,11 @@ forge script script/Deploy.s.sol \
 ```
 
 The script prints the deployed address; pipe to a file in CI to feed
-downstream gsxdb-bridge config.
+downstream suwappudb-bridge config.
 
 ## Parity model
 
-- Rust `gsxdb_bridge::anchor::types::Anchor` ↔ Solidity `Anchor` struct
+- Rust `suwappudb_bridge::anchor::types::Anchor` ↔ Solidity `Anchor` struct
   — same five fields, same order, same widths.
 - Rust `EcdsaSecp256k1Signer` ↔ Solidity `recoverSigner` — same EIP-191
   prefix on `keccak256(abi.encode(anchor))`.

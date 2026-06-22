@@ -158,13 +158,13 @@ Production deployment requires observability: block processing time, state size,
 
 | Metric | Type | Labels | Purpose |
 |--------|------|--------|---------|
-| `gsxdb_block_height` | Gauge | `chain_id` | Current block height |
-| `gsxdb_state_root` | Gauge (hash) | `chain_id` | Latest state root |
-| `gsxdb_block_duration_ms` | Histogram | `chain_id`, `executor` | Block exec time |
-| `gsxdb_anchor_latency_ms` | Histogram | `chain_id` | Time from block → anchor acceptance |
-| `gsxdb_snapshot_size_bytes` | Gauge | `chain_id` | Latest snapshot size |
-| `gsxdb_tree_depth` | Gauge | — | State tree depth |
-| `gsxdb_parity_check_duration_ms` | Histogram | — | Cross-chain parity check time |
+| `suwappudb_block_height` | Gauge | `chain_id` | Current block height |
+| `suwappudb_state_root` | Gauge (hash) | `chain_id` | Latest state root |
+| `suwappudb_block_duration_ms` | Histogram | `chain_id`, `executor` | Block exec time |
+| `suwappudb_anchor_latency_ms` | Histogram | `chain_id` | Time from block → anchor acceptance |
+| `suwappudb_snapshot_size_bytes` | Gauge | `chain_id` | Latest snapshot size |
+| `suwappudb_tree_depth` | Gauge | — | State tree depth |
+| `suwappudb_parity_check_duration_ms` | Histogram | — | Cross-chain parity check time |
 
 ### Integration Points
 
@@ -196,7 +196,7 @@ metrics.snapshot_size.set(snapshot.encoded_state.len());
 
 Anchor parity verified locally; not proven on testnet. E2E shadow tests:
 1. Deploy Solidity registry to testnet
-2. Run gsxdb-server locally, submit blocks
+2. Run suwappudb-server locally, submit blocks
 3. Submit anchors to Solidity every N blocks
 4. Verify Solidity state matches local dispatcher
 
@@ -206,13 +206,13 @@ Anchor parity verified locally; not proven on testnet. E2E shadow tests:
 
 **Components:**
 1. `LTPAnchorRegistry` deployed at fixed address
-2. `gsxdb-server` running locally with RPC client pointing to testnet
+2. `suwappudb-server` running locally with RPC client pointing to testnet
 3. ECDSA signer (test key) whitelisted in registry
 4. Integration test that:
-   - Advances gsxdb 10 blocks
+   - Advances suwappudb 10 blocks
    - Submits anchor to Solidity
    - Polls registry via eth_call
-   - Asserts Solidity state matches gsxdb
+   - Asserts Solidity state matches suwappudb
 
 ### Test Harness
 
@@ -222,8 +222,8 @@ async fn e2e_shadow_testnet() {
     // 1. Deploy contract
     let registry = deploy_ltp_anchor_registry(&anvil_url).await?;
 
-    // 2. Start gsxdb-server
-    let server = start_gsxdb_server_with_config(
+    // 2. Start suwappudb-server
+    let server = start_suwappudb_server_with_config(
         config::Config {
             rpc_port: 8660,
             l1_rpc_url: anvil_url.clone(),
@@ -234,17 +234,17 @@ async fn e2e_shadow_testnet() {
 
     // 3. Submit 10 blocks
     for i in 0..10 {
-        server.post::<gsx_submitBlock>(...).await?;
+        server.post::<suwappu_submitBlock>(...).await?;
     }
 
     // 4. Submit anchor
-    let anchor = server.get::<gsx_getLastAnchor>(...).await?;
+    let anchor = server.get::<suwappu_getLastAnchor>(...).await?;
     let tx = registry.acceptAnchor(anchor, signature).await?;
     wait_for_finality(&anvil, tx).await?;
 
     // 5. Verify
     let solidity_root = registry.getLastAnchorHash(chain_id).await?;
-    let rust_root = server.get::<gsx_getStateRoot>().await?;
+    let rust_root = server.get::<suwappu_getStateRoot>().await?;
     assert_eq!(solidity_root, rust_root);
 
     Ok(())
@@ -262,7 +262,7 @@ async fn e2e_shadow_testnet() {
 
 ## Integration: Boot Sequence (S12 End-to-End)
 
-At `gsxdb-server` startup:
+At `suwappudb-server` startup:
 
 ```rust
 pub async fn main() {
@@ -339,6 +339,6 @@ Status at S12 close: **Launch-ready: all hardening components operational, produ
 ## Reference
 
 - DAG: [Lamport 1978 Time, Clocks]
-- Snapshots: See `StateSnapshot` in `crates/gsxdb-state/src/snapshot.rs`
+- Snapshots: See `StateSnapshot` in `crates/suwappudb-state/src/snapshot.rs`
 - OpenTelemetry: [opentelemetry.io](https://opentelemetry.io)
 - E2E: [Ethereum Testing Best Practices](https://ethereum.org/en/developers/docs/testing/)

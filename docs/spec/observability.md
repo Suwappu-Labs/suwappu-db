@@ -8,14 +8,14 @@ metric as load-bearing.
 
 | Metric | Type | Source for the practice |
 |---|---|---|
-| `gsxdb_block_height` | gauge | standard |
-| `gsxdb_block_duration_ms` | histogram | standard |
-| `gsxdb_anchor_latency_ms` | histogram | LTP §10 budget |
-| `gsxdb_parity_check_duration_ms` | histogram | standard |
-| `gsxdb_occ_collapse_to_sequential_total` | counter | Aptos AIP-47 (Aggregators) |
-| `gsxdb_occ_aborts_total` | counter | Block-STM PPoPP §6 |
-| `gsxdb_anchor_parity_missing_chains` | gauge | KelpDAO/LayerZero compromise |
-| `gsxdb_anchor_parity_divergent_total` | counter | KelpDAO/LayerZero compromise |
+| `suwappudb_block_height` | gauge | standard |
+| `suwappudb_block_duration_ms` | histogram | standard |
+| `suwappudb_anchor_latency_ms` | histogram | LTP §10 budget |
+| `suwappudb_parity_check_duration_ms` | histogram | standard |
+| `suwappudb_occ_collapse_to_sequential_total` | counter | Aptos AIP-47 (Aggregators) |
+| `suwappudb_occ_aborts_total` | counter | Block-STM PPoPP §6 |
+| `suwappudb_anchor_parity_missing_chains` | gauge | KelpDAO/LayerZero compromise |
+| `suwappudb_anchor_parity_divergent_total` | counter | KelpDAO/LayerZero compromise |
 
 All eight emit even when zero so absence of the metric is itself
 an alert condition.
@@ -50,7 +50,7 @@ in production.
 
 ### Alert 1 — `OccCollapseSpike`
 ```yaml
-expr: increase(gsxdb_occ_collapse_to_sequential_total[1m]) > 0
+expr: increase(suwappudb_occ_collapse_to_sequential_total[1m]) > 0
 for: 30s
 labels: { severity: page }
 annotations:
@@ -60,7 +60,7 @@ annotations:
 
 ### Alert 2 — `ParityMissingChain`
 ```yaml
-expr: gsxdb_anchor_parity_missing_chains > 0
+expr: suwappudb_anchor_parity_missing_chains > 0
 for: 1m
 labels: { severity: page }
 annotations:
@@ -70,7 +70,7 @@ annotations:
 
 ### Alert 3 — `ParityDivergence`
 ```yaml
-expr: increase(gsxdb_anchor_parity_divergent_total[5m]) > 0
+expr: increase(suwappudb_anchor_parity_divergent_total[5m]) > 0
 for: 0s
 labels: { severity: critical }
 annotations:
@@ -80,7 +80,7 @@ annotations:
 
 ### Alert 4 — `BlockExecutionStall`
 ```yaml
-expr: rate(gsxdb_block_duration_ms_sum[1m]) / rate(gsxdb_block_duration_ms_count[1m]) > 3000
+expr: rate(suwappudb_block_duration_ms_sum[1m]) / rate(suwappudb_block_duration_ms_count[1m]) > 3000
 for: 2m
 labels: { severity: page }
 annotations:
@@ -90,7 +90,7 @@ annotations:
 
 ### Alert 5 — `AnchorLatencyBudgetExceeded`
 ```yaml
-expr: histogram_quantile(0.95, rate(gsxdb_anchor_latency_ms_bucket[5m])) > 500
+expr: histogram_quantile(0.95, rate(suwappudb_anchor_latency_ms_bucket[5m])) > 500
 for: 5m
 labels: { severity: page }
 annotations:
@@ -110,14 +110,14 @@ flowchart TB
         L5[Crypto]
     end
     subgraph Metrics
-        M1[gsxdb_occ_aborts_total]
-        M2[gsxdb_occ_collapse_to_sequential_total]
-        M3[gsxdb_block_duration_ms]
-        M4[gsxdb_anchor_latency_ms]
-        M5[gsxdb_parity_check_duration_ms]
-        M6[gsxdb_anchor_parity_missing_chains]
-        M7[gsxdb_anchor_parity_divergent_total]
-        M8[gsxdb_state_size_bytes]
+        M1[suwappudb_occ_aborts_total]
+        M2[suwappudb_occ_collapse_to_sequential_total]
+        M3[suwappudb_block_duration_ms]
+        M4[suwappudb_anchor_latency_ms]
+        M5[suwappudb_parity_check_duration_ms]
+        M6[suwappudb_anchor_parity_missing_chains]
+        M7[suwappudb_anchor_parity_divergent_total]
+        M8[suwappudb_state_size_bytes]
     end
     L1 --> M1
     L1 --> M2
@@ -139,12 +139,12 @@ land when validator-key custody (`docs/spec/key-custody.md`) is wired.
 Each metric exists because **another chain had an incident that this
 metric would have caught**:
 
-- `gsxdb_occ_collapse_to_sequential_total` — Aptos had hot-counter
+- `suwappudb_occ_collapse_to_sequential_total` — Aptos had hot-counter
   storms before AIP-47. Without this metric they couldn't separate
   Block-STM thrashing from real liveness issues.
-- `gsxdb_anchor_parity_missing_chains` — KelpDAO's $292M loss happened
+- `suwappudb_anchor_parity_missing_chains` — KelpDAO's $292M loss happened
   because a single missing verifier didn't surface in dashboards.
-- `gsxdb_occ_aborts_total` paired with `gsxdb_blocks_committed` —
+- `suwappudb_occ_aborts_total` paired with `suwappudb_blocks_committed` —
   the abort-rate is the Block-STM PPoPP paper's primary parallel-vs-
   sequential indicator.
 

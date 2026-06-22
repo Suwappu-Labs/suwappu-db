@@ -10,7 +10,7 @@
 
 S7 + S8 built in one branch:
 
-1. **S7 anchor types** (`gsxdb-bridge::anchor::types`)
+1. **S7 anchor types** (`suwappudb-bridge::anchor::types`)
 2. **S7 AnchorLog** (`anchor::log`)
 3. **S7 AnchorDispatcher + parity_check** (`anchor::dispatcher`)
 4. **S8 Block + BlockStore** (`recovery::block`, `recovery::store`)
@@ -22,9 +22,9 @@ S7 + S8 built in one branch:
 - [x] S7 + S8 implementation across 7 new modules and 39 new lib unit
   tests.
 - [x] Property tests:
-  - `crates/gsxdb-bridge/tests/cross_parity.rs` — 4 properties (S7
+  - `crates/suwappudb-bridge/tests/cross_parity.rs` — 4 properties (S7
     exit gate + 3 sub-properties)
-  - `crates/gsxdb-bridge/tests/recovery.rs` — 3 properties (S8 exit
+  - `crates/suwappudb-bridge/tests/recovery.rs` — 3 properties (S8 exit
     gate + 2 sub-properties)
 - [x] **`scripts/cross-parity.sh` finally has a real implementation.**
   Runs the 10k-case property test in dev or release mode.
@@ -51,17 +51,17 @@ sub-properties at 10k: `replay_is_deterministic`,
 
 178 tests pass workspace-wide (was 132):
 
-- gsxdb-bridge lib: 89 (was 50) — +39 (16 anchor + 23 recovery; counts
+- suwappudb-bridge lib: 89 (was 50) — +39 (16 anchor + 23 recovery; counts
   include 4 inline call-dispatch tests already in occ)
-- gsxdb-bridge tests/block_executor.rs: 4
-- gsxdb-bridge tests/cross_parity.rs: 4 (NEW)
-- gsxdb-bridge tests/cross_vm_bundles.rs: 5
-- gsxdb-bridge tests/cross_vm_parity.rs: 4
-- gsxdb-bridge tests/persistent_e2e.rs: 4
-- gsxdb-bridge tests/recovery.rs: 3 (NEW)
-- gsxdb-lane: 2
-- gsxdb-state: 57
-- gsxdb-state tests/state_tree.rs: 6
+- suwappudb-bridge tests/block_executor.rs: 4
+- suwappudb-bridge tests/cross_parity.rs: 4 (NEW)
+- suwappudb-bridge tests/cross_vm_bundles.rs: 5
+- suwappudb-bridge tests/cross_vm_parity.rs: 4
+- suwappudb-bridge tests/persistent_e2e.rs: 4
+- suwappudb-bridge tests/recovery.rs: 3 (NEW)
+- suwappudb-lane: 2
+- suwappudb-state: 57
+- suwappudb-state tests/state_tree.rs: 6
 
 ## Phase-1 status
 

@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 /**
  * @title LTPAnchorRegistry
- * @notice Stores and validates cross-chain anchors for GSX-DB.
+ * @notice Stores and validates cross-chain anchors for Suwappu-DB.
  *
  * An anchor ties a state root to a block height and is authenticated
  * via BLAKE3 keyed-hash MAC. The registry ensures:

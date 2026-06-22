@@ -19,16 +19,16 @@ mode="${1:-default}"
 
 case "$mode" in
     --release)
-        echo "[cross-parity] PROPTEST_CASES=10000 cargo test --release -p gsxdb-bridge --test cross_parity"
-        PROPTEST_CASES=10000 cargo test --release -p gsxdb-bridge --test cross_parity
+        echo "[cross-parity] PROPTEST_CASES=10000 cargo test --release -p suwappudb-bridge --test cross_parity"
+        PROPTEST_CASES=10000 cargo test --release -p suwappudb-bridge --test cross_parity
         ;;
     --quick)
-        echo "[cross-parity] cargo test -p gsxdb-bridge --test cross_parity"
-        cargo test -p gsxdb-bridge --test cross_parity
+        echo "[cross-parity] cargo test -p suwappudb-bridge --test cross_parity"
+        cargo test -p suwappudb-bridge --test cross_parity
         ;;
     default)
-        echo "[cross-parity] PROPTEST_CASES=10000 cargo test -p gsxdb-bridge --test cross_parity"
-        PROPTEST_CASES=10000 cargo test -p gsxdb-bridge --test cross_parity
+        echo "[cross-parity] PROPTEST_CASES=10000 cargo test -p suwappudb-bridge --test cross_parity"
+        PROPTEST_CASES=10000 cargo test -p suwappudb-bridge --test cross_parity
         ;;
     *)
         echo "unknown mode: $mode" >&2

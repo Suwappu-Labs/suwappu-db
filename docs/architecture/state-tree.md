@@ -50,10 +50,10 @@ classDiagram
 ## Commitment scheme
 
 ```
-empty_commitment       = BLAKE3("GSXDB-TREE/EMPTY")
+empty_commitment       = BLAKE3("Suwappudb-TREE/EMPTY")
 commit(Empty)          = empty_commitment
-commit(Leaf(slot))     = BLAKE3("GSXDB-TREE/LEAF_" | slot.canonical().to_be_bytes())
-commit(Internal(kids)) = BLAKE3("GSXDB-TREE/INT__"
+commit(Leaf(slot))     = BLAKE3("Suwappudb-TREE/LEAF_" | slot.canonical().to_be_bytes())
+commit(Internal(kids)) = BLAKE3("Suwappudb-TREE/INT__"
                                 | for (byte, child) in sorted(kids):
                                     byte (1B) | commit(child) (32B))
 ```

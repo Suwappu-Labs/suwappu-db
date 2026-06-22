@@ -76,7 +76,7 @@ Stateless light clients gated on the swap.
 ### Implementation surface (S10)
 
 Files added in S10:
-- `crates/gsxdb-state/src/tree/verkle.rs` — `GroupElement`,
+- `crates/suwappudb-state/src/tree/verkle.rs` — `GroupElement`,
   `commit_polynomial`, `verify_witness`
 - `production-verkle` feature gate; default off so phase-1 tests
   stay fast
