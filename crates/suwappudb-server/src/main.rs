@@ -115,42 +115,40 @@ async fn rpc(
                         }),
                         id: req.id,
                     }
-                } else {
-                    if let Some(addr_str) = params[0].as_str() {
-                        match parse_address(addr_str) {
-                            Ok(addr) => {
-                                let state_guard = state.state.lock().await;
-                                let balance = state_guard.balance_of(&addr);
-                                JsonRpcResponse {
-                                    jsonrpc: "2.0".to_string(),
-                                    result: Some(json!({
-                                        "address": addr_str,
-                                        "balance": balance.0.to_string(),
-                                    })),
-                                    error: None,
-                                    id: req.id,
-                                }
-                            }
-                            Err(_) => JsonRpcResponse {
+                } else if let Some(addr_str) = params[0].as_str() {
+                    match parse_address(addr_str) {
+                        Ok(addr) => {
+                            let state_guard = state.state.lock().await;
+                            let balance = state_guard.balance_of(&addr);
+                            JsonRpcResponse {
                                 jsonrpc: "2.0".to_string(),
-                                result: None,
-                                error: Some(JsonRpcError {
-                                    code: -32602,
-                                    message: "Invalid address format".to_string(),
-                                }),
+                                result: Some(json!({
+                                    "address": addr_str,
+                                    "balance": balance.0.to_string(),
+                                })),
+                                error: None,
                                 id: req.id,
-                            },
+                            }
                         }
-                    } else {
-                        JsonRpcResponse {
+                        Err(_) => JsonRpcResponse {
                             jsonrpc: "2.0".to_string(),
                             result: None,
                             error: Some(JsonRpcError {
                                 code: -32602,
-                                message: "Invalid parameter: address must be a string".to_string(),
+                                message: "Invalid address format".to_string(),
                             }),
                             id: req.id,
-                        }
+                        },
+                    }
+                } else {
+                    JsonRpcResponse {
+                        jsonrpc: "2.0".to_string(),
+                        result: None,
+                        error: Some(JsonRpcError {
+                            code: -32602,
+                            message: "Invalid parameter: address must be a string".to_string(),
+                        }),
+                        id: req.id,
                     }
                 }
             } else {
