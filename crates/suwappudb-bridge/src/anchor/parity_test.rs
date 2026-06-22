@@ -1,4 +1,4 @@
-//! Parity tests: Rust AnchorDispatcher vs Solidity LTPAnchorRegistry.
+//! Parity tests: Rust `AnchorDispatcher` vs Solidity `LTPAnchorRegistry`.
 //!
 //! Tests that both implementations accept and reject identical inputs.
 //! Uses Keccak256 MAC (Phase 1 placeholder, matching Solidity) for test vectors.
@@ -20,9 +20,9 @@ fn compute_keccak_mac(
 ) -> [u8; 32] {
     let mut hasher = Keccak256::new();
     hasher.update(b"GSXDB-ANCHOR/MAC");
-    hasher.update(&key);
-    hasher.update(&chain_id.to_be_bytes());
-    hasher.update(&height.to_be_bytes());
+    hasher.update(key);
+    hasher.update(chain_id.to_be_bytes());
+    hasher.update(height.to_be_bytes());
     hasher.update(state_root);
     hasher.update(parent);
 
@@ -42,8 +42,8 @@ fn hash_anchor_keccak(
 ) -> [u8; 32] {
     let mut hasher = Keccak256::new();
     hasher.update(b"GSXDB-ANCHOR/HASH");
-    hasher.update(&chain_id.to_be_bytes());
-    hasher.update(&height.to_be_bytes());
+    hasher.update(chain_id.to_be_bytes());
+    hasher.update(height.to_be_bytes());
     hasher.update(state_root);
     hasher.update(parent);
     hasher.update(mac);
@@ -193,9 +193,8 @@ mod tests {
                     &root(4).0,
                     &GENESIS_PARENT.0,
                     &{
-                        let m =
-                            compute_keccak_mac(chain_id.0, 5, &root(4).0, &GENESIS_PARENT.0, &key);
-                        m
+                        
+                        compute_keccak_mac(chain_id.0, 5, &root(4).0, &GENESIS_PARENT.0, &key)
                     },
                 ))
                 .0,
@@ -211,9 +210,8 @@ mod tests {
                     &root(4).0,
                     &GENESIS_PARENT.0,
                     &{
-                        let m =
-                            compute_keccak_mac(chain_id.0, 5, &root(4).0, &GENESIS_PARENT.0, &key);
-                        m
+                        
+                        compute_keccak_mac(chain_id.0, 5, &root(4).0, &GENESIS_PARENT.0, &key)
                     },
                 )),
                 mac,

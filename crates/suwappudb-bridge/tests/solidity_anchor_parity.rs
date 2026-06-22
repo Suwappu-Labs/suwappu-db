@@ -1,7 +1,7 @@
-//! Solidity LTPAnchorRegistry parity test fixtures.
+//! Solidity `LTPAnchorRegistry` parity test fixtures.
 //!
 //! These fixtures document the exact behavior expected from the Solidity contract
-//! when called via eth_call. Tests in this file verify Rust == Solidity for all
+//! when called via `eth_call`. Tests in this file verify Rust == Solidity for all
 //! acceptance/rejection decisions.
 //!
 //! Run with:
@@ -26,8 +26,8 @@ fn solidity_mac(
     let mut hasher = Keccak256::new();
     hasher.update(b"GSXDB-ANCHOR/MAC");
     hasher.update(key);
-    hasher.update(&chain_id.to_be_bytes());
-    hasher.update(&height.to_be_bytes());
+    hasher.update(chain_id.to_be_bytes());
+    hasher.update(height.to_be_bytes());
     hasher.update(state_root);
     hasher.update(parent);
     let mut out = [0u8; 32];
@@ -45,8 +45,8 @@ fn solidity_hash(
 ) -> [u8; 32] {
     let mut hasher = Keccak256::new();
     hasher.update(b"GSXDB-ANCHOR/HASH");
-    hasher.update(&chain_id.to_be_bytes());
-    hasher.update(&height.to_be_bytes());
+    hasher.update(chain_id.to_be_bytes());
+    hasher.update(height.to_be_bytes());
     hasher.update(state_root);
     hasher.update(parent);
     hasher.update(mac);
@@ -248,8 +248,7 @@ fn fixture_non_monotonic_height_rejection() {
     // Rust dispatcher would reject in AnchorLog::append() with AppendError::HeightNotMonotonic
 
     println!(
-        "✓ Non-monotonic height rejection: attempted height={}, last=5",
-        bad_height
+        "✓ Non-monotonic height rejection: attempted height={bad_height}, last=5"
     );
 }
 

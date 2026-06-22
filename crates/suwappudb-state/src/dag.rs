@@ -16,7 +16,7 @@ pub struct DagBlock {
     /// State commitment after executing this block.
     pub state_root: [u8; 32],
     /// Parent block hash(es). Can point to any earlier block, not just height-1.
-    /// For linear chain: vec![[previous_hash]]
+    /// For linear chain: vec![[`previous_hash`]]
     /// For DAG: may contain multiple parents (conditional branches).
     pub parent_hashes: Vec<BlockHash>,
     /// Block timestamp (seconds since epoch).
@@ -25,6 +25,7 @@ pub struct DagBlock {
 
 impl DagBlock {
     /// Create a new block with a single parent (linear chain compatible).
+    #[must_use]
     pub fn new(height: u64, state_root: [u8; 32], parent_hash: BlockHash, timestamp: u64) -> Self {
         Self {
             height,
@@ -35,6 +36,7 @@ impl DagBlock {
     }
 
     /// Create genesis block (no parents).
+    #[must_use]
     pub fn genesis(state_root: [u8; 32], timestamp: u64) -> Self {
         Self {
             height: 0,
@@ -63,6 +65,7 @@ pub struct DagStore {
 
 impl DagStore {
     /// Create an empty DAG.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             blocks: BTreeMap::new(),
@@ -87,27 +90,32 @@ impl DagStore {
     }
 
     /// Retrieve a block by hash.
+    #[must_use]
     pub fn get(&self, hash: &BlockHash) -> Option<&DagBlock> {
         self.blocks.get(hash)
     }
 
     /// Check if a block exists.
+    #[must_use]
     pub fn contains(&self, hash: &BlockHash) -> bool {
         self.blocks.contains_key(hash)
     }
 
     /// Number of blocks in the DAG.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.blocks.len()
     }
 
     /// Check if DAG is empty.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.blocks.is_empty()
     }
 
     /// Find a path from `from` to `to` using BFS.
     /// Returns `Some(path)` if reachable, `None` otherwise.
+    #[must_use]
     pub fn find_path(&self, from: &BlockHash, to: &BlockHash) -> Option<Vec<BlockHash>> {
         if from == to {
             return Some(vec![*from]);
@@ -149,11 +157,13 @@ impl DagStore {
     }
 
     /// Check if block `to` is reachable from block `from`.
+    #[must_use]
     pub fn is_reachable(&self, from: &BlockHash, to: &BlockHash) -> bool {
         self.find_path(from, to).is_some()
     }
 
     /// Get all blocks at a given height.
+    #[must_use]
     pub fn blocks_at_height(&self, height: u64) -> Vec<(BlockHash, &DagBlock)> {
         self.blocks
             .iter()
@@ -163,6 +173,7 @@ impl DagStore {
     }
 
     /// Get the block with maximum height.
+    #[must_use]
     pub fn max_height_block(&self) -> Option<(BlockHash, &DagBlock)> {
         self.blocks
             .iter()
@@ -183,6 +194,7 @@ impl DagStore {
     /// **S12.1** — All ancestors of `start` (transitively, up to
     /// genesis). Result is in BFS order from `start`'s parents
     /// outward. `start` itself is NOT included.
+    #[must_use]
     pub fn ancestors_of(&self, start: &BlockHash) -> Vec<BlockHash> {
         let mut out = Vec::new();
         let mut visited = std::collections::HashSet::new();
@@ -210,6 +222,7 @@ impl DagStore {
     /// **S12.1** — All descendants of `start` (transitively, down to
     /// leaves). Result is in BFS order from `start`'s children
     /// outward. `start` itself is NOT included.
+    #[must_use]
     pub fn descendants_of(&self, start: &BlockHash) -> Vec<BlockHash> {
         let mut out = Vec::new();
         let mut visited = std::collections::HashSet::new();
@@ -234,6 +247,7 @@ impl DagStore {
     /// reorg detection ("which heads are live?") and for snapshot
     /// pruning (anything not in any tip's ancestor closure is
     /// reorged out).
+    #[must_use]
     pub fn tips(&self) -> Vec<BlockHash> {
         self.blocks
             .keys()
@@ -269,7 +283,7 @@ impl DagStore {
         }
 
         // Check for cycles using DFS from each node
-        for (start_hash, _) in &self.blocks {
+        for start_hash in self.blocks.keys() {
             if self.has_cycle_from(start_hash) {
                 return Err(format!(
                     "Cycle detected from block {:?}",

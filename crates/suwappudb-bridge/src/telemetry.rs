@@ -18,6 +18,7 @@ pub struct BlockTimer {
 
 impl BlockTimer {
     /// Start timing a block. Records `block_duration_ms` on drop.
+    #[must_use]
     pub fn new(metrics: Arc<Metrics>) -> Self {
         Self {
             start: Instant::now(),
@@ -43,6 +44,7 @@ pub struct AnchorTimer {
 
 impl AnchorTimer {
     /// Start timing an anchor submission. Records `anchor_latency_ms` on drop.
+    #[must_use]
     pub fn new(metrics: Arc<Metrics>) -> Self {
         Self {
             start: Instant::now(),
@@ -68,6 +70,7 @@ pub struct ParityTimer {
 
 impl ParityTimer {
     /// Start timing a parity check. Records `parity_check_duration_ms` on drop.
+    #[must_use]
     pub fn new(metrics: Arc<Metrics>) -> Self {
         Self {
             start: Instant::now(),

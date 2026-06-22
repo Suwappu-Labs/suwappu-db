@@ -158,7 +158,7 @@ mod tests {
     fn blake3_scheme_default_is_constructible() {
         // Audit-scope discipline: default ctor must be available so
         // the trait is wirable in test fixtures without ceremony.
-        let _ = Blake3Scheme::default();
+        let _ = Blake3Scheme;
     }
 
     #[test]

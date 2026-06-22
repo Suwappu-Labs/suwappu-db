@@ -41,7 +41,7 @@ use pqcrypto_traits::sign::{
 /// Length of a recoverable secp256k1 signature: r (32) || s (32) || v (1).
 pub const ECDSA_SIG_LEN: usize = 65;
 
-/// Public values committed to by an Sp1ZkProof guest program over a
+/// Public values committed to by an `Sp1ZkProof` guest program over a
 /// single-block replay.
 ///
 /// The guest body wraps [`crate::recovery::replay`]:

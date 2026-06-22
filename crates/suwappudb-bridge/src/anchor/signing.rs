@@ -92,6 +92,7 @@ impl EcdsaSecp256k1Signer {
     /// Borrow the underlying signing key — for tests that need to
     /// drive the key through other APIs.
     #[doc(hidden)]
+    #[must_use]
     pub fn __inner(&self) -> &SigningKey {
         &self.inner
     }
@@ -148,7 +149,7 @@ fn eth_address_from_verifying_key(vk: &k256::ecdsa::VerifyingKey) -> EthAddress 
 mod tests {
     use super::*;
     use super::super::credential::{verify_credential, ExpectedVerifier};
-    use super::super::types::{AnchorHash, ChainId, GENESIS_PARENT};
+    use super::super::types::{ChainId, GENESIS_PARENT};
     use suwappudb_state::Commitment;
     use k256::ecdsa::SigningKey;
     use rand::rngs::OsRng;

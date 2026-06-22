@@ -26,6 +26,7 @@ impl Config {
         Ok(config)
     }
 
+    #[must_use]
     pub fn from_env() -> Self {
         let state_db_path = std::env::var("STATE_DB_PATH")
             .unwrap_or_else(|_| "/data/suwappudb/state.redb".to_string())

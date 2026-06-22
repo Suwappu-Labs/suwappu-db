@@ -289,8 +289,7 @@ fn shadow_testnet_bootstrap() {
                 .outcomes
                 .iter()
                 .all(|o| matches!(o, suwappudb_bridge::TxOutcome::Committed)),
-            "block {} should commit all txns",
-            block_height
+            "block {block_height} should commit all txns"
         );
 
         // Record state metrics.
@@ -329,8 +328,7 @@ fn shadow_testnet_bootstrap() {
             );
             assert!(
                 snapshot.is_valid(u64::MAX),
-                "snapshot block {} should be valid",
-                block_height
+                "snapshot block {block_height} should be valid"
             );
         }
 

@@ -13,10 +13,10 @@ use std::collections::BTreeMap;
 /// super-node attestation surface. Per the LTP paper §10.1 the
 /// attestation quorum is 7-of-9; we set the absolute floor at 5/9 so
 /// that any future reconfiguration that drops below honest-majority
-/// (5/9 = first integer > 4) is rejected at the type level. KelpDAO
-/// lost $292M when LayerZero allowed a single configurable DVN to
+/// (5/9 = first integer > 4) is rejected at the type level. `KelpDAO`
+/// lost $292M when `LayerZero` allowed a single configurable DVN to
 /// approve withdrawals.
-/// Source: https://www.blockaid.io/blog/how-a-single-layerzero-dvn-compromise-drained-292m-from-kelpdao
+/// Source: <https://www.blockaid.io/blog/how-a-single-layerzero-dvn-compromise-drained-292m-from-kelpdao>
 pub const LTP_QUORUM_MIN_NUMERATOR: usize = 5;
 /// LTP super-node committee size denominator (paper §3.2: seven of nine).
 pub const LTP_QUORUM_DENOMINATOR: usize = 9;
@@ -347,9 +347,9 @@ impl AnchorDispatcher {
     ///
     /// **S11.2**: every entry now carries a stored credential, so all
     /// four schemes (Blake3 / ECDSA / Hybrid / Sp1) dispatch through
-    /// the same path. Pre-S11.2 dispatch_with_signer is still queued
+    /// the same path. Pre-S11.2 `dispatch_with_signer` is still queued
     /// (S11.3), so the producer side of non-Blake3 anchors is gated
-    /// — but parity_check + `append_with_credential` work end-to-end.
+    /// — but `parity_check` + `append_with_credential` work end-to-end.
     fn verify_entry_with_config(
         entry: &super::log::AnchorEntry,
         config: &VerifierConfig,

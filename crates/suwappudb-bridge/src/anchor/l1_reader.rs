@@ -21,7 +21,7 @@ pub trait L1AnchorReader: Send + Sync {
 /// Mock L1 anchor reader for testing. Stores anchors in memory.
 #[derive(Debug, Clone)]
 pub struct MockL1AnchorReader {
-    /// Map from (chain_id, height) to anchor
+    /// Map from (`chain_id`, height) to anchor
     anchors: BTreeMap<(ChainId, u64), Anchor>,
 }
 
@@ -57,9 +57,9 @@ impl L1AnchorReader for MockL1AnchorReader {
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct RpcL1AnchorReader {
-    /// URL of the op-reth JSON-RPC endpoint (e.g., http://localhost:8545)
+    /// URL of the op-reth JSON-RPC endpoint (e.g., <http://localhost:8545>)
     rpc_url: String,
-    /// Contract address of LTPAnchorRegistry
+    /// Contract address of `LTPAnchorRegistry`
     registry_addr: String,
 }
 
@@ -68,7 +68,7 @@ impl RpcL1AnchorReader {
     ///
     /// # Arguments
     ///
-    /// * `rpc_url` - JSON-RPC endpoint URL (e.g., http://localhost:8545)
+    /// * `rpc_url` - JSON-RPC endpoint URL (e.g., <http://localhost:8545>)
     /// * `registry_addr` - Solidity contract address (0x-prefixed hex)
     pub fn new(rpc_url: impl Into<String>, registry_addr: impl Into<String>) -> Self {
         Self {
@@ -79,15 +79,15 @@ impl RpcL1AnchorReader {
 }
 
 impl RpcL1AnchorReader {
-    /// Call `getAnchor(chainId, height)` on LTPAnchorRegistry via eth_call.
+    /// Call `getAnchor(chainId, height)` on `LTPAnchorRegistry` via `eth_call`.
     /// Returns the encoded anchor data or an error if the RPC call fails.
     fn call_get_anchor(&self, chain_id: ChainId, height: u64) -> Result<Value, String> {
         // Encode function call: getAnchor(uint32 chainId, uint64 height)
         // Function signature: 0x12345678 (placeholder; real ABI needed)
         // For now, we'll use a simple encoding: 0x + chainId (32 bytes) + height (32 bytes)
         let chain_id_hex = format!("{:064x}", chain_id.0);
-        let height_hex = format!("{:064x}", height);
-        let data = format!("0x{}{}", chain_id_hex, height_hex);
+        let height_hex = format!("{height:064x}");
+        let data = format!("0x{chain_id_hex}{height_hex}");
 
         let payload = json!({
             "jsonrpc": "2.0",
@@ -112,18 +112,18 @@ impl RpcL1AnchorReader {
                     Ok(result) => {
                         // Check for JSON-RPC error
                         if let Some(err) = result.get("error") {
-                            return Err(format!("RPC error: {}", err));
+                            return Err(format!("RPC error: {err}"));
                         }
                         Ok(result)
                     }
-                    Err(e) => Err(format!("Failed to parse response: {}", e)),
+                    Err(e) => Err(format!("Failed to parse response: {e}")),
                 }
             }
-            Err(e) => Err(format!("RPC call failed: {}", e)),
+            Err(e) => Err(format!("RPC call failed: {e}")),
         }
     }
 
-    /// Decode eth_call result into an Anchor.
+    /// Decode `eth_call` result into an Anchor.
     /// Result should be: (chainId, height, stateRoot, parent, mac)
     fn decode_anchor(
         &self,

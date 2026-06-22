@@ -149,22 +149,22 @@ proptest! {
         // Same tip set (just block_count-1 in a linear chain).
         let mut tips_a = dag_ordered.tips();
         let mut tips_b = dag_shuffled.tips();
-        tips_a.sort();
-        tips_b.sort();
+        tips_a.sort_unstable();
+        tips_b.sort_unstable();
         prop_assert_eq!(&tips_a, &tips_b);
 
         // Ancestors and descendants of every block agree.
         for (_, hash, _) in &blocks {
             let mut anc_a = dag_ordered.ancestors_of(hash);
             let mut anc_b = dag_shuffled.ancestors_of(hash);
-            anc_a.sort();
-            anc_b.sort();
+            anc_a.sort_unstable();
+            anc_b.sort_unstable();
             prop_assert_eq!(&anc_a, &anc_b, "ancestors differ for block {:?}", hex::encode(&hash[..2]));
 
             let mut desc_a = dag_ordered.descendants_of(hash);
             let mut desc_b = dag_shuffled.descendants_of(hash);
-            desc_a.sort();
-            desc_b.sort();
+            desc_a.sort_unstable();
+            desc_b.sort_unstable();
             prop_assert_eq!(&desc_a, &desc_b, "descendants differ for block {:?}", hex::encode(&hash[..2]));
         }
 

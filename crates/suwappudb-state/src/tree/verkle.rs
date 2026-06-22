@@ -36,11 +36,13 @@ impl fmt::Debug for GroupElement {
 
 impl GroupElement {
     /// Create a group element from a 32-byte array.
+    #[must_use]
     pub fn from_bytes(bytes: [u8; 32]) -> Self {
         GroupElement(bytes)
     }
 
     /// Serialize to 32 bytes.
+    #[must_use]
     pub fn to_bytes(&self) -> [u8; 32] {
         self.0
     }
@@ -62,7 +64,7 @@ pub struct IpaOpening {
     pub domain_index: u8,
     /// Claimed evaluation `f(domain_index)` as a 32-byte scalar.
     pub claimed_value: [u8; 32],
-    /// Serialized `IPAProof` (L_vec + R_vec + a). Variable-length but
+    /// Serialized `IPAProof` (`L_vec` + `R_vec` + a). Variable-length but
     /// deterministic for a fixed domain: 17 × 32 = 544 B for width-256.
     pub ipa_proof_bytes: Vec<u8>,
 }
@@ -70,6 +72,7 @@ pub struct IpaOpening {
 impl IpaOpening {
     /// Size in bytes of the opening (commitment + index + value +
     /// IPA proof). Used by the witness-size budget test in S10.6.
+    #[must_use]
     pub fn size_bytes(&self) -> usize {
         32 /* commitment */ + 1 /* domain_index */ + 32 /* claimed_value */ + self.ipa_proof_bytes.len()
     }
@@ -92,6 +95,7 @@ pub struct IpaWitness {
 
 impl IpaWitness {
     /// Empty witness (used for non-inclusion proofs in an empty tree).
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -109,19 +113,16 @@ impl IpaWitness {
 /// runtime tag for telemetry / configuration. The trait dispatches
 /// the actual commit; this enum names which trait impl is wired in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum CommitmentSchemeKind {
     /// Hash-based (BLAKE3) for Phase 1.
+    #[default]
     HashBased,
     /// Verkle with IPA for S10+.
     #[cfg(feature = "production-verkle")]
     Verkle,
 }
 
-impl Default for CommitmentSchemeKind {
-    fn default() -> Self {
-        CommitmentSchemeKind::HashBased
-    }
-}
 
 #[cfg(test)]
 mod tests {

@@ -27,7 +27,7 @@ use crate::bundle::types::{Bundle, BundleOutcome, BundleResult, BundleStep};
 use crate::{Bridge, Intent, RejectReason, TxOutcome};
 use suwappudb_state::{
     Address, Balance, BridgeToken, CompiledModule, ModuleId, ModuleStore, MoveAddress,
-    MoveBalanceView, MoveCoinValue, MoveExecutor, MoveSessionState, ResourceWrite, State,
+    MoveBalanceView, MoveExecutor, MoveSessionState, ResourceWrite, State,
     StateChange,
 };
 use std::collections::HashMap;
@@ -62,19 +62,16 @@ impl BundleExecutor {
         let mut step_outcomes = Vec::with_capacity(bundle.steps.len());
 
         for (idx, step) in bundle.steps.iter().enumerate() {
-            let intent = match step_to_intent(step) {
-                Some(intent) => intent,
-                None => {
-                    // MoveCall / DeployModule — caller chose the wrong
-                    // entry point. Revert and report.
-                    step_outcomes
-                        .push(TxOutcome::Rejected(RejectReason::MoveRuntimeRequired));
-                    restore_snapshot(state, &snapshot);
-                    return BundleResult {
-                        step_outcomes,
-                        outcome: BundleOutcome::Reverted { failed_step: idx },
-                    };
-                }
+            let intent = if let Some(intent) = step_to_intent(step) { intent } else {
+                // MoveCall / DeployModule — caller chose the wrong
+                // entry point. Revert and report.
+                step_outcomes
+                    .push(TxOutcome::Rejected(RejectReason::MoveRuntimeRequired));
+                restore_snapshot(state, &snapshot);
+                return BundleResult {
+                    step_outcomes,
+                    outcome: BundleOutcome::Reverted { failed_step: idx },
+                };
             };
             let mut bridge = Bridge::new(state);
             match bridge.submit(intent) {
@@ -113,7 +110,7 @@ impl BundleExecutor {
     ///
     /// The `balance_view` is a read-only window over the substrate's
     /// balance store as a `MoveBalanceView` — preserves lane separation
-    /// (the executor can't touch redb / RocksDB directly).
+    /// (the executor can't touch redb / `RocksDB` directly).
     ///
     /// # Errors
     ///

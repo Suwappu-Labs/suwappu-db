@@ -84,9 +84,7 @@ pub fn replay(
             .map_or(GENESIS_PARENT, |b| b.hash())
     };
 
-    let mut expected_height = from;
-
-    for block in blocks {
+    for (expected_height, block) in (from..).zip(blocks) {
         if block.height != expected_height {
             return Err(RecoveryError::HeightGap {
                 expected: expected_height,
@@ -125,7 +123,6 @@ pub fn replay(
         }
 
         prev_hash = block.hash();
-        expected_height += 1;
     }
 
     Ok(())

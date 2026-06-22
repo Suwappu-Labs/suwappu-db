@@ -5,12 +5,10 @@
 use axum::{
     extract::State as AxumState,
     http::StatusCode,
-    middleware,
     response::Json,
     routing::{get, post},
     Router,
 };
-use suwappudb_server::{bearer_auth, BearerAuthConfig};
 use suwappudb_state::{Address, State};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -107,7 +105,17 @@ async fn rpc(
     let response = match req.method.as_str() {
         "suwappu_getBalance" => {
             if let serde_json::Value::Array(params) = req.params {
-                if params.len() >= 1 {
+                if params.is_empty() {
+                    JsonRpcResponse {
+                        jsonrpc: "2.0".to_string(),
+                        result: None,
+                        error: Some(JsonRpcError {
+                            code: -32602,
+                            message: "Missing required parameter: address".to_string(),
+                        }),
+                        id: req.id,
+                    }
+                } else {
                     if let Some(addr_str) = params[0].as_str() {
                         match parse_address(addr_str) {
                             Ok(addr) => {
@@ -143,16 +151,6 @@ async fn rpc(
                             }),
                             id: req.id,
                         }
-                    }
-                } else {
-                    JsonRpcResponse {
-                        jsonrpc: "2.0".to_string(),
-                        result: None,
-                        error: Some(JsonRpcError {
-                            code: -32602,
-                            message: "Missing required parameter: address".to_string(),
-                        }),
-                        id: req.id,
                     }
                 }
             } else {
@@ -202,13 +200,13 @@ async fn rpc(
 
 /// Parse an address string (0x-prefixed hex or raw hex) into Address.
 fn parse_address(s: &str) -> Result<Address, String> {
-    let hex_str = if s.starts_with("0x") { &s[2..] } else { s };
+    let hex_str = s.strip_prefix("0x").unwrap_or(s);
 
     if hex_str.len() != 40 {
         return Err("Address must be 20 bytes (40 hex chars)".to_string());
     }
 
-    let bytes = hex::decode(hex_str).map_err(|e| format!("Invalid hex: {}", e))?;
+    let bytes = hex::decode(hex_str).map_err(|e| format!("Invalid hex: {e}"))?;
     let mut addr = [0u8; 20];
     addr.copy_from_slice(&bytes);
     Ok(Address(addr))

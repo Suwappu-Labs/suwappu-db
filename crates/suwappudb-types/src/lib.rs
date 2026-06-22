@@ -28,7 +28,7 @@
 //! `suwappudb-types` carries its own `version` in Cargo.toml, independent
 //! of the internal-crate versions. Until `v1.0.0`, the surface here is
 //! stable but the internal layout may shift; from `v1.0.0` onward,
-//! strict SemVer governs both.
+//! strict `SemVer` governs both.
 //!
 //! ## What's exported
 //!

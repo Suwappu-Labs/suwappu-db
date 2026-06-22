@@ -14,6 +14,7 @@ pub struct Gauge {
 
 impl Gauge {
     /// Create a new gauge.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             value: Arc::new(Mutex::new(0.0)),
@@ -28,8 +29,9 @@ impl Gauge {
     }
 
     /// Get current value.
+    #[must_use]
     pub fn get(&self) -> f64 {
-        *self.value.lock().unwrap_or_else(|e| e.into_inner())
+        *self.value.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Increment by delta.
@@ -54,6 +56,7 @@ pub struct Histogram {
 
 impl Histogram {
     /// Create a new histogram.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             samples: Arc::new(Mutex::new(Vec::new())),
@@ -72,11 +75,12 @@ impl Histogram {
     }
 
     /// Get mean of samples.
+    #[must_use]
     pub fn mean(&self) -> f64 {
         let samples = self
             .samples
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone();
         if samples.is_empty() {
             0.0
@@ -86,11 +90,12 @@ impl Histogram {
     }
 
     /// Get P99 percentile.
+    #[must_use]
     pub fn p99(&self) -> f64 {
         let mut samples = self
             .samples
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone();
         if samples.is_empty() {
             return 0.0;
@@ -101,16 +106,18 @@ impl Histogram {
     }
 
     /// Get count of samples.
+    #[must_use]
     pub fn count(&self) -> usize {
-        self.samples.lock().unwrap_or_else(|e| e.into_inner()).len()
+        self.samples.lock().unwrap_or_else(std::sync::PoisonError::into_inner).len()
     }
 
     /// **S12.3** — Sum of all recorded samples. Required for the
     /// Prometheus summary `_sum` line.
+    #[must_use]
     pub fn sum(&self) -> f64 {
         self.samples
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .iter()
             .sum()
     }
@@ -119,12 +126,13 @@ impl Histogram {
     /// `_summary{quantile="0.5"}`, `quantile="0.95"`, `quantile="0.99"`.
     /// Naïve linear interpolation; the histogram bound (last 1000
     /// samples) keeps this cheap.
+    #[must_use]
     pub fn quantile(&self, q: f64) -> f64 {
         let q = q.clamp(0.0, 1.0);
         let mut samples = self
             .samples
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone();
         if samples.is_empty() {
             return 0.0;
@@ -149,6 +157,7 @@ pub struct Counter {
 
 impl Counter {
     /// Create a new counter.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             value: Arc::new(Mutex::new(0)),
@@ -170,8 +179,9 @@ impl Counter {
     }
 
     /// Get current value.
+    #[must_use]
     pub fn get(&self) -> u64 {
-        *self.value.lock().unwrap_or_else(|e| e.into_inner())
+        *self.value.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
@@ -188,6 +198,7 @@ pub struct Timer {
 
 impl Timer {
     /// Start a new timer.
+    #[must_use]
     pub fn start() -> Self {
         Self {
             start: Instant::now(),
@@ -195,6 +206,7 @@ impl Timer {
     }
 
     /// Get elapsed milliseconds.
+    #[must_use]
     pub fn elapsed_ms(&self) -> f64 {
         self.start.elapsed().as_secs_f64() * 1000.0
     }
@@ -238,16 +250,16 @@ pub struct Metrics {
     pub occ_collapse_to_sequential_total: Counter,
     /// HARDENING rec 2.2 — total OCC aborts observed across all
     /// blocks. Paired with `blocks_committed` to compute the abort
-    /// rate; a sustained ratio above ~0.3 is the Block-STM PPoPP
+    /// rate; a sustained ratio above ~0.3 is the Block-STM `PPoPP`
     /// paper's worst-case bound and indicates the workload is
     /// past the parallel break-even.
     pub occ_aborts_total: Counter,
     /// HARDENING rec 6 — chains-with-missing-anchor count from the
-    /// most recent parity check. KelpDAO lost $292M when a single
+    /// most recent parity check. `KelpDAO` lost $292M when a single
     /// missing-verifier path drained funds; this metric exposes
     /// the same condition before the loss.
     pub anchor_parity_missing_chains: Gauge,
-    /// HARDENING rec 6 — sum of divergent (chain, state_root) pairs
+    /// HARDENING rec 6 — sum of divergent (chain, `state_root`) pairs
     /// observed in parity checks. Paired with the per-chain log
     /// for forensic replay.
     pub anchor_parity_divergent_total: Counter,
@@ -255,6 +267,7 @@ pub struct Metrics {
 
 impl Metrics {
     /// Create a new metrics collector.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             block_height: Gauge::new(),
@@ -284,6 +297,7 @@ impl Metrics {
     /// labelled the histograms as `histogram` but only carried
     /// count+sum, which the Prometheus parser flags — `summary` is the
     /// correct type for our sample-array-based aggregation.
+    #[must_use]
     pub fn to_prometheus_text(&self) -> String {
         let mut out = String::new();
 
@@ -427,10 +441,10 @@ mod tests {
     fn histogram_p99() {
         let h = Histogram::new();
         for i in 1..=100 {
-            h.record(i as f64);
+            h.record(f64::from(i));
         }
         let p99 = h.p99();
-        assert!(p99 >= 99.0 && p99 <= 100.0);
+        assert!((99.0..=100.0).contains(&p99));
     }
 
     #[test]
@@ -553,7 +567,7 @@ mod tests {
     fn histogram_quantile_monotonic_for_sorted_input() {
         let h = Histogram::new();
         for i in 1..=100 {
-            h.record(i as f64);
+            h.record(f64::from(i));
         }
         let p50 = h.quantile(0.5);
         let p95 = h.quantile(0.95);

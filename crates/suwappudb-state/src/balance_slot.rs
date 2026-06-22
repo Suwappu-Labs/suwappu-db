@@ -61,19 +61,12 @@ pub enum SlotError {
 /// fields (balance, nonce), and both projections derive from them. No call
 /// sequence can desynchronise them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub struct BalanceSlot {
     canonical: u128,
     nonce: AccountNonce,
 }
 
-impl Default for BalanceSlot {
-    fn default() -> Self {
-        Self {
-            canonical: 0,
-            nonce: AccountNonce::default(),
-        }
-    }
-}
 
 impl BalanceSlot {
     /// New slot with the given canonical balance value and zero nonce.

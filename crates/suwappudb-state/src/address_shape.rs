@@ -17,6 +17,7 @@ impl MoveAddress {
     ///
     /// For addresses with leading zeros (common in Aptos for object/collection addresses),
     /// this captures the meaningful suffix. The projection is deterministic but not bijective.
+    #[must_use]
     pub fn to_evm(&self) -> Address {
         let mut addr = [0u8; 20];
         // Take the last 20 bytes: Aptos addresses are often zero-padded on the left,
@@ -32,6 +33,7 @@ impl MoveAddress {
     ///
     /// For native Aptos addresses (which have meaningful leading bytes), this is lossy;
     /// use only for addresses known to originate from EVM.
+    #[must_use]
     pub fn from_evm(addr: &Address) -> Self {
         let mut move_addr = [0u8; 32];
         // Pad with zeros on the left, EVM address on the right
@@ -41,7 +43,7 @@ impl MoveAddress {
 
     /// Parse a hex string as a Move address (32 bytes, 0x-prefixed or raw).
     pub fn from_hex(s: &str) -> Result<Self, String> {
-        let hex_str = if s.starts_with("0x") { &s[2..] } else { s };
+        let hex_str = s.strip_prefix("0x").unwrap_or(s);
 
         if hex_str.len() != 64 {
             return Err(format!(
@@ -50,13 +52,14 @@ impl MoveAddress {
             ));
         }
 
-        let bytes = hex::decode(hex_str).map_err(|e| format!("Invalid hex: {}", e))?;
+        let bytes = hex::decode(hex_str).map_err(|e| format!("Invalid hex: {e}"))?;
         let mut addr = [0u8; 32];
         addr.copy_from_slice(&bytes);
         Ok(MoveAddress(addr))
     }
 
     /// Format as 0x-prefixed hex string.
+    #[must_use]
     pub fn to_hex(&self) -> String {
         format!("0x{}", hex::encode(self.0))
     }

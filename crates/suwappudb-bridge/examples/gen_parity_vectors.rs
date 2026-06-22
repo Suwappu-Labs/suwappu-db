@@ -28,7 +28,7 @@
 use suwappudb_bridge::anchor::{
     AnchorAuthCredential, AnchorSigner, EcdsaSecp256k1Signer,
 };
-use suwappudb_bridge::{Anchor, AnchorHash, ChainId, GENESIS_PARENT};
+use suwappudb_bridge::{Anchor, ChainId, GENESIS_PARENT};
 use suwappudb_state::Commitment;
 use k256::ecdsa::SigningKey;
 use serde_json::json;

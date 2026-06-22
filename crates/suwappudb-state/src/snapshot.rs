@@ -39,6 +39,7 @@ pub struct StateSnapshot {
 
 impl StateSnapshot {
     /// Create a new snapshot.
+    #[must_use]
     pub fn new(
         height: u64,
         state_root: Commitment,
@@ -60,6 +61,7 @@ impl StateSnapshot {
     }
 
     /// Serialized size in bytes.
+    #[must_use]
     pub fn size_bytes(&self) -> usize {
         // height (8) + state_root (32) + timestamp (8) + anchor_hash (32 or 0) + encoded_state
         8 + 32 + 8 + self.anchor_hash.map_or(0, |_| 32) + self.encoded_state.len()
@@ -74,6 +76,7 @@ impl StateSnapshot {
     /// snapshots; operators with drift should widen `max_age_secs`.
     /// Not a soundness issue — snapshot equality / restore correctness
     /// do not depend on the timestamp, only this acceptance window.
+    #[must_use]
     pub fn is_valid(&self, max_age_secs: u64) -> bool {
         if self.height == 0 {
             return false; // Genesis snapshot unlikely
@@ -99,7 +102,8 @@ impl StateSnapshot {
     }
 
     /// Verify snapshot matches an anchor hash.
-    /// Returns true if anchor_hash matches the snapshot's anchor_hash field.
+    /// Returns true if `anchor_hash` matches the snapshot's `anchor_hash` field.
+    #[must_use]
     pub fn verify_anchor(&self, anchor_hash: &[u8; 32]) -> bool {
         self.anchor_hash.as_ref() == Some(anchor_hash)
     }
@@ -120,7 +124,7 @@ impl StateSnapshot {
     #[must_use]
     pub fn from_state(state: &State, height: u64, anchor_hash: Option<[u8; 32]>) -> Self {
         let mut entries = state.entries();
-        entries.sort_by(|a, b| a.0 .0.cmp(&b.0 .0));
+        entries.sort_by_key(|a| a.0 .0);
         let mut encoded =
             Vec::with_capacity(SNAPSHOT_MAGIC.len() + entries.len() * SNAPSHOT_ENTRY_BYTES);
         encoded.extend_from_slice(SNAPSHOT_MAGIC);
@@ -157,8 +161,7 @@ impl StateSnapshot {
             || &snapshot.encoded_state[..SNAPSHOT_MAGIC.len()] != SNAPSHOT_MAGIC
         {
             return Err(format!(
-                "snapshot magic mismatch (expected {:?})",
-                SNAPSHOT_MAGIC
+                "snapshot magic mismatch (expected {SNAPSHOT_MAGIC:?})"
             ));
         }
         let body_len = snapshot.encoded_state.len() - SNAPSHOT_MAGIC.len();
@@ -231,18 +234,20 @@ impl StateSnapshot {
 
     /// Unused stub kept until `BalanceSlot` is reachable directly.
     #[doc(hidden)]
+    #[must_use]
     pub fn __load_balance_slot_for_tests(byte: u8) -> BalanceSlot {
         BalanceSlot::new(u128::from(byte))
     }
 
     /// JSON representation for metadata storage.
+    #[must_use]
     pub fn to_metadata_json(&self) -> serde_json::Value {
         serde_json::json!({
             "height": self.height,
-            "state_root": format!("0x{}", hex::encode(&self.state_root.0)),
+            "state_root": format!("0x{}", hex::encode(self.state_root.0)),
             "timestamp": self.timestamp,
             "size_bytes": self.size_bytes(),
-            "anchor_hash": self.anchor_hash.map(|h| format!("0x{}", hex::encode(&h))),
+            "anchor_hash": self.anchor_hash.map(|h| format!("0x{}", hex::encode(h))),
         })
     }
 }
@@ -262,6 +267,7 @@ pub struct SnapshotManager {
 
 impl SnapshotManager {
     /// Create a new snapshot manager.
+    #[must_use]
     pub fn new(snapshot_dir: String, snapshot_interval: u64) -> Self {
         Self {
             snapshot_dir,
@@ -272,14 +278,16 @@ impl SnapshotManager {
     }
 
     /// Check if a snapshot should be taken at this height.
+    #[must_use]
     pub fn should_snapshot(&self, height: u64) -> bool {
         height > 0 && height % self.snapshot_interval == 0
     }
 
     /// Generate snapshot filename for the given height and root.
+    #[must_use]
     pub fn snapshot_filename(&self, height: u64, state_root: &Commitment) -> String {
         let root_hex = hex::encode(&state_root.0[..8]);
-        format!("snapshot-{:06}-{}.json", height, root_hex)
+        format!("snapshot-{height:06}-{root_hex}.json")
     }
 
     /// Validate snapshot: check metadata and anchor consistency.
@@ -297,7 +305,7 @@ impl SnapshotManager {
                 return Err(format!(
                     "Snapshot anchor mismatch: expected {:?}, got {:?}",
                     hex::encode(expected_anchor),
-                    snapshot.anchor_hash.map(|h| hex::encode(&h))
+                    snapshot.anchor_hash.map(hex::encode)
                 ));
             }
         }

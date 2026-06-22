@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 /// Configuration for L2 state synchronization.
 #[derive(Debug, Clone)]
 pub struct L2SyncConfig {
-    /// JSON-RPC endpoint URL for op-reth (e.g., http://localhost:8545)
+    /// JSON-RPC endpoint URL for op-reth (e.g., <http://localhost:8545>)
     pub rpc_url: String,
     /// Addresses to sync balance and nonce for
     pub addresses: Vec<Address>,
@@ -31,11 +31,12 @@ pub struct L2StateSyncer {
 
 impl L2StateSyncer {
     /// Create a new L2 state syncer.
+    #[must_use]
     pub fn new(config: L2SyncConfig) -> Self {
         Self { config }
     }
 
-    /// Call eth_getBalance via JSON-RPC.
+    /// Call `eth_getBalance` via JSON-RPC.
     async fn get_balance(&self, address: &Address) -> Result<u128, String> {
         let addr_hex = format!("0x{}", hex::encode(address.0));
         let payload = json!({
@@ -51,15 +52,15 @@ impl L2StateSyncer {
             .json(&payload)
             .send()
             .await
-            .map_err(|e| format!("eth_getBalance RPC call failed: {}", e))?;
+            .map_err(|e| format!("eth_getBalance RPC call failed: {e}"))?;
 
         let result: Value = response
             .json()
             .await
-            .map_err(|e| format!("Failed to parse eth_getBalance response: {}", e))?;
+            .map_err(|e| format!("Failed to parse eth_getBalance response: {e}"))?;
 
         if let Some(err) = result.get("error") {
-            return Err(format!("RPC error: {}", err));
+            return Err(format!("RPC error: {err}"));
         }
 
         let balance_hex = result
@@ -69,7 +70,7 @@ impl L2StateSyncer {
 
         // Parse hex string (remove '0x' prefix)
         let balance_bytes = hex::decode(&balance_hex[2..])
-            .map_err(|e| format!("Failed to decode balance hex: {}", e))?;
+            .map_err(|e| format!("Failed to decode balance hex: {e}"))?;
 
         // Convert to u128 (pad with zeros on the left if needed)
         let mut balance_array = [0u8; 16];
@@ -83,7 +84,7 @@ impl L2StateSyncer {
         Ok(u128::from_be_bytes(balance_array))
     }
 
-    /// Call eth_getTransactionCount via JSON-RPC.
+    /// Call `eth_getTransactionCount` via JSON-RPC.
     async fn get_transaction_count(&self, address: &Address) -> Result<u64, String> {
         let addr_hex = format!("0x{}", hex::encode(address.0));
         let payload = json!({
@@ -99,15 +100,15 @@ impl L2StateSyncer {
             .json(&payload)
             .send()
             .await
-            .map_err(|e| format!("eth_getTransactionCount RPC call failed: {}", e))?;
+            .map_err(|e| format!("eth_getTransactionCount RPC call failed: {e}"))?;
 
         let result: Value = response
             .json()
             .await
-            .map_err(|e| format!("Failed to parse eth_getTransactionCount response: {}", e))?;
+            .map_err(|e| format!("Failed to parse eth_getTransactionCount response: {e}"))?;
 
         if let Some(err) = result.get("error") {
-            return Err(format!("RPC error: {}", err));
+            return Err(format!("RPC error: {err}"));
         }
 
         let nonce_hex = result
@@ -119,7 +120,7 @@ impl L2StateSyncer {
 
         // Parse hex string (remove '0x' prefix)
         let nonce_bytes = hex::decode(&nonce_hex[2..])
-            .map_err(|e| format!("Failed to decode nonce hex: {}", e))?;
+            .map_err(|e| format!("Failed to decode nonce hex: {e}"))?;
 
         // Convert to u64 (pad with zeros on the left if needed)
         let mut nonce_array = [0u8; 8];
@@ -188,6 +189,7 @@ impl L2StateSyncer {
     }
 
     /// Get reference to the sync configuration.
+    #[must_use]
     pub fn config(&self) -> &L2SyncConfig {
         &self.config
     }

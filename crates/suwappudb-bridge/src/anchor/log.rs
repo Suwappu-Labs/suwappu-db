@@ -192,7 +192,7 @@ impl AnchorLog {
     }
 
     /// **S11.2** — credential at logical height. Used by the
-    /// dispatcher's parity_check to dispatch through
+    /// dispatcher's `parity_check` to dispatch through
     /// `verify_credential`.
     #[must_use]
     pub fn credential_at(&self, height: u64) -> Option<&AnchorAuthCredential> {

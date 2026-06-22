@@ -222,6 +222,7 @@ impl RedbBalanceStore {
     }
 
     /// Read an EVM account nonce from the nonces table.
+    #[must_use]
     pub fn get_evm_nonce(&self, addr: &Address) -> Option<u64> {
         let txn = self
             .db

@@ -76,7 +76,7 @@ impl RedbBlockStore {
     /// # Errors
     ///
     /// **B2**: returns [`BlockStoreError::Backend`] on any redb-side
-    /// failure (open / create / begin_write / table init / commit).
+    /// failure (open / create / `begin_write` / table init / commit).
     /// Pre-B2 the table-init path called `.expect()` and panicked on
     /// corrupt files; this surfaces the failure as a typed error
     /// callers can decide how to handle.

@@ -245,7 +245,7 @@ pub enum ModuleStoreError {
 
 /// Read-only view over the substrate's balance store, scoped to Move
 /// resources. Move executor reads `Coin<T>` resources through this so
-/// it doesn't see redb / RocksDB directly — preserves lane separation.
+/// it doesn't see redb / `RocksDB` directly — preserves lane separation.
 pub trait MoveBalanceView: Send + Sync + std::fmt::Debug {
     /// Current coin value at `addr`.
     fn coin_value(&self, addr: &MoveAddress) -> MoveCoinValue;

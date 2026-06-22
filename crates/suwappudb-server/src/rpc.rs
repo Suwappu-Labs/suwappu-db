@@ -71,12 +71,12 @@ impl RpcHandler {
 
     async fn get_state_root(&self) -> Value {
         let state = self.state.lock().await;
-        let tree = suwappudb_state::StateTree::from_state(&*state);
+        let tree = suwappudb_state::StateTree::from_state(&state);
         let root = tree.root();
         let root_hex = root
             .0
             .iter()
-            .map(|b| format!("{:02x}", b))
+            .map(|b| format!("{b:02x}"))
             .collect::<String>();
         json!({
             "state_root": root_hex,
@@ -102,7 +102,7 @@ impl RpcHandler {
                     let root_hex = state_root
                         .0
                         .iter()
-                        .map(|b| format!("{:02x}", b))
+                        .map(|b| format!("{b:02x}"))
                         .collect::<String>();
                     json!({
                         "parity": "agreed",
@@ -117,7 +117,7 @@ impl RpcHandler {
                             let root_hex = root
                                 .0
                                 .iter()
-                                .map(|b| format!("{:02x}", b))
+                                .map(|b| format!("{b:02x}"))
                                 .collect::<String>();
                             json!({
                                 "chain_id": chain_id.0,
