@@ -29,11 +29,11 @@ use super::types::{Commitment, Node};
 use blake3::Hasher;
 
 /// Domain tag for empty nodes.
-const TAG_EMPTY: &[u8] = b"GSXDB-TREE/EMPTY";
+const TAG_EMPTY: &[u8] = b"SUWAPPUDB-TREE/EMPTY";
 /// Domain tag for leaf nodes.
-const TAG_LEAF: &[u8] = b"GSXDB-TREE/LEAF_";
+const TAG_LEAF: &[u8] = b"SUWAPPUDB-TREE/LEAF_";
 /// Domain tag for internal nodes.
-const TAG_INTERNAL: &[u8] = b"GSXDB-TREE/INT__";
+const TAG_INTERNAL: &[u8] = b"SUWAPPUDB-TREE/INT__";
 
 /// Pre-computed empty-subtree commitment. Stable across all calls.
 pub const EMPTY_COMMITMENT: Commitment = empty_commitment_const();

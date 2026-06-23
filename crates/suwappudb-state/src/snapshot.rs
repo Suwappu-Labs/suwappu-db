@@ -18,7 +18,7 @@ pub const SNAPSHOT_ENTRY_BYTES: usize = 36;
 /// Magic header prepended to `encoded_state` so a corrupted or
 /// mistyped file fails loudly instead of silently restoring zero
 /// balances.
-const SNAPSHOT_MAGIC: &[u8; 8] = b"GSXDB\0\0\x01";
+const SNAPSHOT_MAGIC: &[u8; 8] = b"SUWAPPU\x01";
 
 /// A snapshot of the entire state at a specific block height.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

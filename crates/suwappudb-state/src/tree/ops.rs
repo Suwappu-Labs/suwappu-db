@@ -113,7 +113,7 @@ impl StateTree {
     ) -> bool {
         use super::commit::empty_commitment;
         use blake3::Hasher;
-        const TAG_INTERNAL: &[u8] = b"GSXDB-TREE/INT__";
+        const TAG_INTERNAL: &[u8] = b"SUWAPPUDB-TREE/INT__";
 
         if proof.slot != slot_opt {
             return false;
