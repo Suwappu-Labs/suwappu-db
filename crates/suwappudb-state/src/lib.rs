@@ -84,6 +84,15 @@ pub enum StateChange {
         /// New balance.
         to: Balance,
     },
+    /// Set the opaque bytes blob of `addr`. Replaces; an empty `bytes`
+    /// clears the entry (zero-is-absent). See the bytes-column docs on
+    /// [`crate::store::BalanceStore`].
+    SetBytes {
+        /// Target address.
+        addr: Address,
+        /// New opaque value (empty clears).
+        bytes: Vec<u8>,
+    },
 }
 
 /// Capability token proving a caller is the bridge.
@@ -137,12 +146,30 @@ impl State {
         self.store.entries()
     }
 
+    /// Read the opaque bytes blob for `addr`, or `None` if unset. Reads are
+    /// unprivileged, like [`State::balance_of`].
+    #[must_use]
+    pub fn bytes_of(&self, addr: &Address) -> Option<Vec<u8>> {
+        self.store.get_bytes(addr)
+    }
+
+    /// Snapshot of every `(addr, bytes)` in the bytes column. Used by the
+    /// substrate-level state-root recipe. Order is implementation-defined;
+    /// consumers needing canonical order must sort.
+    #[must_use]
+    pub fn bytes_entries(&self) -> Vec<(Address, Vec<u8>)> {
+        self.store.bytes_entries()
+    }
+
     /// Apply a validated change. Requires a [`BridgeToken`] — only the bridge
     /// can call this.
     pub fn apply(&mut self, _token: &BridgeToken, change: &StateChange) {
-        match *change {
+        match change {
             StateChange::SetBalance { addr, to } => {
-                self.store.set(&addr, BalanceSlot::new(to.0));
+                self.store.set(addr, BalanceSlot::new(to.0));
+            }
+            StateChange::SetBytes { addr, bytes } => {
+                self.store.set_bytes(addr, bytes.clone());
             }
         }
     }

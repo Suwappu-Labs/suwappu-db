@@ -49,6 +49,8 @@ pub const TABLE_EVM_NONCES: TableDefinition<&[u8], &[u8]> = TableDefinition::new
 /// Table reserved for Move resource trees (S3).
 pub const TABLE_MOVE_RESOURCES: TableDefinition<&[u8], &[u8]> =
     TableDefinition::new("move_resources");
+/// Table holding the bytes column: `Address` → raw `Vec<u8>` blob.
+pub const TABLE_BYTES: TableDefinition<&[u8], &[u8]> = TableDefinition::new("bytes_state");
 
 /// All tables the database is opened with. Order is irrelevant.
 pub const ALL_TABLES: &[TableDefinition<&[u8], &[u8]>] = &[
@@ -57,6 +59,7 @@ pub const ALL_TABLES: &[TableDefinition<&[u8], &[u8]>] = &[
     TABLE_EVM_STORAGE,
     TABLE_EVM_NONCES,
     TABLE_MOVE_RESOURCES,
+    TABLE_BYTES,
 ];
 
 const VALUE_LEN: usize = 16; // u128 big-endian
@@ -190,6 +193,77 @@ impl BalanceStore for RedbBalanceStore {
             let mut addr_bytes = [0u8; 20];
             addr_bytes.copy_from_slice(kb);
             out.push((Address(addr_bytes), Self::decode_value(v.value())));
+        }
+        out
+    }
+
+    fn get_bytes(&self, addr: &Address) -> Option<Vec<u8>> {
+        let txn = self
+            .db
+            .begin_read()
+            .expect("RedbBalanceStore::get_bytes: begin_read failed");
+        let table = txn
+            .open_table(TABLE_BYTES)
+            .expect("RedbBalanceStore::get_bytes: open_table(bytes_state) failed");
+        match table.get(addr.0.as_slice()) {
+            Ok(Some(v)) => Some(v.value().to_vec()),
+            Ok(None) => None,
+            Err(e) => panic!("RedbBalanceStore::get_bytes failed for {:?}: {e}", addr.0),
+        }
+    }
+
+    fn set_bytes(&mut self, addr: &Address, bytes: Vec<u8>) {
+        let txn = self
+            .db
+            .begin_write()
+            .expect("RedbBalanceStore::set_bytes: begin_write failed");
+        {
+            let mut table = txn
+                .open_table(TABLE_BYTES)
+                .expect("RedbBalanceStore::set_bytes: open_table(bytes_state) failed");
+            if bytes.is_empty() {
+                // Zero-is-absent: clear the entry so reads return None and the
+                // value never appears in the canonical bytes_entries().
+                table.remove(addr.0.as_slice()).unwrap_or_else(|e| {
+                    panic!(
+                        "RedbBalanceStore::set_bytes remove failed for {:?}: {e}",
+                        addr.0
+                    )
+                });
+            } else {
+                table
+                    .insert(addr.0.as_slice(), bytes.as_slice())
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "RedbBalanceStore::set_bytes insert failed for {:?}: {e}",
+                            addr.0
+                        )
+                    });
+            }
+        }
+        txn.commit()
+            .expect("RedbBalanceStore::set_bytes: commit failed");
+    }
+
+    fn bytes_entries(&self) -> Vec<(Address, Vec<u8>)> {
+        let txn = self
+            .db
+            .begin_read()
+            .expect("RedbBalanceStore::bytes_entries: begin_read failed");
+        let table = txn
+            .open_table(TABLE_BYTES)
+            .expect("RedbBalanceStore::bytes_entries: open_table(bytes_state) failed");
+        let mut out = Vec::new();
+        let iter = table
+            .iter()
+            .expect("RedbBalanceStore::bytes_entries: iter failed");
+        for entry in iter {
+            let (k, v) = entry.expect("RedbBalanceStore::bytes_entries: row read failed");
+            let kb = k.value();
+            assert_eq!(kb.len(), 20, "address key length");
+            let mut addr_bytes = [0u8; 20];
+            addr_bytes.copy_from_slice(kb);
+            out.push((Address(addr_bytes), v.value().to_vec()));
         }
         out
     }
@@ -340,6 +414,55 @@ mod tests {
         assert_eq!(store.get(&addr(0)).canonical(), 0);
         assert_eq!(store.get(&addr(1)).canonical(), u128::MAX);
         assert_eq!(store.get(&addr(2)).canonical(), u128::MAX / 2);
+    }
+
+    // ── Bytes column (durable) ──
+
+    #[test]
+    fn bytes_round_trip_and_default_none() {
+        let (mut store, _dir) = fresh_store();
+        assert_eq!(store.get_bytes(&addr(1)), None);
+        store.set_bytes(&addr(1), vec![1, 2, 3, 4]);
+        assert_eq!(store.get_bytes(&addr(1)), Some(vec![1, 2, 3, 4]));
+    }
+
+    #[test]
+    fn bytes_persist_across_reopen() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("state.redb");
+        let a = addr(7);
+        {
+            let mut store = RedbBalanceStore::open(&path).unwrap();
+            store.set_bytes(&a, vec![0xDE, 0xAD, 0xBE, 0xEF]);
+        }
+        let store = RedbBalanceStore::open(&path).unwrap();
+        assert_eq!(store.get_bytes(&a), Some(vec![0xDE, 0xAD, 0xBE, 0xEF]));
+    }
+
+    #[test]
+    fn bytes_empty_write_clears_durably() {
+        let (mut store, _dir) = fresh_store();
+        store.set_bytes(&addr(1), vec![9, 9]);
+        store.set_bytes(&addr(1), vec![]); // zero-is-absent
+        assert_eq!(store.get_bytes(&addr(1)), None);
+        assert!(store.bytes_entries().is_empty());
+    }
+
+    #[test]
+    fn bytes_entries_match_in_memory_backend() {
+        let (mut redb, _dir) = fresh_store();
+        let mut mem = crate::InMemoryBalanceStore::new();
+        for (a, b) in [
+            (addr(3), vec![3u8]),
+            (addr(1), vec![1u8]),
+            (addr(2), vec![2u8]),
+        ] {
+            redb.set_bytes(&a, b.clone());
+            mem.set_bytes(&a, b);
+        }
+        // Both backends yield ascending-address order (redb iterates sorted
+        // keys; InMemory uses a BTreeMap).
+        assert_eq!(redb.bytes_entries(), mem.bytes_entries());
     }
 }
 

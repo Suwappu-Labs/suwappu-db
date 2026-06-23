@@ -18,7 +18,7 @@
 //! the in-memory impl will continue to be infallible by construction.
 
 use crate::{Address, BalanceSlot};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// Abstraction over a key/value store keyed by [`Address`] with [`BalanceSlot`]
 /// values.
@@ -56,6 +56,34 @@ pub trait BalanceStore {
     /// iterator variant; deferred to S8 when persistence + recovery
     /// surface the question.
     fn entries(&self) -> Vec<(Address, BalanceSlot)>;
+
+    // ── Bytes column (authoritative per-address opaque blob) ──
+    //
+    // A second authoritative column, keyed by [`Address`] with variable-length
+    // `Vec<u8>` values. The consensus layer encodes structured registries
+    // (L2 state-root pins, inflation/rewards replay counters, governance and
+    // force-include records) into these blobs; suwappu-db treats them as
+    // opaque. Like balances, the column is **zero-is-absent**: writing an
+    // empty value clears the entry, and an unset address reads as `None`.
+    //
+    // Default impls return empty so backends can opt in incrementally; every
+    // production backend MUST override all three to avoid silently dropping
+    // state.
+
+    /// Read the opaque bytes blob for `addr`, or `None` if unset.
+    fn get_bytes(&self, _addr: &Address) -> Option<Vec<u8>> {
+        None
+    }
+
+    /// Write `bytes` for `addr`. An empty `bytes` clears the entry
+    /// (zero-is-absent, mirroring the balance map's default-zero contract).
+    fn set_bytes(&mut self, _addr: &Address, _bytes: Vec<u8>) {}
+
+    /// Snapshot of every `(addr, bytes)` in the bytes column. Order is
+    /// implementation-defined; consumers needing canonical order must sort.
+    fn bytes_entries(&self) -> Vec<(Address, Vec<u8>)> {
+        Vec::new()
+    }
 }
 
 /// `HashMap`-backed [`BalanceStore`]. Default backend for tests and the
@@ -63,6 +91,9 @@ pub trait BalanceStore {
 #[derive(Debug, Default, Clone)]
 pub struct InMemoryBalanceStore {
     slots: HashMap<Address, BalanceSlot>,
+    /// Bytes column. `BTreeMap` so [`bytes_entries`](BalanceStore::bytes_entries)
+    /// yields a canonical ascending-address order for free.
+    bytes: BTreeMap<Address, Vec<u8>>,
 }
 
 impl InMemoryBalanceStore {
@@ -88,6 +119,23 @@ impl BalanceStore for InMemoryBalanceStore {
 
     fn entries(&self) -> Vec<(Address, BalanceSlot)> {
         self.slots.iter().map(|(a, s)| (*a, *s)).collect()
+    }
+
+    fn get_bytes(&self, addr: &Address) -> Option<Vec<u8>> {
+        self.bytes.get(addr).cloned()
+    }
+
+    fn set_bytes(&mut self, addr: &Address, bytes: Vec<u8>) {
+        if bytes.is_empty() {
+            self.bytes.remove(addr);
+        } else {
+            self.bytes.insert(*addr, bytes);
+        }
+    }
+
+    fn bytes_entries(&self) -> Vec<(Address, Vec<u8>)> {
+        // BTreeMap iterates in ascending key order — canonical by construction.
+        self.bytes.iter().map(|(a, b)| (*a, b.clone())).collect()
     }
 }
 
@@ -140,6 +188,50 @@ mod tests {
         assert_eq!(store.get(&addr(1)).canonical(), 100);
         assert_eq!(store.get(&addr(2)).canonical(), 200);
         assert_eq!(store.get(&addr(3)).canonical(), 0);
+    }
+
+    // ── Bytes column ──
+
+    #[test]
+    fn bytes_round_trip_and_default_none() {
+        let mut store = InMemoryBalanceStore::new();
+        assert_eq!(store.get_bytes(&addr(1)), None);
+        store.set_bytes(&addr(1), vec![1, 2, 3]);
+        assert_eq!(store.get_bytes(&addr(1)), Some(vec![1, 2, 3]));
+        assert_eq!(store.get_bytes(&addr(2)), None);
+    }
+
+    #[test]
+    fn bytes_empty_write_clears_entry() {
+        let mut store = InMemoryBalanceStore::new();
+        store.set_bytes(&addr(1), vec![9]);
+        store.set_bytes(&addr(1), vec![]); // zero-is-absent
+        assert_eq!(store.get_bytes(&addr(1)), None);
+        assert!(store.bytes_entries().is_empty());
+    }
+
+    #[test]
+    fn bytes_entries_are_ascending_by_address() {
+        let mut store = InMemoryBalanceStore::new();
+        store.set_bytes(&addr(3), vec![3]);
+        store.set_bytes(&addr(1), vec![1]);
+        store.set_bytes(&addr(2), vec![2]);
+        assert_eq!(
+            store.bytes_entries(),
+            vec![(addr(1), vec![1]), (addr(2), vec![2]), (addr(3), vec![3])]
+        );
+    }
+
+    #[test]
+    fn bytes_and_balances_are_independent_columns() {
+        let mut store = InMemoryBalanceStore::new();
+        store.set(&addr(1), BalanceSlot::new(100));
+        store.set_bytes(&addr(1), vec![0xAB]);
+        assert_eq!(store.get(&addr(1)).canonical(), 100);
+        assert_eq!(store.get_bytes(&addr(1)), Some(vec![0xAB]));
+        store.set_bytes(&addr(1), vec![]); // clearing bytes leaves balance
+        assert_eq!(store.get(&addr(1)).canonical(), 100);
+        assert_eq!(store.get_bytes(&addr(1)), None);
     }
 }
 
