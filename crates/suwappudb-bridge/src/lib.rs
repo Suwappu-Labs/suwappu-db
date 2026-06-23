@@ -158,6 +158,13 @@ impl<'s> Bridge<'s> {
         self.state.balance_of(addr)
     }
 
+    /// Read-through to the bytes column. Lane code uses this for registry
+    /// lookups (the read half of a read-modify-write on a protocol registry).
+    #[must_use]
+    pub fn bytes_of(&self, addr: &Address) -> Option<Vec<u8>> {
+        self.state.bytes_of(addr)
+    }
+
     /// Validate an intent and, if it passes, apply it to state atomically.
     ///
     /// On `Err`, no state mutation occurs.
@@ -317,6 +324,18 @@ impl<'s> Bridge<'s> {
             },
         );
         Ok(())
+    }
+
+    /// Protocol-owned bytes write — set the opaque blob for `addr` (empty
+    /// clears it, per the zero-is-absent contract). For protocol-internal
+    /// registries (L2 state-root pins, inflation/rewards replay counters,
+    /// governance/force-include records). The suwappu-db analogue of
+    /// `InMemorySubstrate::write_bytes_unchecked`. Flows through the
+    /// capability-gated `State::apply`, so only a `Bridge` (holding the
+    /// `BridgeToken`) can call it.
+    pub fn write_bytes(&mut self, addr: Address, bytes: Vec<u8>) {
+        self.state
+            .apply(&self.token, &StateChange::SetBytes { addr, bytes });
     }
 }
 
@@ -502,5 +521,40 @@ mod tests {
         bridge.transfer_internal(a, a, 30).unwrap();
         bridge.transfer_internal(a, Address([2; 20]), 0).unwrap();
         assert_eq!(bridge.balance_of(&a), Balance(100));
+    }
+
+    // ── Bytes column write/read through the bridge ──
+
+    #[test]
+    fn write_bytes_round_trips_through_bridge() {
+        let reg = Address([0xAA; 20]);
+        let mut state = State::default();
+        let mut bridge = Bridge::new(&mut state);
+        assert_eq!(bridge.bytes_of(&reg), None);
+        bridge.write_bytes(reg, vec![1, 2, 3]);
+        assert_eq!(bridge.bytes_of(&reg), Some(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn write_bytes_empty_clears() {
+        let reg = Address([0xAA; 20]);
+        let mut state = State::default();
+        let mut bridge = Bridge::new(&mut state);
+        bridge.write_bytes(reg, vec![7]);
+        bridge.write_bytes(reg, vec![]); // zero-is-absent
+        assert_eq!(bridge.bytes_of(&reg), None);
+    }
+
+    #[test]
+    fn bytes_and_balance_coexist_on_same_address() {
+        // A reserved registry address can carry both a balance (e.g. a pool)
+        // and a bytes blob (its bookkeeping) without interference.
+        let reg = Address([0xAA; 20]);
+        let mut state = State::default();
+        let mut bridge = Bridge::new(&mut state);
+        bridge.credit(reg, 500).unwrap();
+        bridge.write_bytes(reg, vec![0xBE, 0xEF]);
+        assert_eq!(bridge.balance_of(&reg), Balance(500));
+        assert_eq!(bridge.bytes_of(&reg), Some(vec![0xBE, 0xEF]));
     }
 }
