@@ -9,7 +9,7 @@
 //! Canonical encoding for hashing:
 //!
 //! ```text
-//! "GSXDB-BLOCK/HASH"
+//! "SUWAPPUDB-BLOCK/HASH"
 //! | height: u64 BE
 //! | parent: 32 bytes
 //! | state_root: 32 bytes
@@ -62,7 +62,7 @@ impl Block {
     #[must_use]
     pub fn hash(&self) -> BlockHash {
         let mut h = Hasher::new();
-        h.update(b"GSXDB-BLOCK/HASH");
+        h.update(b"SUWAPPUDB-BLOCK/HASH");
         h.update(&self.height.to_be_bytes());
         h.update(&self.parent.0);
         h.update(&self.state_root.0);

@@ -24,7 +24,7 @@ fn solidity_mac(
     key: &[u8; 32],
 ) -> [u8; 32] {
     let mut hasher = Keccak256::new();
-    hasher.update(b"GSXDB-ANCHOR/MAC");
+    hasher.update(b"SUWAPPUDB-ANCHOR/MAC");
     hasher.update(key);
     hasher.update(chain_id.to_be_bytes());
     hasher.update(height.to_be_bytes());
@@ -44,7 +44,7 @@ fn solidity_hash(
     mac: &[u8; 32],
 ) -> [u8; 32] {
     let mut hasher = Keccak256::new();
-    hasher.update(b"GSXDB-ANCHOR/HASH");
+    hasher.update(b"SUWAPPUDB-ANCHOR/HASH");
     hasher.update(chain_id.to_be_bytes());
     hasher.update(height.to_be_bytes());
     hasher.update(state_root);

@@ -184,7 +184,7 @@ pub(crate) fn fr_from_le_bytes_mod_order(bytes: &[u8]) -> Fr {
 
 /// Transcript label used for every per-step IPA opening on the proof
 /// path. Picked once so prover + verifier agree.
-const PROOF_STEP_TRANSCRIPT_LABEL: &[u8] = b"gsxdb-verkle-step";
+const PROOF_STEP_TRANSCRIPT_LABEL: &[u8] = b"suwappudb-verkle-step";
 
 /// Build the 256-element b-vector that opens a Lagrange-basis
 /// polynomial at evaluation index `domain_index`.

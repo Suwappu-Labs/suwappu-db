@@ -258,7 +258,7 @@ contract LTPAnchorRegistry {
         // For now, use Keccak256 with domain separation.
         return keccak256(
             abi.encodePacked(
-                "GSXDB-ANCHOR/MAC",
+                "SUWAPPUDB-ANCHOR/MAC",
                 key,
                 anchor.chainId,
                 anchor.height,
@@ -276,7 +276,7 @@ contract LTPAnchorRegistry {
     function hashAnchor(Anchor calldata anchor) public pure returns (bytes32) {
         return keccak256(
             abi.encodePacked(
-                "GSXDB-ANCHOR/HASH",
+                "SUWAPPUDB-ANCHOR/HASH",
                 anchor.chainId,
                 anchor.height,
                 anchor.stateRoot,
@@ -294,7 +294,7 @@ contract LTPAnchorRegistry {
     function hashAnchorMemory(Anchor memory anchor) internal pure returns (bytes32) {
         return keccak256(
             abi.encodePacked(
-                "GSXDB-ANCHOR/HASH",
+                "SUWAPPUDB-ANCHOR/HASH",
                 anchor.chainId,
                 anchor.height,
                 anchor.stateRoot,

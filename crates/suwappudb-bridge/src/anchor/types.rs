@@ -201,7 +201,7 @@ impl Anchor {
     #[must_use]
     pub fn hash(&self) -> AnchorHash {
         let mut h = Hasher::new();
-        h.update(b"GSXDB-ANCHOR/HASH");
+        h.update(b"SUWAPPUDB-ANCHOR/HASH");
         h.update(&self.chain_id.0.to_be_bytes());
         h.update(&self.height.to_be_bytes());
         h.update(&self.state_root.0);
@@ -223,7 +223,7 @@ fn compute_mac(
     // BLAKE3 keyed-hash mode: built-in MAC primitive. Domain-separated
     // by tag to avoid cross-context collisions.
     let mut h = Hasher::new_keyed(key);
-    h.update(b"GSXDB-ANCHOR/MAC");
+    h.update(b"SUWAPPUDB-ANCHOR/MAC");
     h.update(&chain_id.0.to_be_bytes());
     h.update(&height.to_be_bytes());
     h.update(&state_root.0);
