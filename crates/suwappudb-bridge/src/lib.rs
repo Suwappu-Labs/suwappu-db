@@ -216,6 +216,108 @@ impl<'s> Bridge<'s> {
             }
         }
     }
+
+    /// Protocol-owned credit — add `amount` to `addr` **without** the
+    /// `Transfer` source-balance/capability semantics.
+    ///
+    /// This is the primitive the DAG execution layer's protocol-internal
+    /// arms need (slashing distribution into insurance/treasury/counterparty,
+    /// bond deposits, L2 mint, reward disbursement). It is the suwappu-db
+    /// analogue of `InMemorySubstrate::credit_unchecked`. Mutation still flows
+    /// through the capability-gated `State::apply`, so only a `Bridge` holder
+    /// (which owns the `BridgeToken`) can call it. Zero amounts are no-ops.
+    ///
+    /// # Errors
+    /// [`RejectReason::AmountOverflow`] if the destination balance would
+    /// overflow `u128`.
+    pub fn credit(&mut self, addr: Address, amount: u128) -> Result<(), RejectReason> {
+        if amount == 0 {
+            return Ok(());
+        }
+        let new = self
+            .state
+            .balance_of(&addr)
+            .0
+            .checked_add(amount)
+            .ok_or(RejectReason::AmountOverflow)?;
+        self.state.apply(
+            &self.token,
+            &StateChange::SetBalance {
+                addr,
+                to: Balance(new),
+            },
+        );
+        Ok(())
+    }
+
+    /// Protocol-owned debit — remove `amount` from `addr` without transfer
+    /// semantics (slashing source, bond/stake withdrawal source). Mirrors
+    /// `InMemorySubstrate::debit_unchecked`. Zero amounts are no-ops.
+    ///
+    /// # Errors
+    /// [`RejectReason::InsufficientBalance`] if `addr` holds less than `amount`.
+    pub fn debit(&mut self, addr: Address, amount: u128) -> Result<(), RejectReason> {
+        if amount == 0 {
+            return Ok(());
+        }
+        let bal = self.state.balance_of(&addr).0;
+        if bal < amount {
+            return Err(RejectReason::InsufficientBalance);
+        }
+        self.state.apply(
+            &self.token,
+            &StateChange::SetBalance {
+                addr,
+                to: Balance(bal - amount),
+            },
+        );
+        Ok(())
+    }
+
+    /// Atomic protocol-owned transfer — pre-flights both the source's
+    /// `InsufficientBalance` and the destination's `AmountOverflow` **before**
+    /// any mutation, so either failure leaves both balances untouched.
+    /// Preferred over `debit` + `credit` (which is not atomic against a
+    /// destination overflow). Mirrors `InMemorySubstrate::transfer_internal`.
+    /// Zero amounts and self-transfers are no-ops.
+    ///
+    /// # Errors
+    /// [`RejectReason::InsufficientBalance`] or [`RejectReason::AmountOverflow`].
+    pub fn transfer_internal(
+        &mut self,
+        from: Address,
+        to: Address,
+        amount: u128,
+    ) -> Result<(), RejectReason> {
+        if amount == 0 || from == to {
+            return Ok(());
+        }
+        let from_bal = self.state.balance_of(&from).0;
+        if from_bal < amount {
+            return Err(RejectReason::InsufficientBalance);
+        }
+        let new_to = self
+            .state
+            .balance_of(&to)
+            .0
+            .checked_add(amount)
+            .ok_or(RejectReason::AmountOverflow)?;
+        self.state.apply(
+            &self.token,
+            &StateChange::SetBalance {
+                addr: from,
+                to: Balance(from_bal - amount),
+            },
+        );
+        self.state.apply(
+            &self.token,
+            &StateChange::SetBalance {
+                addr: to,
+                to: Balance(new_to),
+            },
+        );
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -330,5 +432,75 @@ mod tests {
         assert_eq!(result, Err(RejectReason::DeployModuleRequiresModuleStore));
         // No state mutation.
         assert_eq!(bridge.balance_of(&alice), Balance(100));
+    }
+
+    // ── Protocol-owned credit path (the DAG SuwappuDbSubstrate primitive) ──
+
+    #[test]
+    fn credit_adds_without_a_source() {
+        let pool = Address([7; 20]);
+        let mut state = seeded_state(pool, 10);
+        let mut bridge = Bridge::new(&mut state);
+        bridge.credit(pool, 25).unwrap();
+        assert_eq!(bridge.balance_of(&pool), Balance(35));
+    }
+
+    #[test]
+    fn credit_zero_is_a_no_op() {
+        let pool = Address([7; 20]);
+        let mut state = seeded_state(pool, 10);
+        let mut bridge = Bridge::new(&mut state);
+        bridge.credit(pool, 0).unwrap();
+        assert_eq!(bridge.balance_of(&pool), Balance(10));
+    }
+
+    #[test]
+    fn credit_rejects_overflow_without_mutating() {
+        let pool = Address([7; 20]);
+        let mut state = seeded_state(pool, u128::MAX);
+        let mut bridge = Bridge::new(&mut state);
+        assert_eq!(bridge.credit(pool, 1), Err(RejectReason::AmountOverflow));
+        assert_eq!(bridge.balance_of(&pool), Balance(u128::MAX));
+    }
+
+    #[test]
+    fn debit_removes_and_guards_balance() {
+        let src = Address([8; 20]);
+        let mut state = seeded_state(src, 100);
+        let mut bridge = Bridge::new(&mut state);
+        bridge.debit(src, 30).unwrap();
+        assert_eq!(bridge.balance_of(&src), Balance(70));
+        assert_eq!(bridge.debit(src, 1000), Err(RejectReason::InsufficientBalance));
+        assert_eq!(bridge.balance_of(&src), Balance(70)); // unchanged on reject
+    }
+
+    #[test]
+    fn transfer_internal_is_atomic_on_overflow() {
+        // Destination would overflow → neither balance moves (the property
+        // that makes this safe to call from a consensus-critical arm).
+        let from = Address([1; 20]);
+        let to = Address([2; 20]);
+        let mut state = seeded_state(from, 50);
+        {
+            let mut b = Bridge::new(&mut state);
+            b.credit(to, u128::MAX).unwrap();
+        }
+        let mut bridge = Bridge::new(&mut state);
+        assert_eq!(
+            bridge.transfer_internal(from, to, 10),
+            Err(RejectReason::AmountOverflow)
+        );
+        assert_eq!(bridge.balance_of(&from), Balance(50)); // untouched
+        assert_eq!(bridge.balance_of(&to), Balance(u128::MAX));
+    }
+
+    #[test]
+    fn transfer_internal_self_and_zero_are_no_ops() {
+        let a = Address([1; 20]);
+        let mut state = seeded_state(a, 100);
+        let mut bridge = Bridge::new(&mut state);
+        bridge.transfer_internal(a, a, 30).unwrap();
+        bridge.transfer_internal(a, Address([2; 20]), 0).unwrap();
+        assert_eq!(bridge.balance_of(&a), Balance(100));
     }
 }
