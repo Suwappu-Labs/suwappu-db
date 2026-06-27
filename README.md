@@ -149,6 +149,44 @@ Move executor, ECDSA-only anchor verifier).
 | [`suwappudb-lane`](./crates/suwappudb-lane) | Transaction ingest lane | ⚠ Internal |
 | [`suwappudb-server`](./crates/suwappudb-server) | JSON-RPC binary | Binary, not a library |
 
+## Supply chain / Security
+
+This repo ships a checked-in **CycloneDX** Software Bill of Materials so
+integrators can audit the dependency surface without building the tree:
+
+- [`sbom/suwappu-db.cdx.json`](./sbom/suwappu-db.cdx.json) — workspace-level
+  aggregate (195 components: the five `suwappudb-*` crates plus their resolved
+  crates.io dependencies, each as `pkg:cargo/<name>@<version>`).
+- Per-crate SBOMs alongside it: `sbom/suwappudb-{types,state,bridge,lane,server}.cdx.json`.
+
+Regenerate from `Cargo.lock` (no full build required) with the trusted cargo
+toolchain:
+
+```sh
+cargo install --locked cargo-cyclonedx
+cargo cyclonedx --format json --all --spec-version 1.5
+# emits one <crate>.cdx.json per member; the committed
+# sbom/suwappu-db.cdx.json is the path-normalized workspace aggregate.
+```
+
+Two CI workflows back this up (both SHA-pinned to full commit hashes):
+
+- [`.github/workflows/sbom.yml`](./.github/workflows/sbom.yml) — regenerates the
+  CycloneDX SBOM via `anchore/sbom-action` and attaches it as a release asset on
+  `release: published` (plus `workflow_dispatch`).
+- [`.github/workflows/scorecard.yml`](./.github/workflows/scorecard.yml) —
+  **OpenSSF Scorecard** on a weekly schedule and pushes to `main`, writing SARIF
+  to the **Security** tab.
+
+These complement the existing `cargo-deny`, `cargo-audit`, and `gitleaks` gates
+(see [`.github/workflows/`](./.github/workflows/) and [SECURITY.md](./SECURITY.md)).
+The org's GitHub Actions billing is currently disabled, so the two workflows
+above are **present and SHA-pinned but do not run yet** — they activate once
+billing is enabled; the checked-in SBOM is the value-today artifact. No OpenSSF
+Scorecard badge is published until a real Scorecard run exists to back it. This
+is dependency transparency and OSS scanning, **not** a third-party audit or a
+SOC 2 attestation.
+
 ## License
 
 [Apache-2.0](./LICENSE). Third-party attribution lives in
