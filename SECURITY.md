@@ -9,12 +9,14 @@ private disclosure path so we can coordinate patches and credit.
 
 In order of preference:
 
-1. **GitHub Security Advisory** (private) — use the "Report a
-   vulnerability" link on the repo's Security tab. This creates
-   a private advisory only project maintainers can see.
-2. **Email** — `security@globalsettlement.com`. PGP key fingerprint
-   is documented at https://www.globalsettlement.com/security
-   (when published). Until then, use the GitHub channel.
+1. **GitHub Private Vulnerability Reporting** (preferred) — open a
+   private advisory at
+   <https://github.com/Suwappu-Labs/suwappu-db/security/advisories/new>
+   (Security tab → "Report a vulnerability"). Only project maintainers
+   can see it.
+2. **Email** — `layerinfinite@gmail.com`. (`security@suwappu.bot` is
+   the aspirational alias and is not yet live; until it is, use the
+   GitHub channel above or this address.)
 
 Include:
 
