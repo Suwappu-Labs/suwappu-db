@@ -1,4 +1,4 @@
-# GSX-DB Server Configuration Example
+# Suwappu-DB Server Configuration Example
 # Copy to /etc/suwappudb/config.toml or set CONFIG_PATH env var to point to your config
 
 # State database path (redb)
@@ -16,13 +16,13 @@ metrics_port = 9660
 # Anchor chain registrations
 # Each [[anchor]] section registers a chain for cross-chain parity checks
 
-# GSX L1 (GSN settlement layer)
+# Suwappu L1 (Suwappu settlement layer)
 [[anchor]]
 chain_id = 103115120
 # 32-byte hex key for HMAC anchor authentication
 key = "0000000000000000000000000000000000000000000000000000000000000001"
 
-# GSN L2 (OP Stack Optimism)
+# Suwappu L2 (OP Stack Optimism)
 [[anchor]]
 chain_id = 103218544
 # In production, use a unique key per chain

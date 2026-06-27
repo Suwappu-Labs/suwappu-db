@@ -41,7 +41,7 @@ JSON-RPC method catalogue in [`docs/api/rpc-schema.json`](../../docs/api/rpc-sch
 cargo run --release --bin suwappudb-server
 # or
 docker run --rm -p 8660:8660 \
-    ghcr.io/globalsettlementnetwork/suwappu-db:v0.1.0-pre
+    ghcr.io/suwappu-labs/suwappu-db:v0.1.0-pre
 ```
 
 Hardened production run:
@@ -51,7 +51,7 @@ docker run --rm \
     -p 127.0.0.1:8660:8660 \
     -e Suwappudb_BEARER_TOKEN=$(openssl rand -hex 32) \
     -e RUST_LOG=info \
-    ghcr.io/globalsettlementnetwork/suwappu-db:v0.1.0-pre
+    ghcr.io/suwappu-labs/suwappu-db:v0.1.0-pre
 ```
 
 ## Configuration
