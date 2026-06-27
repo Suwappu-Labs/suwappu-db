@@ -1,7 +1,7 @@
-/// gsx-db canonical Coin module — S9.5g.
+/// suwappu-db canonical Coin module — S9.5g.
 ///
 /// Holds the per-account balance + sequence number resource that the
-/// gsx-db dual-projection invariant tracks. Mirrors the `CoinStore`
+/// suwappu-db dual-projection invariant tracks. Mirrors the `CoinStore`
 /// BCS layout the Rust-side `BalanceViewResolver` and
 /// `decode_coin_store` agree on:
 ///
@@ -32,7 +32,7 @@ module gsxdb_coin::coin {
     /// sequence by 1. Aborts with `EINSUFFICIENT_BALANCE` if
     /// `from`'s balance < amount.
     ///
-    /// gsx-db semantics: the transaction-author identity is checked
+    /// suwappu-db semantics: the transaction-author identity is checked
     /// at the bridge/lane boundary (the Move `&signer` capability is
     /// never forged into a Move VM session). Inside the VM we accept
     /// the source address as an unsigned `address` argument — the

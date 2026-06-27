@@ -76,8 +76,8 @@ curl -d '{"jsonrpc":"2.0","method":"suwappu_getStateRoot","params":[],"id":1}' \
 Container alternative:
 
 ```sh
-docker pull ghcr.io/globalsettlementnetwork/suwappu-db:v0.1.0-pre
-docker run --rm -p 8660:8660 ghcr.io/globalsettlementnetwork/suwappu-db:v0.1.0-pre
+docker pull ghcr.io/suwappu-labs/suwappu-db:v0.1.0-pre
+docker run --rm -p 8660:8660 ghcr.io/suwappu-labs/suwappu-db:v0.1.0-pre
 ```
 
 ## Why use this

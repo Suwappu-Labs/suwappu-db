@@ -242,7 +242,7 @@ The release pipeline publishes a multi-arch container image
 every `v*` tag:
 
 ```sh
-docker pull ghcr.io/globalsettlementnetwork/suwappu-db:v0.1.0-pre
+docker pull ghcr.io/suwappu-labs/suwappu-db:v0.1.0-pre
 ```
 
 Tagging rules (per
@@ -258,7 +258,7 @@ Tagging rules (per
 ```sh
 docker run --rm -p 8660:8660 -p 9660:9660 \
     -e RUST_LOG=info \
-    ghcr.io/globalsettlementnetwork/suwappu-db:v0.1.0-pre
+    ghcr.io/suwappu-labs/suwappu-db:v0.1.0-pre
 ```
 
 The container exposes:
@@ -281,7 +281,7 @@ docker run --rm \
     -p 127.0.0.1:8660:8660 \                # bind localhost only
     -e Suwappudb_BEARER_TOKEN=$(openssl rand -hex 32) \  # B6 auth
     -e RUST_LOG=info \
-    ghcr.io/globalsettlementnetwork/suwappu-db:v0.1.0-pre
+    ghcr.io/suwappu-labs/suwappu-db:v0.1.0-pre
 ```
 
 …then expose 8660 to the outside world only through nginx /
