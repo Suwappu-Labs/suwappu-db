@@ -144,6 +144,9 @@ docs/
 │   ├── IQ-8-recovery-store-inmemory-vs-redb.md
 │   └── IQ-9-s12-launch-hardening.md  snapshots + DAG + shadow E2E
 │
+├── research/                       competitive landscape + market research
+│   └── chain-gap-analysis-2026-07.md  Tempo / Arc / Robinhood Chain vs the Suwappu stack + close-the-gap backlog
+│
 └── paper-additions/                proposed insertions to the two academic papers
     ├── README.md                   index with target sections
     ├── dag-l1-related-work.md

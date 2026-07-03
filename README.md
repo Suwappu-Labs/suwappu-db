@@ -96,6 +96,28 @@ docker run --rm -p 8660:8660 ghcr.io/suwappu-labs/suwappu-db:v0.1.0-pre
   with attestation-handshake runtime rejection of
   non-HSM-backed peers. See [`docs/spec/key-custody.md`](./docs/spec/key-custody.md).
 
+## How this compares
+
+The purpose-built chains that launched over the last year — Tempo
+(Stripe/Paradigm payments L1), Arc (Circle stablecoin L1), Robinhood
+Chain (RWA L2 on Arbitrum Orbit) — are all EVM-only, MPT-state,
+asset-bridge-interop designs. suwappu-db differs on four axes:
+
+- **Dual-VM parity** — EVM + Move reduce to one canonical state,
+  proven by a 10k-case property test, not a compatibility shim.
+- **Verkle commitments** — banderwagon + IPA witnesses instead of an
+  MPT; compact multipoint witnesses (~200 B target) are scheduled
+  (IQ-6) where MPT chains structurally cannot follow.
+- **Anchor attestation, not asset bridging** — `LTPAnchorRegistry`
+  attests *state-root parity* across heterogeneous verifiers
+  (differential-tested Rust ↔ Solidity), a different primitive from
+  CCTP/OFT-style token movement.
+- **Post-quantum readiness** — ML-DSA-65 hybrid anchor verification
+  ships behind `production-pqc` today; peers list PQ as roadmap.
+
+Full landscape research + close-the-gap backlog:
+[`docs/research/chain-gap-analysis-2026-07.md`](./docs/research/chain-gap-analysis-2026-07.md).
+
 ## Status
 
 | Sprint | Scope | Status |

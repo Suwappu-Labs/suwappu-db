@@ -24,6 +24,11 @@ promises.
 | **E** | Q4 2026 | Compact multipoint Verkle witnesses (IQ-6 closure) | ⏳ |
 | **GA** | aligned with suwappu-dag mainnet (M18–M24) | suwappu-db `1.0` cut against mainnet genesis | ⏳ |
 
+Go-public gap items (benchmarks, snapshot tooling, TS client, memo /
+fee-seam IQs) are tracked in
+[`docs/research/chain-gap-analysis-2026-07.md`](./docs/research/chain-gap-analysis-2026-07.md)
+§4, sequenced against phases C–E in §5.
+
 ---
 
 ## Connection to the L1 roadmap
