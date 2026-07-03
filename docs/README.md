@@ -114,6 +114,7 @@ docs/
 │   ├── sprint-map.md               sprint dependency DAG (phase-1)
 │   ├── sprint-timeline.md          Gantt + S1..S12 timeline
 │   ├── deployment-topology.md      live + target deployment shapes
+│   ├── node-bootstrap.md           snapshot export / import / verify operator flow
 │   ├── validator-rings.md          Authority Ring + Validator Ring (paper §5)
 │   ├── ltp-lifecycle.md            LTP three-phase + six-layer security
 │   ├── request-lifecycle.md        wallet RPC → state → response

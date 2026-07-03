@@ -38,3 +38,5 @@ hex = "0.4"
 blake3 = "1"
 
 [dev-dependencies]
+# Scratch dirs for the suwappudb-snapshot CLI round-trip test.
+tempfile = "3"

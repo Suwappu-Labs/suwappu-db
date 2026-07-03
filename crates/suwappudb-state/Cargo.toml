@@ -92,3 +92,10 @@ production-verkle = [
 [dev-dependencies]
 proptest = "1"
 tempfile = "3"
+# Benchmark harness for BENCHMARKS.md numbers (gap item G2). Slim
+# feature set: no plotters/csv report generation, results are text.
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "state_commit"
+harness = false

@@ -55,3 +55,10 @@ tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt"] }
 # rand for ECDSA signing key generation in roundtrip tests.
 rand = "0.8"
+# Benchmark harness for BENCHMARKS.md numbers (gap item G2). Slim
+# feature set: no plotters/csv report generation, results are text.
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "block_throughput"
+harness = false

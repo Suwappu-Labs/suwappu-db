@@ -132,6 +132,7 @@ Spec: [`docs/spec/recovery.md`](./docs/spec/recovery.md).
 | Topic | Where to look |
 |---|---|
 | Topology (today + target) | [`docs/architecture/deployment-topology.md`](./docs/architecture/deployment-topology.md) |
+| Node bootstrap (snapshot export/import/verify) | [`docs/architecture/node-bootstrap.md`](./docs/architecture/node-bootstrap.md) |
 | Request lifecycle | [`docs/architecture/request-lifecycle.md`](./docs/architecture/request-lifecycle.md) |
 | Validator rings | [`docs/architecture/validator-rings.md`](./docs/architecture/validator-rings.md) |
 | Data flow | [`docs/architecture/data-flow.md`](./docs/architecture/data-flow.md) |

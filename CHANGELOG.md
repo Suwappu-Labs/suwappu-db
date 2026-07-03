@@ -9,6 +9,22 @@ breaking changes — see `INTEGRATORS.md` "Stability promises".
 
 ## [Unreleased]
 
+### Added — go-public gap items (G2, G5)
+
+- **Benchmarks (G2)** — criterion harnesses for OCC block execution
+  (`suwappudb-bridge`), state-tree commit / proof generation /
+  snapshot round-trip (`suwappudb-state`); reference numbers +
+  methodology + caveats in `BENCHMARKS.md`.
+- **`suwappudb-snapshot` CLI (G5)** — operator
+  export/import/inspect/verify over redb stores with embedded
+  state-root and optional anchor-hash cross-check; round-trip +
+  tamper-rejection integration tests; operator flow documented in
+  `docs/architecture/node-bootstrap.md`.
+- Competitive landscape research (Tempo / Arc / Robinhood Chain) +
+  prioritized close-the-gap backlog in
+  `docs/research/chain-gap-analysis-2026-07.md`; README "How this
+  compares" section.
+
 ## [0.1.0-pre] — 2026-05-16
 
 First Phase-1 launch-readiness pre-release. Marks completion of

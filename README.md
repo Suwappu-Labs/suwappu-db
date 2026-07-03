@@ -152,6 +152,7 @@ Move executor, ECDSA-only anchor verifier).
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | DCO sign-off, branch naming, PR workflow |
 | [SECURITY.md](./SECURITY.md) | Private vulnerability disclosure |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | One-page system overview |
+| [BENCHMARKS.md](./BENCHMARKS.md) | Reproducible substrate performance numbers + methodology |
 | [CHANGELOG.md](./CHANGELOG.md) | Per-release deltas |
 | [MAINTAINERS.md](./MAINTAINERS.md) | Who owns what + review hints |
 | [GOVERNANCE.md](./GOVERNANCE.md) | How decisions get made |
